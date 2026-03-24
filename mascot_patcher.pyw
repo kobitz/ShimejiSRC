@@ -99,6 +99,15 @@ NEW_JUMP_TO_CURSOR = '''		<Action Name="JumpToCursor" Type="Sequence" Loop="fals
         </Action>'''
 
 
+JUMPTOCURSOR_BEHAVIOR = '''		<Behavior Name="JumpToCursor" Frequency="30" Toggleable="true"
+            Condition="#{
+                var dx = mascot.environment.cursor.x - mascot.anchor.x;
+                var dy = mascot.anchor.y - mascot.environment.cursor.y;
+                var dist = Math.sqrt(dx*dx + dy*dy);
+                dist &lt;= 800
+            }"/>'''
+
+
 def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
     """
     Add / Fix JumpToCursor:
@@ -106,6 +115,7 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
       - If absent entirely → append before </ActionList>
       - If present but outdated (fingerprint missing) → replace in-place
       - If present and already current → skip
+    Also adds the JumpToCursor behavior to behaviors.xml if missing.
     """
     log = []
 
@@ -113,12 +123,12 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
         log.append(f"  – Skipped {mascot_name}/actions.xml (no Jumping action defined)")
         return actions_content, behaviors_content, log
 
+    # ── actions.xml ──
     start_tag = '<Action Name="JumpToCursor"'
     has_block = start_tag in actions_content
     is_current = _JUMPTOCURSOR_FINGERPRINT in actions_content
 
     if not has_block:
-        # Add it
         actions_content = actions_content.replace(
             '</ActionList>',
             '\n' + NEW_JUMP_TO_CURSOR + '\n\t</ActionList>',
@@ -127,9 +137,7 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
         log.append(f"  ✓ Added JumpToCursor to {mascot_name}/actions.xml")
 
     elif not is_current:
-        # Replace every instance (there should only be one)
         pos = 0
-        replaced = 0
         while True:
             idx = actions_content.find(start_tag, pos)
             if idx == -1:
@@ -140,11 +148,21 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
                 break
             actions_content = actions_content[:idx] + NEW_JUMP_TO_CURSOR + actions_content[end_idx:]
             pos = idx + len(NEW_JUMP_TO_CURSOR)
-            replaced += 1
         log.append(f"  ✓ Updated JumpToCursor (outdated) in {mascot_name}/actions.xml")
 
     else:
         log.append(f"  – JumpToCursor already up-to-date in {mascot_name}/actions.xml")
+
+    # ── behaviors.xml ──
+    if behaviors_content and not _has_behavior_def(behaviors_content, 'JumpToCursor'):
+        behaviors_content = behaviors_content.replace(
+            '</BehaviorList>',
+            JUMPTOCURSOR_BEHAVIOR + '\n\t</BehaviorList>',
+            1
+        )
+        log.append(f"  ✓ Added JumpToCursor behavior to {mascot_name}/behaviors.xml")
+    elif behaviors_content:
+        log.append(f"  – JumpToCursor behavior already present in {mascot_name}/behaviors.xml")
 
     return actions_content, behaviors_content, log
 
