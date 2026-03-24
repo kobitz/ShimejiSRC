@@ -1,0 +1,3 @@
+Manifest-Version: 1.0
+Main-Class: com.group_finity.mascot.Main
+Class-Path: ./ img/ conf/ ./lib/jna.jar ./lib/examples.jar ./lib/AbsoluteLayout.jar ./lib/nimrodlf.jar ./lib/nashorn-core-15.4.jar ./lib/asm-9.6.jar ./lib/asm-util-9.6.jar ./lib/asm-commons-9.6.jar ./lib/asm-tree-9.6.jar ./lib/JNativeHook-2.2.2.jar
