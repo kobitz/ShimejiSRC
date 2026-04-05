@@ -22,11 +22,15 @@
 	</target>
 
 	<target name="jar" depends="compile">
+<<<<<<< HEAD
 		<!-- Fat jar: merge all lib jars + compiled classes into one jar -->
 		<jar destfile="target/Shimeji-ee.jar" manifest="MANIFEST.MF">
 			<fileset dir="target/classes" />
 			<zipgroupfileset dir="lib" includes="*.jar" />
 		</jar>
+=======
+		<jar destfile="target/Shimeji-ee.jar" basedir="target/classes" manifest="MANIFEST.MF" />
+>>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 	</target>
 
 	<target name="zip" depends="jar">
@@ -82,8 +86,16 @@
 				<include name="conf/**/*" />
 				<exclude name="conf/behaviors.xml" />
 				<exclude name="conf/*Behavior.xml" />
+<<<<<<< HEAD
 				<!-- lib/ excluded — dependencies are bundled in the jar -->
 			</fileset>
 		</zip>
 	</target>
 </project>
+=======
+				<include name="lib/*" />
+			</fileset>
+		</zip>
+	</target>
+</project>
+>>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3

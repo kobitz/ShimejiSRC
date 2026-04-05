@@ -56,10 +56,14 @@ public class Dragged extends ActionBase
 
         scaling = Double.parseDouble( Main.getInstance( ).getProperties( ).getProperty( "Scaling", "1.0" ) );
 
+<<<<<<< HEAD
         // Combined factor: static image scaling * current dynamic scale
         double combinedScaling = scaling * mascot.getCurrentScale( );
 
         setFootX( getEnvironment( ).getCursor( ).getX( ) + (int)Math.round( getOffsetX( ) * combinedScaling ) );
+=======
+        setFootX( getEnvironment( ).getCursor( ).getX( ) + (int)Math.round( getOffsetX( ) * scaling ) );
+>>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
         setTimeToRegist( 250 );
     }
 
@@ -77,12 +81,18 @@ public class Dragged extends ActionBase
         getEnvironment( ).refreshWorkArea( );
 
         final Location cursor = getEnvironment( ).getCursor( );
+<<<<<<< HEAD
 
         // Combined factor: static image scaling * current dynamic scale
         double combinedScaling = scaling * getMascot( ).getCurrentScale( );
 
         int offsetX = (int)Math.round( getOffsetX( ) * combinedScaling );
         int offsetY = (int)Math.round( getOffsetY( ) * combinedScaling );
+=======
+        
+        int offsetX = (int)Math.round( getOffsetX( ) * scaling );
+        int offsetY = (int)Math.round( getOffsetY( ) * scaling );
+>>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
         if( getOffsetType( ).equals( getSchema( ).getString( "Origin" ) ) )
         {
             offsetX = 0 - offsetX + getMascot( ).getImage( ).getCenter( ).x;

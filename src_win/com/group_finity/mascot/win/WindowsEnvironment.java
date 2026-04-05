@@ -61,7 +61,7 @@ class WindowsEnvironment extends Environment
     // Throttle: only re-run the expensive EnumWindows scan every N ticks.
     // Between scans the previous result is reused. Window positions change
     // slowly enough (~320ms between scans at 40ms/tick) that this is invisible.
-    private static final int IE_SCAN_INTERVAL = 1;
+    private static final int IE_SCAN_INTERVAL = 4;
     // Counter cycles atomically so each new instance starts at a different
     // offset, spreading scans across ticks rather than all firing together.
     private static final java.util.concurrent.atomic.AtomicInteger instanceCounter =

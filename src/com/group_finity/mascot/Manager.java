@@ -395,6 +395,7 @@ public class Manager {
         }
     }
 
+<<<<<<< HEAD
     public List<Mascot> getMascotList() {
         synchronized (this.mascots) {
             return java.util.Collections.unmodifiableList(
@@ -402,6 +403,8 @@ public class Manager {
         }
     }
 
+=======
+>>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 	private List<Mascot> getMascots() {
 		return this.mascots;
 	}
