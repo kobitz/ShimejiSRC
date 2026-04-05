@@ -395,6 +395,13 @@ public class Manager {
         }
     }
 
+    public List<Mascot> getMascotList() {
+        synchronized (this.mascots) {
+            return java.util.Collections.unmodifiableList(
+                    new java.util.ArrayList<>(this.mascots));
+        }
+    }
+
 	private List<Mascot> getMascots() {
 		return this.mascots;
 	}

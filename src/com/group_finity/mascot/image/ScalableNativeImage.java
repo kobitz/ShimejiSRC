@@ -8,10 +8,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.group_finity.mascot.Main;
+
 /**
  * Produces scaled MascotImages without blocking the manager thread.
  * One instance per mascot (recreated when source image changes).
  * Uses a background thread for GDI-heavy NativeImage construction.
+ * Respects the Filter setting from settings.properties (bicubic or nearest).
  */
 public class ScalableNativeImage
 {
@@ -54,6 +57,12 @@ public class ScalableNativeImage
             final BufferedImage src    = source.getBufferedImage( );
             final Point         center = source.getCenter( );
 
+            // Read filter setting on the submitting thread (Main is thread-safe for getProperties)
+            final String filterProp = Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" );
+            final Object interpolation = filterProp.equalsIgnoreCase( "bicubic" )
+                ? RenderingHints.VALUE_INTERPOLATION_BICUBIC
+                : RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR;
+
             if( src != null )
             {
                 WORKER.submit( () -> {
@@ -64,8 +73,7 @@ public class ScalableNativeImage
 
                         BufferedImage scaled = new BufferedImage( w, h, BufferedImage.TYPE_INT_ARGB_PRE );
                         Graphics2D g = scaled.createGraphics( );
-                        g.setRenderingHint( RenderingHints.KEY_INTERPOLATION,
-                                            RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR );
+                        g.setRenderingHint( RenderingHints.KEY_INTERPOLATION, interpolation );
                         g.drawImage( src, 0, 0, w, h, null );
                         g.dispose( );
 

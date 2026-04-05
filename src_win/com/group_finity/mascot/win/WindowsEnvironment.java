@@ -61,7 +61,7 @@ class WindowsEnvironment extends Environment
     // Throttle: only re-run the expensive EnumWindows scan every N ticks.
     // Between scans the previous result is reused. Window positions change
     // slowly enough (~320ms between scans at 40ms/tick) that this is invisible.
-    private static final int IE_SCAN_INTERVAL = 8;
+    private static final int IE_SCAN_INTERVAL = 1;
     // Counter cycles atomically so each new instance starts at a different
     // offset, spreading scans across ticks rather than all firing together.
     private static final java.util.concurrent.atomic.AtomicInteger instanceCounter =
@@ -242,12 +242,21 @@ class WindowsEnvironment extends Environment
     // ── Per-mascot window detection ───────────────────────────────────────────
 
     /**
-     * Find the interactive window whose top surface is closest to the mascot's
-     * anchor point, considering z-order occlusion.
+     * Find the interactive window whose top surface is the best floor for the
+     * mascot's anchor point, considering z-order occlusion.
      *
      * A single EnumWindows pass collects all handles + rects in z-order.
-     * Then we pick the viable window nearest (Euclidean) to the anchor that
-     * isn't covered by any opaque window higher in z-order.
+     *
+     * Selection priority:
+     *   1. FLOOR candidate: window whose top edge is at or below the anchor Y,
+     *      AND whose X range covers the anchor X (i.e. the mascot is standing
+     *      on it). Among these, prefer the one with the highest top edge
+     *      (smallest top Y ≤ anchor.y) — that's the actual surface underfoot.
+     *      Horizontally adjacent windows (e.g. a box the mascot walks into)
+     *      are excluded because their X range doesn't cover anchor.x.
+     *   2. FALLBACK: if no floor candidate exists (mascot is mid-air or near
+     *      a window edge), fall back to the Euclidean-nearest viable window,
+     *      same as the original behaviour.
      *
      * WS_EX_LAYERED windows (transparent overlays like shimeji itself) are
      * skipped in the occlusion check because they don't actually block anything.
@@ -288,8 +297,17 @@ class WindowsEnvironment extends Environment
         if( mascotScreen == null )
             mascotScreen = getScreenRect( );
 
-        Pointer best     = null;
-        double  bestDist = Double.MAX_VALUE;
+        // Pass 1: find the best floor surface — a window whose top edge is the
+        // highest surface at or below the anchor, covering anchor.x.
+        // This correctly ignores adjacent windows (boxes being walked into)
+        // whose X range does not include the mascot's foot position.
+        Pointer bestFloor    = null;
+        int     bestFloorTop = Integer.MIN_VALUE; // highest top = largest Y ≤ anchor.y
+
+        // Pass 2 fallback: Euclidean nearest (original behaviour, used when
+        // no floor candidate exists — e.g. mascot mid-air near a window side).
+        Pointer bestFallback     = null;
+        double  bestFallbackDist = Double.MAX_VALUE;
 
         for( int i = 0; i < handles.size(); i++ )
         {
@@ -319,21 +337,40 @@ class WindowsEnvironment extends Environment
             }
             if( occluded ) continue;
 
-            // Distance: 0 if anchor is on/inside window, else Euclidean to edge
+            // ── Floor candidate check ─────────────────────────────────────
+            // The window's top edge must be at or below the anchor Y, and the
+            // window's X range must cover the anchor X (mascot is above it).
+            // A small margin (4px) handles sub-pixel anchor placement at edges.
+            boolean coversX  = anchor.x >= r.x - 4 && anchor.x <= r.x + r.width + 4;
+            boolean belowTop = r.y <= anchor.y;
+            if( coversX && belowTop )
+            {
+                // Among all floor candidates, prefer the highest top edge
+                // (i.e. the surface the mascot is most immediately standing on).
+                if( r.y > bestFloorTop )
+                {
+                    bestFloorTop = r.y;
+                    bestFloor    = ie;
+                }
+                continue; // don't also consider this window as a fallback
+            }
+
+            // ── Fallback: Euclidean nearest ───────────────────────────────
             int dx = Math.max( r.x - anchor.x,
                      Math.max( 0, anchor.x - ( r.x + r.width  ) ) );
             int dy = Math.max( r.y - anchor.y,
                      Math.max( 0, anchor.y - ( r.y + r.height ) ) );
             double dist = Math.sqrt( (double)(dx * dx + dy * dy) );
 
-            if( dist < bestDist )
+            if( dist < bestFallbackDist )
             {
-                bestDist = dist;
-                best     = ie;
+                bestFallbackDist = dist;
+                bestFallback     = ie;
             }
         }
 
-        return best;
+        // Floor candidate wins if found; otherwise fall back to Euclidean nearest.
+        return bestFloor != null ? bestFloor : bestFallback;
     }
 
     // ── tickForMascot ─────────────────────────────────────────────────────────

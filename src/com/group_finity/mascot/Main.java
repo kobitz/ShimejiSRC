@@ -1584,6 +1584,9 @@ public class Main
             this.getManager( ).stop( );
         }
         catch( Throwable t ) { }
+        // disposeAll() writes each mascot's current scale to properties —
+        // flush to disk now before the process exits.
+        updateConfigFile( );
         Thread exitThread = new Thread( ( ) -> System.exit( 0 ), "ForceExit" );
         exitThread.setDaemon( false );
         exitThread.start( );

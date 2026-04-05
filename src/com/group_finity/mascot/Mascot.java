@@ -141,6 +141,16 @@ public class Mascot
         id = lastId.incrementAndGet( );
         this.imageSet = imageSet;
 
+        // Restore persisted dynamic scale for this image set, if any.
+        try
+        {
+            String saved = Main.getInstance( ).getProperties( )
+                .getProperty( "Scale." + imageSet );
+            if( saved != null )
+                currentScale = Double.parseDouble( saved );
+        }
+        catch( NumberFormatException ignored ) { }
+
         log.log( Level.INFO, "Created a mascot ({0})", this );
 
         // Always show on top
@@ -607,6 +617,13 @@ public class Mascot
             debugWindow.setVisible( false );
             debugWindow = null;
         }
+
+        // Persist the current dynamic scale so it's restored on next spawn.
+        // Only write if scale differs meaningfully from 1.0 to keep the
+        // properties file clean for mascots that were never scaled.
+        if( Math.abs( currentScale - 1.0 ) > 0.005 )
+            Main.getInstance( ).getProperties( ).setProperty(
+                "Scale." + getImageSet( ), String.valueOf( currentScale ) );
 
         animating = false;
         getWindow( ).dispose( );

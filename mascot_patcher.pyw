@@ -51,52 +51,74 @@ def _has_behavior_def(content, name):
 
 # Canonical fingerprint — a unique substring that only appears in the CURRENT
 # version of JumpToCursor. If this is absent the block is missing or outdated.
-_JUMPTOCURSOR_FINGERPRINT = "Hit a wall → cling to it"
+# Uses comment text (not variable values) so it survives numeric tweaks.
+_JUMPTOCURSOR_FINGERPRINT = "Intercepted cursor during fall → grab"
 
-NEW_JUMP_TO_CURSOR = '''		<Action Name="JumpToCursor" Type="Sequence" Loop="false">
-            <!-- Jump toward cursor -->
-            <ActionReference Name="Jumping"
-                TargetX="${mascot.environment.cursor.x}"
-                TargetY="${mascot.environment.cursor.y - 80}" />
-            <!-- Loop until we reach cursor -->
-            <Action Type="Sequence" Loop="true">
-                <Action Type="Select">
+NEW_JUMP_TO_CURSOR = '''
+		<Action Name="JumpToCursor" Type="Sequence" Loop="false">
+			<!-- Jump toward cursor -->
+			<ActionReference Name="Jumping"
+				TargetX="${mascot.environment.cursor.x}"
+				TargetY="${mascot.environment.cursor.y - Math.round(10 * mascot.currentScale)}"
+				Duration="${100 + Math.random() * 100}"  />
+			<!-- Loop until we reach cursor -->
+			<Action Type="Sequence">
+				<Action Type="Select">
+	
+					<!-- Hit a wall → cling to it -->
+					<Action Type="Sequence"
+						Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
+						<ActionReference Name="GrabWall" 
+						Duration="1" />
+					</Action>
+					<!-- Landed on top of IE window or Hit the floor → stand on it -->
+					<Action Type="Sequence"
+						Condition="${mascot.environment.activeIE.topBorder.isOn(mascot.anchor) || mascot.environment.workArea.bottomBorder.isOn(mascot.anchor)}">
+						<ActionReference Name="Stand" 
+						Duration="1" />
+					</Action>
+					<!-- Cursor is above → jump again toward new cursor position -->
+					<Action Type="Sequence"
+						Condition="${mascot.anchor.y >= mascot.environment.cursor.y &amp;&amp; mascot.environment.cursor.y &lt; mascot.anchor.y - 80}">
+						<ActionReference Name="Jumping"
+							TargetX="${mascot.environment.cursor.x}"
+							TargetY="${mascot.environment.cursor.y - 80}" 
+							Duration="${100 + Math.random() * 100}" />
+					</Action>
+					<!-- Reached cursor → grab -->
+					<Action Type="Sequence"
+						Condition="${mascot.anchor.y >= mascot.environment.cursor.y}">
+						<ActionReference Name="Dragged" />
+					</Action>
+					<!-- Otherwise fall towards cursor -->
+					<Action Type="Sequence">
+						<ActionReference Name="Falling"
+							InitialVX="${(mascot.environment.cursor.x - mascot.anchor.x) * 0.10}"
+							InitialVY="${(mascot.environment.cursor.y - mascot.anchor.y) * 0.10}"
+							Duration="${Math.max(10, Math.sqrt(Math.pow(mascot.environment.cursor.x - mascot.anchor.x, 2) + Math.pow(mascot.environment.cursor.y - mascot.anchor.y, 2)) * 0.02)}"/>
+						<!-- Intercepted cursor during fall → grab -->
+						<Action Type="Sequence"
+							Condition="${(function(){ var dx = mascot.environment.cursor.x - mascot.anchor.x; var dy = mascot.environment.cursor.y - mascot.anchor.y; return Math.sqrt(dx*dx + dy*dy) &lt;= Math.round(100 * mascot.currentScale); })()}">
+							<ActionReference Name="Dragged" />
+						</Action>
+					</Action>
+				</Action>
+			</Action>
+    	</Action>'''
 
-                    <!-- Hit a wall → cling to it -->
-                    <Action Type="Sequence"
-                        Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
-                        <ActionReference Name="GrabWall" Duration="${500+Math.random()*1000}" />
-                    </Action>
-                    <!-- Landed on top of IE window → stand on it -->
-                    <Action Type="Sequence"
-                        Condition="${mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
-                        <ActionReference Name="Stand" Duration="${500+Math.random()*1000}" />
-                    </Action>
-                    <!-- Hit the floor → stand -->
-                    <Action Type="Sequence"
-                        Condition="${mascot.environment.workArea.bottomBorder.isOn(mascot.anchor)}">
-                        <ActionReference Name="Stand" Duration="${500+Math.random()*1000}" />
-                    </Action>
-                    <!-- Cursor is above → jump again toward new cursor position -->
-                    <Action Type="Sequence"
-                        Condition="${mascot.anchor.y >= mascot.environment.cursor.y &amp;&amp; mascot.environment.cursor.y &lt; mascot.anchor.y - 80}">
-                        <ActionReference Name="Jumping"
-                            TargetX="${mascot.environment.cursor.x}"
-                            TargetY="${mascot.environment.cursor.y - 80}" />
-                    </Action>
-                    <!-- Reached cursor → grab -->
-                    <Action Type="Sequence"
-                        Condition="${mascot.anchor.y >= mascot.environment.cursor.y}">
-                        <ActionReference Name="Dragged"/>
-                    </Action>
-                    <!-- Otherwise keep homing -->
-                    <ActionReference Name="Falling"
-                        InitialVX="${(mascot.environment.cursor.x - mascot.anchor.x) * 0.15}"
-                        InitialVY="12"
-                        Duration="1"/>
-                </Action>
-            </Action>
-        </Action>'''
+
+JUMPTOCURSOR_BEHAVIOR = '''		
+        <Behavior Name="JumpToCursor" Frequency="10" Toggleable="true"
+			Condition="#{
+				var dx = mascot.environment.cursor.x - mascot.anchor.x;
+				var dy = mascot.anchor.y - mascot.environment.cursor.y;
+				var dist = Math.sqrt(dx*dx + dy*dy);
+				dist &lt;= 400
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="Fall" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>'''
 
 
 def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
@@ -106,6 +128,7 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
       - If absent entirely → append before </ActionList>
       - If present but outdated (fingerprint missing) → replace in-place
       - If present and already current → skip
+    Also adds the JumpToCursor behavior to behaviors.xml if missing.
     """
     log = []
 
@@ -113,12 +136,12 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
         log.append(f"  – Skipped {mascot_name}/actions.xml (no Jumping action defined)")
         return actions_content, behaviors_content, log
 
+    # ── actions.xml ──
     start_tag = '<Action Name="JumpToCursor"'
     has_block = start_tag in actions_content
     is_current = _JUMPTOCURSOR_FINGERPRINT in actions_content
 
     if not has_block:
-        # Add it
         actions_content = actions_content.replace(
             '</ActionList>',
             '\n' + NEW_JUMP_TO_CURSOR + '\n\t</ActionList>',
@@ -127,9 +150,7 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
         log.append(f"  ✓ Added JumpToCursor to {mascot_name}/actions.xml")
 
     elif not is_current:
-        # Replace every instance (there should only be one)
         pos = 0
-        replaced = 0
         while True:
             idx = actions_content.find(start_tag, pos)
             if idx == -1:
@@ -140,11 +161,64 @@ def patch_fix_jumptocursor(actions_content, behaviors_content, mascot_name):
                 break
             actions_content = actions_content[:idx] + NEW_JUMP_TO_CURSOR + actions_content[end_idx:]
             pos = idx + len(NEW_JUMP_TO_CURSOR)
-            replaced += 1
         log.append(f"  ✓ Updated JumpToCursor (outdated) in {mascot_name}/actions.xml")
 
     else:
         log.append(f"  – JumpToCursor already up-to-date in {mascot_name}/actions.xml")
+
+    # ── behaviors.xml ──
+    if behaviors_content and not _has_behavior_def(behaviors_content, 'JumpToCursor'):
+        behaviors_content = behaviors_content.replace(
+            '</BehaviorList>',
+            JUMPTOCURSOR_BEHAVIOR + '\n\t</BehaviorList>',
+            1
+        )
+        log.append(f"  ✓ Added JumpToCursor behavior to {mascot_name}/behaviors.xml")
+    elif behaviors_content:
+        # Check every JumpToCursor behavior entry — stale if self-closing (no NextBehaviorList)
+        jtc_beh_stale = False
+        search_from = 0
+        while True:
+            idx = behaviors_content.find('<Behavior Name="JumpToCursor"', search_from)
+            if idx == -1:
+                break
+            end = behaviors_content.find('>', idx)
+            if end != -1 and behaviors_content[end - 1] == '/':
+                jtc_beh_stale = True
+                break
+            search_from = end + 1 if end != -1 else idx + 1
+
+        if jtc_beh_stale:
+            # Remove all JumpToCursor behavior entries then re-add the fixed one
+            temp = behaviors_content
+            search_from = 0
+            while True:
+                idx = temp.find('<Behavior Name="JumpToCursor"', search_from)
+                if idx == -1:
+                    break
+                end = temp.find('>', idx)
+                if end == -1:
+                    break
+                if temp[end - 1] == '/':
+                    end_idx = end + 1
+                else:
+                    close = temp.find('</Behavior>', end)
+                    end_idx = close + len('</Behavior>') if close != -1 else end + 1
+                # Trim leading whitespace/newline
+                start = idx
+                while start > 0 and temp[start - 1] in ' \t':
+                    start -= 1
+                if start > 0 and temp[start - 1] == '\n':
+                    start -= 1
+                temp = temp[:start] + temp[end_idx:]
+            behaviors_content = temp.replace(
+                '</BehaviorList>',
+                JUMPTOCURSOR_BEHAVIOR + '\n\t</BehaviorList>',
+                1
+            )
+            log.append(f"  ✓ Updated JumpToCursor behavior (added NextBehaviorList) in {mascot_name}/behaviors.xml")
+        else:
+            log.append(f"  – JumpToCursor behavior already up-to-date in {mascot_name}/behaviors.xml")
 
     return actions_content, behaviors_content, log
 
@@ -302,55 +376,62 @@ MANUAL_MOVEMENT_ACTIONS = '''
 			</Action>
 		</Action>
 
+		
+
 		<Action Name="ManualJump" Type="Sequence" Loop="false">
 			<Action Type="Select">
-
 				<!-- Wall cling on right side → jump left away from wall -->
 				<Action Type="Sequence"
-					Condition="${mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || mascot.environment.activeIE.leftBorder.isOn(mascot.anchor)}">
+					Condition="${mascot.lookRight &amp;&amp; (mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor))}">
 					<ActionReference Name="Look" LookRight="false" />
 					<ActionReference Name="Jumping"
 						TargetX="${mascot.anchor.x - Math.round(192 * mascot.currentScale)}"
-						TargetY="${mascot.anchor.y - Math.round(192 * mascot.currentScale)}" />
-					<Action Type="Sequence" Loop="true">
+						TargetY="${mascot.anchor.y - Math.round(192 * mascot.currentScale)}"/>
+					<Action Type="Sequence">
 						<Action Type="Select">
 							<Action Type="Sequence"
 								Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
-								<ActionReference Name="GrabWall" Duration="${100 + Math.random() * 100}" />
+								<ActionReference Name="GrabWall" 
+								Duration="${100 + Math.random() * 100}" />
 							</Action>
 							<Action Type="Sequence"
 								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
-								<ActionReference Name="Stand" Duration="10" />
-							</Action>
+								<ActionReference Name="Stand" 
+								Duration="1" />
+							</Action>							
+							<!-- Still airborne → keep falling with momentum -->
 							<ActionReference Name="Falling"
-								InitialVX="${mascot.lookRight ? 3 : -3}"
+								InitialVX="${mascot.lookRight ? 10 : -10}"
 								InitialVY="2"
-								Duration="1"/>
+								Duration="100"/>
 						</Action>
 					</Action>
 				</Action>
 
 				<!-- Wall cling on left side → jump right away from wall -->
 				<Action Type="Sequence"
-					Condition="${mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor)}">
+					Condition="${!mascot.lookRight &amp;&amp; (mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor))}">
 					<ActionReference Name="Look" LookRight="true" />
 					<ActionReference Name="Jumping"
 						TargetX="${mascot.anchor.x + Math.round(192 * mascot.currentScale)}"
 						TargetY="${mascot.anchor.y - Math.round(192 * mascot.currentScale)}" />
-					<Action Type="Sequence" Loop="true">
+					<Action Type="Sequence">
 						<Action Type="Select">
 							<Action Type="Sequence"
 								Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
-								<ActionReference Name="GrabWall" Duration="${100 + Math.random() * 100}" />
+								<ActionReference Name="GrabWall" 
+								Duration="${100 + Math.random() * 100}" />
 							</Action>
 							<Action Type="Sequence"
 								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
-								<ActionReference Name="Stand" Duration="10" />
-							</Action>
+								<ActionReference Name="Stand" 
+								Duration="1" />
+							</Action>							
+							<!-- Still airborne → keep falling with momentum -->
 							<ActionReference Name="Falling"
-								InitialVX="${mascot.lookRight ? 3 : -3}"
+								InitialVX="${mascot.lookRight ? 10 : -10}"
 								InitialVY="2"
-								Duration="1"/>
+								Duration="100"/>
 						</Action>
 					</Action>
 				</Action>
@@ -363,70 +444,115 @@ MANUAL_MOVEMENT_ACTIONS = '''
 							? mascot.anchor.x + Math.round(128 * mascot.currentScale)
 							: mascot.anchor.x - Math.round(128 * mascot.currentScale)}"
 						TargetY="${mascot.anchor.y - Math.round(192 * mascot.currentScale)}" />
-					<Action Type="Sequence" Loop="true">
+					<Action Type="Sequence">
 						<Action Type="Select">
 							<Action Type="Sequence"
 								Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
-								<ActionReference Name="GrabWall" Duration="${100 + Math.random() * 100}" />
+								<ActionReference Name="GrabWall" 
+								Duration="${100 + Math.random() * 100}" />
 							</Action>
 							<Action Type="Sequence"
 								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
-								<ActionReference Name="Stand" Duration="10" />
-							</Action>
+								<ActionReference Name="Stand" 
+								Duration="1" />
+							</Action>							
+							<!-- Still airborne → keep falling with momentum -->
 							<ActionReference Name="Falling"
-								InitialVX="${mascot.lookRight ? 3 : -3}"
+								InitialVX="${mascot.lookRight ? 10 : -10}"
 								InitialVY="2"
-								Duration="1"/>
+								Duration="100"/>
 						</Action>
 					</Action>
 				</Action>
 
-				<!-- Not on any surface → do nothing -->
-				<ActionReference Name="Stand" Duration="1" />
-
+				<!-- Not on any surface → fall -->
+				<ActionReference Name="Falling"
+					InitialVX="${mascot.lookRight ? 10 : -10}"
+					InitialVY="2"
+					Duration="100"/>
 			</Action>
 		</Action>'''
 
-MANUAL_MOVEMENT_BEHAVIORS = '''
-		<Behavior Name="MoveLeft" Frequency="0" >
-            <NextBehaviorList Add="false">
-                <BehaviorReference Name="Fall" Frequency="1" />
-            </NextBehaviorList>
-        </Behavior>
-        <Behavior Name="MoveRight" Frequency="0" >
-            <NextBehaviorList Add="false">
-                <BehaviorReference Name="Fall" Frequency="1" />
-            </NextBehaviorList>
-        </Behavior>
-        <Behavior Name="RunLeft" Frequency="0" >
-            <NextBehaviorList Add="false">
-                <BehaviorReference Name="Fall" Frequency="1" />
-            </NextBehaviorList>
-        </Behavior>
-        <Behavior Name="RunRight" Frequency="0" >
-            <NextBehaviorList Add="false">
-                <BehaviorReference Name="Fall" Frequency="1" />
-            </NextBehaviorList>
-        </Behavior>
-        <Behavior Name="DashLeft" Frequency="0" >
-            <NextBehaviorList Add="false">
-                <BehaviorReference Name="Fall" Frequency="1" />
-            </NextBehaviorList>
-        </Behavior>
-        <Behavior Name="DashRight" Frequency="0" >
-            <NextBehaviorList Add="false">
-                <BehaviorReference Name="Fall" Frequency="1" />
-            </NextBehaviorList>
-        </Behavior>
-        <Behavior Name="ManualJump" Frequency="0" />'''
+# Proximity condition snippets — dx >= 0 means threat is to the right (flee left)
+#                                dx <= 0 means threat is to the left  (flee right)
+_PROX_FLEE_LEFT = (
+    '#{(function(){\n'
+    '\t\t\tvar others = mascot.manager.getMascotList();\n'
+    '\t\t\tfor(var i=0;i &lt; others.size();i++){\n'
+    '\t\t\t\tvar o=others.get(i); if(o===mascot) continue;\n'
+    '\t\t\t\tvar dx=o.anchor.x-mascot.anchor.x;\n'
+    '\t\t\t\tvar dy=o.anchor.y-mascot.anchor.y;\n'
+    '\t\t\t\tif(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;\n'
+    '\t\t\t} return false;\n'
+    '\t\t\t})()\n'
+    '\t\t\t}'
+)
+_PROX_FLEE_RIGHT = (
+    '#{(function(){\n'
+    '\t\t\tvar others = mascot.manager.getMascotList();\n'
+    '\t\t\tfor(var i=0;i &lt; others.size();i++){\n'
+    '\t\t\t\tvar o=others.get(i); if(o===mascot) continue;\n'
+    '\t\t\t\tvar dx=o.anchor.x-mascot.anchor.x;\n'
+    '\t\t\t\tvar dy=o.anchor.y-mascot.anchor.y;\n'
+    '\t\t\t\tif(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &lt;=0) return true;\n'
+    '\t\t\t} return false;\n'
+    '\t\t\t})()\n'
+    '\t\t\t}'
+)
 
 
-def patch_add_manual_movement(actions_content, behaviors_content, mascot_name):
+def _make_manual_movement_behaviors(proximity=False):
+    """
+    Build the MANUAL_MOVEMENT_BEHAVIORS string.
+    If proximity=True, Move/Run/DashLeft get flee-left condition and
+    Move/Run/DashRight get flee-right condition, each at Frequency=5000.
+    If proximity=False, all stay at Frequency=0 with no condition (manual-only).
+    """
+    def beh(name, freq, condition=None):
+        parts = [f'\t\t<Behavior Name="{name}" Frequency="{freq}"']
+        if condition:
+            parts[0] += f' Toggleable="true"\n\t\t\tCondition="{condition}"'
+        parts[0] += '>'
+        parts.append('\t\t\t<NextBehaviorList Add="false">')
+        parts.append('\t\t\t\t<BehaviorReference Name="Fall" Frequency="1" />')
+        parts.append('\t\t\t</NextBehaviorList>')
+        parts.append('\t\t</Behavior>')
+        return '\n'.join(parts)
+
+    if proximity:
+        left_freq, right_freq = 5000, 5000
+        left_cond, right_cond = _PROX_FLEE_LEFT, _PROX_FLEE_RIGHT
+    else:
+        left_freq = right_freq = 0
+        left_cond = right_cond = None
+
+    lines = [
+        beh('MoveLeft',  left_freq,  left_cond),
+        beh('MoveRight', right_freq, right_cond),
+        beh('RunLeft',   left_freq,  left_cond),
+        beh('RunRight',  right_freq, right_cond),
+        beh('DashLeft',  left_freq,  left_cond),
+        beh('DashRight', right_freq, right_cond),
+        '\t\t<Behavior Name="ManualJump" Frequency="10" >\n'
+        '\t\t\t<NextBehaviorList Add="false">\n'
+        '\t\t\t\t<BehaviorReference Name="Fall" Frequency="1" />\n'
+        '\t\t\t</NextBehaviorList>\n'
+        '\t\t</Behavior>',
+    ]
+    return '\n' + '\n'.join(lines)
+
+
+def patch_add_manual_movement(actions_content, behaviors_content, mascot_name,
+                              proximity=False):
     """
     Add manual movement actions/behaviors if:
       - actions.xml has Walk, Run, Dash, and Jumping action definitions
       - they are not already present
     Remove them if they exist but the mascot lacks the required action definitions.
+
+    proximity: if True, Left behaviors get a flee-left proximity condition and
+               Right behaviors get a flee-right condition, each at Frequency=5000.
+               If False, all behaviors are Frequency=0 (manual-only).
     """
     log = []
     required = ['Walk', 'Run', 'Dash', 'Jumping']
@@ -453,13 +579,15 @@ def patch_add_manual_movement(actions_content, behaviors_content, mascot_name):
         log.append(f"  – Skipped {mascot_name}/actions.xml (missing required action definitions)")
 
     # ── Behaviors ──
+    behaviors_str = _make_manual_movement_behaviors(proximity=proximity)
     if qualifies and not has_move_behavior:
         behaviors_content = behaviors_content.replace(
             '</BehaviorList>',
-            MANUAL_MOVEMENT_BEHAVIORS + '\n\t</BehaviorList>',
+            behaviors_str + '\n\t</BehaviorList>',
             1
         )
-        log.append(f"  ✓ Added manual movement behaviors to {mascot_name}/behaviors.xml")
+        prox_note = " (with proximity conditions)" if proximity else ""
+        log.append(f"  ✓ Added manual movement behaviors to {mascot_name}/behaviors.xml{prox_note}")
     elif not qualifies and has_move_behavior:
         behaviors_content, removed = _remove_manual_movement_behaviors(behaviors_content)
         if removed:
@@ -587,6 +715,38 @@ def make_custom_patch(action_xml, behavior_xml):
 
 
 # ─────────────────────────────────────────────
+#  PATCH: Add Personal Space
+# ─────────────────────────────────────────────
+
+PERSONAL_SPACE_FALLBACK_ANIMATION = '''\t\t\t<Animation>
+\t\t\t\t<Pose Image="/shime1.png" ImageAnchor="64,128" Velocity="-4,0" Duration="6" />
+\t\t\t</Animation>'''
+
+
+def _extract_walk_animation(actions_content):
+    """
+    Pull the first <Animation>...</Animation> block from the Walk action.
+    Returns the indented XML string, or None if not found.
+    """
+    walk_start = actions_content.find('<Action Name="Walk"')
+    if walk_start == -1:
+        return None
+    walk_end = _find_action_end(actions_content, walk_start)
+    if walk_end == -1:
+        return None
+    walk_block = actions_content[walk_start:walk_end]
+
+    anim_start = walk_block.find('<Animation')
+    if anim_start == -1:
+        return None
+    anim_end = walk_block.find('</Animation>', anim_start)
+    if anim_end == -1:
+        return None
+    return '\t\t\t' + walk_block[anim_start:anim_end + len('</Animation>')]
+
+
+
+# ─────────────────────────────────────────────
 #  PATCH REGISTRY
 #  Each entry: (id, label, description, function)
 #  function signature: (actions_str, behaviors_str, mascot_name) -> (actions_str, behaviors_str, log_lines)
@@ -610,11 +770,25 @@ PATCHES = [
         "label": "Add / Fix Manual Movement",
         "description": (
             "Adds manual movement actions (MoveLeft/Right, RunLeft/Right, DashLeft/Right, ManualJump) "
-            "and their behaviors to mascots that have Walk, Run, Dash, and Jumping definitions. "
-            "Also removes manual movement from mascots that are missing those base actions."
+            "to mascots that have Walk, Run, Dash, and Jumping. "
+            "Also removes manual movement from mascots that are missing those base actions. "
+            "Enable 'Personal Space' below to also trigger movement automatically when another "
+            "shimeji is within ~32px (scale-dependent)."
         ),
         "targets": "both",
         "fn": patch_add_manual_movement,
+        "sub_options": [
+            {
+                "id": "manual_movement_proximity",
+                "kwarg": "proximity",
+                "label": "  ↳ Personal Space (proximity flee)",
+                "description": (
+                    "Left/Right behaviors fire at Frequency=5000 with a condition that checks "
+                    "mascot.manager.getMascotList() for any other shimeji within 32×scale px. "
+                    "Requires getMascotList() in Manager.java."
+                ),
+            }
+        ],
     },
     {
         "id": "fix_scale",
@@ -633,8 +807,20 @@ PATCHES = [
 #  CORE ENGINE
 # ─────────────────────────────────────────────
 
-def find_mascot_dirs(root_dir):
+def _parse_exclusions(raw):
+    """Parse a comma-separated exclusion string into a list of lowercase substrings."""
+    return [s.strip().lower() for s in raw.split(',') if s.strip()]
+
+
+def _is_excluded(name, exclusions):
+    """Return True if the mascot name contains any exclusion substring (case-insensitive)."""
+    name_lower = name.lower()
+    return any(ex in name_lower for ex in exclusions)
+
+
+def find_mascot_dirs(root_dir, exclusions=None):
     """Walk root_dir and find all subdirectories that contain a conf/actions.xml."""
+    exclusions = exclusions or []
     mascots = []
     for dirpath, dirnames, filenames in os.walk(root_dir):
         if os.path.basename(dirpath) == 'conf':
@@ -642,17 +828,24 @@ def find_mascot_dirs(root_dir):
             behaviors = os.path.join(dirpath, 'behaviors.xml')
             if os.path.exists(actions):
                 mascot_name = os.path.basename(os.path.dirname(dirpath))
-                mascots.append({
-                    "name": mascot_name,
-                    "actions_path": actions,
-                    "behaviors_path": behaviors if os.path.exists(behaviors) else None,
-                })
+                if not _is_excluded(mascot_name, exclusions):
+                    mascots.append({
+                        "name": mascot_name,
+                        "actions_path": actions,
+                        "behaviors_path": behaviors if os.path.exists(behaviors) else None,
+                    })
     return sorted(mascots, key=lambda m: m["name"].lower())
 
 
-def run_patches(root_dir, selected_patch_ids, progress_cb=None, log_cb=None, extra_patches=None):
-    """Run the selected patches across all mascots. extra_patches adds runtime-built patches (e.g. custom)."""
-    mascots = find_mascot_dirs(root_dir)
+def run_patches(root_dir, selected_patch_ids, progress_cb=None, log_cb=None,
+                extra_patches=None, exclusions=None, patch_options=None):
+    """
+    Run the selected patches across all mascots.
+    exclusions: list of lowercase substrings — mascots whose names contain any are skipped.
+    patch_options: dict of patch_id -> dict of extra kwargs forwarded to the patch fn.
+    """
+    patch_options = patch_options or {}
+    mascots = find_mascot_dirs(root_dir, exclusions=exclusions)
     if not mascots:
         if log_cb:
             log_cb("No mascot directories found. Make sure you selected the folder containing mascot subfolders.")
@@ -689,8 +882,9 @@ def run_patches(root_dir, selected_patch_ids, progress_cb=None, log_cb=None, ext
 
         for patch in selected:
             try:
+                kwargs = patch_options.get(patch["id"], {})
                 actions_content, behaviors_content, log_lines = patch["fn"](
-                    actions_content, behaviors_content, mascot["name"]
+                    actions_content, behaviors_content, mascot["name"], **kwargs
                 )
                 if log_cb:
                     for line in log_lines:
@@ -754,6 +948,11 @@ class MascotEditorApp(tk.Tk):
 
         self._folder = tk.StringVar(value="")
         self._patch_vars = {p["id"]: tk.BooleanVar(value=False) for p in PATCHES}
+        # Sub-option vars: patch_id -> {sub_id -> BooleanVar}
+        self._sub_option_vars = {}
+        for p in PATCHES:
+            for sub in p.get("sub_options", []):
+                self._sub_option_vars.setdefault(p["id"], {})[sub["id"]] = tk.BooleanVar(value=False)
         # Custom patch
         self._custom_enabled = tk.BooleanVar(value=False)
         self._running = False
@@ -855,6 +1054,23 @@ class MascotEditorApp(tk.Tk):
         self._mascot_count_label.pack(anchor="w", pady=(0, 4))
         self._folder.trace_add("write", lambda *_: self._refresh_mascot_count())
 
+        # Exclusion filter
+        self._section_label(parent, "🚫  EXCLUDE (optional)")
+        tk.Label(parent, text="Comma-separated substrings — any mascot folder whose name\n"
+                              "contains a match will be skipped (case-insensitive).",
+                 font=FONT_SUBTITLE, fg=TEXT_DIM, bg=DARK_BG,
+                 wraplength=300, justify="left").pack(anchor="w", pady=(0, 3))
+        self._exclude_var = tk.StringVar(value="")
+        exclude_entry = tk.Entry(parent, textvariable=self._exclude_var,
+                                 font=FONT_MAIN, bg=CARD_BG, fg=TEXT,
+                                 insertbackground=TEXT, relief="flat", bd=0,
+                                 highlightthickness=1,
+                                 highlightbackground=ACCENT, highlightcolor=ACCENT)
+        exclude_entry.pack(fill="x", ipady=6, pady=(0, 2))
+        self._exclude_var.trace_add("write", lambda *_: self._refresh_mascot_count())
+        tk.Label(parent, text='e.g.  egg, campfire, grass', font=FONT_SUBTITLE,
+                 fg=TEXT_DIM, bg=DARK_BG).pack(anchor="w", pady=(0, 6))
+
     def _build_patches_section(self, parent):
         self._section_label(parent, "🔧  PATCHES")
         for patch in PATCHES:
@@ -880,6 +1096,20 @@ class MascotEditorApp(tk.Tk):
                         fg=TEXT_DIM, bg=CARD_BG, wraplength=290,
                         justify="left", anchor="w")
         desc.pack(fill="x", pady=(3, 0))
+
+        # Sub-options (indented checkboxes under this card)
+        for sub in patch.get("sub_options", []):
+            sub_var = self._sub_option_vars[patch["id"]][sub["id"]]
+            sub_cb = tk.Checkbutton(card, variable=sub_var, bg=CARD_BG, fg=TEXT_DIM,
+                                    activebackground=CARD_BG, activeforeground=TEXT_CHECK,
+                                    selectcolor=ACCENT, relief="flat", bd=0,
+                                    font=FONT_SUBTITLE, text=sub["label"],
+                                    anchor="w", cursor="hand2")
+            sub_cb.pack(fill="x", pady=(4, 0))
+            sub_desc = tk.Label(card, text=sub["description"], font=FONT_SUBTITLE,
+                                fg=TEXT_DIM, bg=CARD_BG, wraplength=270,
+                                justify="left", anchor="w")
+            sub_desc.pack(fill="x", padx=(16, 0))
 
     def _build_custom_section(self, parent):
         self._section_label(parent, "✏️  CUSTOM PATCH")
@@ -1019,7 +1249,8 @@ class MascotEditorApp(tk.Tk):
     def _refresh_mascot_count(self):
         folder = self._folder.get()
         if folder and os.path.isdir(folder):
-            count = len(find_mascot_dirs(folder))
+            exclusions = _parse_exclusions(getattr(self, '_exclude_var', tk.StringVar()).get())
+            count = len(find_mascot_dirs(folder, exclusions=exclusions))
             self._mascot_count_label.config(
                 text=f"{count} mascot(s) found",
                 fg=SUCCESS if count > 0 else ACCENT)
@@ -1104,12 +1335,24 @@ class MascotEditorApp(tk.Tk):
         self._run_btn.config(state="disabled", text="Running…")
         self._progress["value"] = 0
 
+        exclusions = _parse_exclusions(self._exclude_var.get())
+
+        # Build patch_options: kwargs to forward to patch functions
+        patch_options = {}
+        for patch in PATCHES:
+            for sub in patch.get("sub_options", []):
+                if self._sub_option_vars.get(patch["id"], {}).get(sub["id"], tk.BooleanVar()).get():
+                    kwarg = sub.get("kwarg", sub["id"])
+                    patch_options.setdefault(patch["id"], {})[kwarg] = True
+
         def worker():
             run_patches(
                 folder, selected,
                 progress_cb=lambda pct: self.after(0, self._set_progress, pct),
                 log_cb=lambda line: self.after(0, self._log_line, line),
                 extra_patches=extra_patches,
+                exclusions=exclusions,
+                patch_options=patch_options,
             )
             self.after(0, self._on_done)
 
