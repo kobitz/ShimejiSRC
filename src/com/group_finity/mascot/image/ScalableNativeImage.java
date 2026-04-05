@@ -8,19 +8,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
-<<<<<<< HEAD
 import com.group_finity.mascot.Main;
 
-=======
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 /**
  * Produces scaled MascotImages without blocking the manager thread.
  * One instance per mascot (recreated when source image changes).
  * Uses a background thread for GDI-heavy NativeImage construction.
-<<<<<<< HEAD
  * Respects the Filter setting from settings.properties (bicubic or nearest).
-=======
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
  */
 public class ScalableNativeImage
 {
@@ -63,15 +57,12 @@ public class ScalableNativeImage
             final BufferedImage src    = source.getBufferedImage( );
             final Point         center = source.getCenter( );
 
-<<<<<<< HEAD
             // Read filter setting on the submitting thread (Main is thread-safe for getProperties)
             final String filterProp = Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" );
             final Object interpolation = filterProp.equalsIgnoreCase( "bicubic" )
                 ? RenderingHints.VALUE_INTERPOLATION_BICUBIC
                 : RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR;
 
-=======
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
             if( src != null )
             {
                 WORKER.submit( () -> {
@@ -82,12 +73,7 @@ public class ScalableNativeImage
 
                         BufferedImage scaled = new BufferedImage( w, h, BufferedImage.TYPE_INT_ARGB_PRE );
                         Graphics2D g = scaled.createGraphics( );
-<<<<<<< HEAD
                         g.setRenderingHint( RenderingHints.KEY_INTERPOLATION, interpolation );
-=======
-                        g.setRenderingHint( RenderingHints.KEY_INTERPOLATION,
-                                            RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR );
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
                         g.drawImage( src, 0, 0, w, h, null );
                         g.dispose( );
 

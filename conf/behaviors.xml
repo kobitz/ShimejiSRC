@@ -168,7 +168,6 @@
 			<Behavior Name="WalkAndThrowIEFromLeft" Frequency="20" Condition="#{mascot.environment.activeIE.bottom &lt; mascot.anchor.y-64 &amp;&amp;
 				mascot.anchor.x &gt; mascot.environment.activeIE.right}" />
 		</Condition>
-<<<<<<< HEAD
 		
 
 		<Behavior Name="ScaleUp" Frequency="0" />
@@ -283,8 +282,5 @@
 				<BehaviorReference Name="Fall" Frequency="1" />
 			</NextBehaviorList>
 		</Behavior>
-=======
-
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 	</BehaviorList>
 </Mascot>

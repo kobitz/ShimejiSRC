@@ -294,7 +294,6 @@
 			</Animation>
 		</Action>
 
-<<<<<<< HEAD
 	
 		<!-- Manual Movement -->
 
@@ -482,8 +481,6 @@
 					Duration="100"/>
 			</Action>
 		</Action>
-=======
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 	</ActionList>
 
 	<!-- Actual Behavior -->
@@ -902,25 +899,18 @@
 				<Pose Image="/shime46.png" ImageAnchor="64,128" Velocity="0,0" Duration="20" />
 			</Animation>
 		</Action>
-<<<<<<< HEAD
 
-=======
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 		<Action Name="SplitIntoTwo" Type="Sequence">
 			<ActionReference Name="Divide1" />
 			<ActionReference Name="Offset" X="16" />
 			<ActionReference Name="Look" />
 			<ActionReference Name="Divided" />
 		</Action>
-<<<<<<< HEAD
 
-=======
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 		<Action Name="Divided" Type="Sequence">
 			<ActionReference Name="Falling" InitialVX="${mascot.lookRight ? 10 : -10}" InitialVY="-5"/>
 			<ActionReference Name="Bouncing" />
 		</Action>
-<<<<<<< HEAD
 		
 		<Action Name="JumpToCursor" Type="Sequence" Loop="false">
 			<!-- Jump toward cursor -->
@@ -984,8 +974,6 @@
 			Speed="0.2"
 			Duration="8" />
 
-=======
->>>>>>> fa3d89cbbafb50a8321b1767359aa0a78920f3a3
 	</ActionList>
 
 </Mascot>
