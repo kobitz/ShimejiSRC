@@ -138,7 +138,7 @@ public class ScanInteract extends BorderedAction
     }
     
     @Override
-    protected Animation getAnimation( ) throws VariableException
+    public Animation getAnimation( ) throws VariableException
     {
         List<Animation> animations = super.getAnimations( );
         for( int index = 0; index < animations.size( ); index++ )

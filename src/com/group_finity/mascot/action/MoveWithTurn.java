@@ -22,7 +22,7 @@ public class MoveWithTurn extends Move
     }
     
     @Override
-    protected Animation getAnimation( ) throws VariableException
+    public Animation getAnimation( ) throws VariableException
     {
         // force to last animation if turning
         if( turning )

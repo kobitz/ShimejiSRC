@@ -14,16 +14,14 @@ public class ImagePairs
 
     public static void load( final String filename, final ImagePair imagepair )
     {
-        if( !imagepairs.containsKey( filename ) )
-            imagepairs.put( filename, imagepair );
+        // putIfAbsent is atomic on ConcurrentHashMap — no need for a separate containsKey check
+        imagepairs.putIfAbsent( filename, imagepair );
     }
 
     public static ImagePair getImagePair( String filename )
     {
-        if( !imagepairs.containsKey( filename ) )
-            return null;
-        ImagePair ip = imagepairs.get( filename );
-        return ip;
+        // Single lookup instead of containsKey + get
+        return imagepairs.get( filename );
     }	
 
     public static boolean contains( String filename )
@@ -51,8 +49,10 @@ public class ImagePairs
 
     public static MascotImage getImage( String filename, boolean isLookRight )
     {
-        if( !imagepairs.containsKey( filename ) )
+        // Single lookup instead of containsKey + get
+        ImagePair ip = imagepairs.get( filename );
+        if( ip == null )
             return null;
-        return imagepairs.get( filename ).getImage( isLookRight );
+        return ip.getImage( isLookRight );
     }
 }

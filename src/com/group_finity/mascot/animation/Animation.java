@@ -78,6 +78,20 @@ public class Animation
         return duration;
     }
 
+    // Net pixels moved per tick averaged over one full animation cycle.
+    // Positive = left-facing movement (dx is stored as left-facing).
+    public double getVelocityX( )
+    {
+        double totalDx = 0;
+        int totalDuration = 0;
+        for( final Pose pose : getPoses( ) )
+        {
+            totalDx += (double)pose.getDx( ) * pose.getDuration( );
+            totalDuration += pose.getDuration( );
+        }
+        return totalDuration > 0 ? totalDx / totalDuration : 0;
+    }
+
     private Variable getCondition( )
     {
         return condition;

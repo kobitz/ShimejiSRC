@@ -35,6 +35,12 @@ public class Manager {
 	private final List<Mascot> mascots = new ArrayList<Mascot>();
 
 	/**
+	 * Lock-free snapshot of the mascots list, rebuilt at the start of each tick.
+	 * Safe to read from any thread (including the EDT) without holding the mascots lock.
+	 */
+	private volatile List<Mascot> mascotListSnapshot = java.util.Collections.emptyList();
+
+	/**
 	* The mascot will be added later.
 	* (@Link ConcurrentModificationException) to prevent the addition of the mascot (@link # tick ()) are each simultaneously reflecting.
 	 */
@@ -137,11 +143,20 @@ public class Manager {
 			}
 			this.getRemoved().clear();
 
+			// Rebuild the lock-free snapshot so condition scripts can read it safely
+			// from any thread without acquiring the mascots lock
+			mascotListSnapshot = java.util.Collections.unmodifiableList(
+				new java.util.ArrayList<>( this.getMascots() ) );
 			// Each mascot ticks its own environment (nearest-window tracking),
 			// then ticks itself
 			for (final Mascot mascot : this.getMascots()) {
-				mascot.getEnvironment().tick();
-				mascot.tick();
+				try {
+					mascot.getEnvironment().tick();
+					mascot.tick();
+				} catch (final Throwable t) {
+					log.log( java.util.logging.Level.SEVERE, "Mascot tick error, disposing: " + mascot, t );
+					try { mascot.dispose(); } catch( Throwable ignored ) {}
+				}
 			}
 			
 			// Advance mascot's time
@@ -158,7 +173,10 @@ public class Manager {
 	}
 
 	public void add(final Mascot mascot) {
-		synchronized (this.getAdded()) {
+		// Must sync on getMascots() — the same lock tick() holds when it iterates
+		// added/removed. Syncing on getAdded() was a different lock and could cause
+		// ConcurrentModificationException if add() raced with tick().
+		synchronized (this.getMascots()) {
 			this.getAdded().add(mascot);
 			this.getRemoved().remove(mascot);
 		}
@@ -166,7 +184,8 @@ public class Manager {
 	}
 
 	public void remove(final Mascot mascot) {
-		synchronized (this.getAdded()) {
+		// Same lock fix as add() above.
+		synchronized (this.getMascots()) {
 			this.getAdded().remove(mascot);
 			this.getRemoved().add(mascot);
 		}
@@ -304,10 +323,12 @@ public class Manager {
 			boolean isFirst = true;
 			for (int i = totalMascots - 1; i >= 0; --i) {
 				Mascot m = this.getMascots().get(i);
-				if( m.getImageSet().equals(imageSet) && isFirst) {
-					isFirst = false;
-				} else if( m.getImageSet().equals(imageSet) && !isFirst) {
-					m.dispose();
+				if( m.getImageSet().equals(imageSet) ) {
+					if( isFirst ) {
+						isFirst = false;
+					} else {
+						m.dispose();
+					}
 				}
 			}
 		}
@@ -396,10 +417,7 @@ public class Manager {
     }
 
     public List<Mascot> getMascotList() {
-        synchronized (this.mascots) {
-            return java.util.Collections.unmodifiableList(
-                    new java.util.ArrayList<>(this.mascots));
-        }
+        return mascotListSnapshot;
     }
 
 	private List<Mascot> getMascots() {
@@ -433,6 +451,46 @@ public class Manager {
             return null;
         }
 
+        public WeakReference<Mascot> getMascotById( int id )
+        {
+            synchronized( this.getMascots( ) )
+            {
+                for( final Mascot mascot : this.getMascots( ) )
+                {
+                    if( mascot.getId( ) == id )
+                        return new WeakReference<Mascot>( mascot );
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Returns the mascot with the given affordance that is nearest to the given anchor point.
+         * Unlike getMascotWithAffordance, this does not just return the first match.
+         */
+        public WeakReference<Mascot> getMascotNearestWithAffordance( String affordance, java.awt.Point anchor )
+        {
+            synchronized( this.getMascots( ) )
+            {
+                Mascot nearest = null;
+                double nearestDistSq = Double.MAX_VALUE;
+                for( final Mascot mascot : this.getMascots( ) )
+                {
+                    if( !mascot.getAffordances( ).contains( affordance ) ) continue;
+                    double dx = mascot.getAnchor( ).x - anchor.x;
+                    double dy = mascot.getAnchor( ).y - anchor.y;
+                    // Compare squared distances — no need for sqrt since we only need the minimum
+                    double distSq = dx * dx + dy * dy;
+                    if( distSq < nearestDistSq )
+                    {
+                        nearestDistSq = distSq;
+                        nearest = mascot;
+                    }
+                }
+                return nearest != null ? new WeakReference<Mascot>( nearest ) : null;
+            }
+        }
+
     public boolean hasOverlappingMascotsAtPoint( Point anchor )
     {
         int count = 0;
@@ -450,6 +508,20 @@ public class Manager {
 
         return false;
     }
+
+	/**
+	 * Moves the given mascot to the end of the mascots list so it renders on top.
+	 */
+	public void bringToFront( Mascot mascot )
+	{
+		synchronized( this.getMascots( ) )
+		{
+			if( this.getMascots( ).remove( mascot ) )
+			{
+				this.getMascots( ).add( mascot );
+			}
+		}
+	}
 
 	public void disposeAll() {
 		synchronized (this.getMascots()) {

@@ -104,7 +104,7 @@ public class Move extends BorderedAction
     }
     
     @Override
-    protected Animation getAnimation( ) throws VariableException
+    public Animation getAnimation( ) throws VariableException
     {
         // had to expose both animations and varibles for this
         // is there a better way?
@@ -144,13 +144,27 @@ public class Move extends BorderedAction
         return turning;
     }
 
-    private int getTargetX( ) throws VariableException
+    public int getTargetX( ) throws VariableException
     {
         return eval( getSchema( ).getString( PARAMETER_TARGETX ), Number.class, DEFAULT_TARGETX ).intValue( );
     }
 
-    private int getTargetY( ) throws VariableException
+    public int getTargetY( ) throws VariableException
     {
         return eval( getSchema( ).getString( PARAMETER_TARGETY ), Number.class, DEFAULT_TARGETY ).intValue( );
+    }
+
+    // Estimated total ticks to reach target based on animation velocity.
+    // Returns Integer.MAX_VALUE if target or velocity cannot be determined.
+    public int getEstimatedDuration( ) throws VariableException
+    {
+        int targetX = getTargetX( );
+        if( targetX == DEFAULT_TARGETX ) return Integer.MAX_VALUE;
+        com.group_finity.mascot.animation.Animation anim = getAnimation( );
+        if( anim == null ) return Integer.MAX_VALUE;
+        double velocityX = anim.getVelocityX( );
+        if( velocityX == 0 ) return Integer.MAX_VALUE;
+        int distance = Math.abs( targetX - getMascot( ).getAnchor( ).x );
+        return (int)Math.ceil( (double)distance / Math.abs( velocityX ) );
     }
 }

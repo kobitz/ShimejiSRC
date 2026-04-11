@@ -55,9 +55,24 @@ public class Breed extends Animate
         
         boolean isEnabled( ) throws VariableException
         {
-            return ( getBornTransient( ) ?
-                Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Transients", "true" ) ) :
-                Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Breeding", "true" ) ) );
+            String mascotKey = "mascot" + action.getMascot( ).getId( );
+            String imageSetKey = "imageset." + action.getMascot( ).getImageSet( );
+            if( getBornTransient( ) )
+            {
+                String perMascot = Main.getInstance( ).getProperties( ).getProperty( "Transients." + mascotKey );
+                if( perMascot != null ) return Boolean.parseBoolean( perMascot );
+                String perImageSet = Main.getInstance( ).getProperties( ).getProperty( "Transients." + imageSetKey );
+                if( perImageSet != null ) return Boolean.parseBoolean( perImageSet );
+                return Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Transients", "true" ) );
+            }
+            else
+            {
+                String perMascot = Main.getInstance( ).getProperties( ).getProperty( "Breeding." + mascotKey );
+                if( perMascot != null ) return Boolean.parseBoolean( perMascot );
+                String perImageSet = Main.getInstance( ).getProperties( ).getProperty( "Breeding." + imageSetKey );
+                if( perImageSet != null ) return Boolean.parseBoolean( perImageSet );
+                return Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Breeding", "true" ) );
+            }
         }
 
         boolean isIntervalFrame( ) throws VariableException
@@ -96,6 +111,15 @@ public class Breed extends Animate
                 try
                 {
                     mascot.setBehavior( Main.getInstance( ).getConfiguration( childType ).buildBehavior( getBornBehaviour( ), action.getMascot( ) ) );
+                    // Inherit parent's universal behavior settings so bred mascots share parent's flags
+                    final String parentKey = "mascot" + action.getMascot( ).getId( );
+                    final String childKey  = "mascot" + mascot.getId( );
+                    for( String bk : new String[]{ "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen" } )
+                    {
+                        String parentVal = Main.getInstance( ).getProperties( ).getProperty( bk + "." + parentKey );
+                        if( parentVal != null )
+                            Main.getInstance( ).getProperties( ).setProperty( bk + "." + childKey, parentVal );
+                    }
                     action.getMascot( ).getManager( ).add( mascot );
                 }
                 catch( final BehaviorInstantiationException e )

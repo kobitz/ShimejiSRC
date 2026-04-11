@@ -36,6 +36,9 @@ import com.group_finity.mascot.image.TranslucentWindow;
 import com.group_finity.mascot.menu.JLongMenu;
 import com.group_finity.mascot.script.VariableMap;
 import com.group_finity.mascot.sound.Sounds;
+import com.github.kwhat.jnativehook.GlobalScreen;
+import com.github.kwhat.jnativehook.mouse.NativeMouseEvent;
+import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
 
 /**
  * Mascot object.
@@ -122,6 +125,9 @@ public class Mascot
     private String sound = null;
     
     protected DebugWindow debugWindow = null;
+
+    private JPopupMenu activePopup = null;
+    private NativeMouseListener popupDismissListener = null;
     
     private ArrayList<String> affordances = new ArrayList( 5 );
     
@@ -209,8 +215,20 @@ public class Mascot
         return "mascot" + id;
     }
 
+    public int getId( )
+    {
+        return id;
+    }
+
     private void mousePressed( final MouseEvent event )
     {
+        // Left-click dismisses any open right-click popup
+        if( SwingUtilities.isLeftMouseButton( event ) && activePopup != null && activePopup.isVisible( ) )
+        {
+            activePopup.setVisible( false );
+            activePopup = null;
+            return;
+        }
         // Switch to drag the animation when the mouse is down
         if( !isPaused( ) && getBehavior( ) != null )
         {
@@ -274,6 +292,12 @@ public class Mascot
             public void popupMenuWillBecomeInvisible( final PopupMenuEvent e )
             {
                 setAnimating( true );
+                activePopup = null;
+                if( popupDismissListener != null )
+                {
+                    GlobalScreen.removeNativeMouseListener( popupDismissListener );
+                    popupDismissListener = null;
+                }
             }
 
             @Override
@@ -355,6 +379,7 @@ public class Mascot
                     debugWindow = new DebugWindow( );
                     //debugWindow.setIcon
                 }
+                debugWindow.setAlwaysOnTop( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "AlwaysOnTopDebugWindow", "false" ) ) );
                 debugWindow.setVisible( true );
             }
         } );
@@ -440,6 +465,78 @@ public class Mascot
             }
         }
 
+        // Per-mascot universal behavior toggles
+        final String mascotKey = "mascot" + id;
+        final java.util.Properties props = Main.getInstance( ).getProperties( );
+
+        final JCheckBoxMenuItem breedingMenu = new JCheckBoxMenuItem( languageBundle.getString( "BreedingCloning" ),
+            ( props.getProperty( "Breeding." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Breeding." + mascotKey ) ) : props.getProperty( "Breeding.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Breeding.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Breeding", "true" ) ) ) );
+        breedingMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                props.setProperty( "Breeding." + mascotKey, String.valueOf( breedingMenu.isSelected( ) ) );
+            }
+        } );
+
+        final JCheckBoxMenuItem transientMenu = new JCheckBoxMenuItem( languageBundle.getString( "BreedingTransient" ),
+            ( props.getProperty( "Transients." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Transients." + mascotKey ) ) : props.getProperty( "Transients.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transients.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transients", "true" ) ) ) );
+        transientMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                props.setProperty( "Transients." + mascotKey, String.valueOf( transientMenu.isSelected( ) ) );
+            }
+        } );
+
+        final JCheckBoxMenuItem transformationMenu = new JCheckBoxMenuItem( languageBundle.getString( "Transformation" ),
+            ( props.getProperty( "Transformation." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Transformation." + mascotKey ) ) : props.getProperty( "Transformation.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transformation.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transformation", "true" ) ) ) );
+        transformationMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                props.setProperty( "Transformation." + mascotKey, String.valueOf( transformationMenu.isSelected( ) ) );
+            }
+        } );
+
+        final JCheckBoxMenuItem throwingMenu = new JCheckBoxMenuItem( languageBundle.getString( "ThrowingWindows" ),
+            ( props.getProperty( "Throwing." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Throwing." + mascotKey ) ) : props.getProperty( "Throwing.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Throwing.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Throwing", "true" ) ) ) );
+        throwingMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                props.setProperty( "Throwing." + mascotKey, String.valueOf( throwingMenu.isSelected( ) ) );
+            }
+        } );
+
+        final JCheckBoxMenuItem soundsMenu = new JCheckBoxMenuItem( languageBundle.getString( "SoundEffects" ),
+            ( props.getProperty( "Sounds." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Sounds." + mascotKey ) ) : props.getProperty( "Sounds.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Sounds.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Sounds", "true" ) ) ) );
+        soundsMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                props.setProperty( "Sounds." + mascotKey, String.valueOf( soundsMenu.isSelected( ) ) );
+            }
+        } );
+
+        final JCheckBoxMenuItem multiscreenMenu = new JCheckBoxMenuItem( languageBundle.getString( "Multiscreen" ),
+            ( props.getProperty( "Multiscreen." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Multiscreen." + mascotKey ) ) : props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Multiscreen", "true" ) ) ) );
+        multiscreenMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                props.setProperty( "Multiscreen." + mascotKey, String.valueOf( multiscreenMenu.isSelected( ) ) );
+            }
+        } );
+
+        JLongMenu universalSubmenu = new JLongMenu( languageBundle.getString( "AllowedBehaviours" ), 30 );
+        universalSubmenu.add( breedingMenu );
+        universalSubmenu.add( transientMenu );
+        universalSubmenu.add( transformationMenu );
+        universalSubmenu.add( throwingMenu );
+        universalSubmenu.add( soundsMenu );
+        universalSubmenu.add( multiscreenMenu );
+
         popup.add( increaseMenu );
         popup.add( new JSeparator( ) );
         popup.add( gatherMenu );
@@ -448,6 +545,7 @@ public class Mascot
         popup.add( new JSeparator( ) );
         if( submenu.getMenuComponentCount( ) > 0 )
             popup.add( submenu );
+        popup.add( universalSubmenu );
         if( allowedSubmenu.getMenuComponentCount( ) > 0 )
             popup.add( allowedSubmenu );
         popup.add( new JSeparator( ) );
@@ -459,10 +557,48 @@ public class Mascot
         popup.add( closeMenu );
 
         getWindow( ).asComponent( ).requestFocus( );
-                
+
         // lightweight popups expect the shimeji window to draw them if they fall inside the shimeji window boundary
         // as the shimeji window can't support this we need to set them to heavyweight
         popup.setLightWeightPopupEnabled( false );
+        activePopup = popup;
+
+        // jnativehook intercepts native mouse events OS-wide, so this fires for clicks
+        // on the desktop or other windows where Java's AWTEventListener cannot reach.
+        // The Timer delay lets Swing process any menu-item ActionListener first before
+        // we force-close the popup, ensuring menu actions are never swallowed.
+        popupDismissListener = new NativeMouseListener( )
+        {
+            @Override
+            public void nativeMousePressed( final NativeMouseEvent e )
+            {
+                if( activePopup != null )
+                {
+                    SwingUtilities.invokeLater( new Runnable( )
+                    {
+                        @Override
+                        public void run( )
+                        {
+                            javax.swing.Timer t = new javax.swing.Timer( 150, new ActionListener( )
+                            {
+                                @Override
+                                public void actionPerformed( ActionEvent ae )
+                                {
+                                    if( activePopup != null )
+                                        activePopup.setVisible( false );
+                                }
+                            } );
+                            t.setRepeats( false );
+                            t.start( );
+                        }
+                    } );
+                }
+            }
+            @Override public void nativeMouseReleased( NativeMouseEvent e ) { }
+            @Override public void nativeMouseClicked( NativeMouseEvent e )  { }
+        };
+        GlobalScreen.addNativeMouseListener( popupDismissListener );
+
         popup.show( getWindow( ).asComponent( ), x, y );
     }
 
@@ -510,6 +646,50 @@ public class Mascot
                 debugWindow.setGpuLoad( environment.getGpuLoad( ) );
                 debugWindow.setRamLoad( environment.getRamLoad( ) );
                 debugWindow.setBatteryLevel( environment.getBatteryLevel( ) );
+                debugWindow.setPopulation( getTotalCount( ), getCount( ) );
+                if( behavior instanceof com.group_finity.mascot.behavior.UserBehavior )
+                {
+                    com.group_finity.mascot.action.Action act = ( (com.group_finity.mascot.behavior.UserBehavior)behavior ).getAction( );
+                    // Drill into ComplexAction (Sequence/Select) to get the active leaf action
+                    while( act instanceof com.group_finity.mascot.action.ComplexAction )
+                    {
+                        com.group_finity.mascot.action.Action child = ( (com.group_finity.mascot.action.ComplexAction)act ).getCurrentChildAction( );
+                        if( child == null ) break;
+                        act = child;
+                    }
+                    if( act instanceof com.group_finity.mascot.action.ActionBase )
+                    {
+                        com.group_finity.mascot.action.ActionBase ab = (com.group_finity.mascot.action.ActionBase)act;
+                        try
+                        {
+                            int remaining;
+                            if( act instanceof com.group_finity.mascot.action.Move )
+                            {
+                                // For Move/Walk: live distance-to-target / velocity countdown
+                                remaining = ( (com.group_finity.mascot.action.Move)act ).getEstimatedDuration( );
+                            }
+                            else
+                            {
+                                int duration = ab.getDuration( );
+                                if( duration == Integer.MAX_VALUE )
+                                {
+                                    // No Duration attr: try animation pose sum (covers Animate type)
+                                    try
+                                    {
+                                        com.group_finity.mascot.animation.Animation anim = ab.getAnimation( );
+                                        duration = ( anim != null ) ? anim.getDuration( ) : Integer.MAX_VALUE;
+                                    }
+                                    catch( Exception ex2 ) { }
+                                }
+                                remaining = ( duration == Integer.MAX_VALUE )
+                                    ? Integer.MAX_VALUE
+                                    : duration - ab.getTime( );
+                            }
+                            debugWindow.setActionTimer( remaining );
+                        }
+                        catch( com.group_finity.mascot.exception.VariableException ex ) { }
+                    }
+                }
             }
         }
     }
@@ -626,6 +806,9 @@ public class Mascot
                 "Scale." + getImageSet( ), String.valueOf( currentScale ) );
 
         animating = false;
+        Main.getInstance( ).getProperties( ).remove( "DisabledBehaviours.mascot" + id );
+        for( String key : new String[]{ "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen" } )
+            Main.getInstance( ).getProperties( ).remove( key + ".mascot" + id );
         getWindow( ).dispose( );
         affordances.clear( );
         if( getManager( ) != null )

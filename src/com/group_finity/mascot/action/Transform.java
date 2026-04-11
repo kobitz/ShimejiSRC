@@ -39,7 +39,7 @@ public class Transform extends Animate
     {
         super.tick( );
 
-        if( ( getTime( ) == getAnimation( ).getDuration( ) - 1 || getAnimation( ).getDuration( ) == 1 ) && Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Transformation", "true" ) ) )
+        if( ( getTime( ) == getAnimation( ).getDuration( ) - 1 || getAnimation( ).getDuration( ) == 1 ) && isTransformationEnabled( ) )
         {
             transform( );
         }
@@ -64,6 +64,15 @@ public class Transform extends Animate
             log.log( Level.SEVERE, "Fatal Exception", e );
             Main.showError( Main.getInstance( ).getLanguageBundle( ).getString( "FailedCreateNewShimejiErrorMessage" ), e );
         }
+    }
+
+    private boolean isTransformationEnabled( )
+    {
+        String perMascot = Main.getInstance( ).getProperties( ).getProperty( "Transformation.mascot" + getMascot( ).getId( ) );
+        if( perMascot != null ) return Boolean.parseBoolean( perMascot );
+        String perImageSet = Main.getInstance( ).getProperties( ).getProperty( "Transformation.imageset." + getMascot( ).getImageSet( ) );
+        if( perImageSet != null ) return Boolean.parseBoolean( perImageSet );
+        return Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Transformation", "true" ) );
     }
 
     private String getTransformBehavior( ) throws VariableException

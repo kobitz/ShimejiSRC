@@ -97,7 +97,7 @@ public class UserBehavior implements Behavior
         return this.configuration;
     }
 
-    private Action getAction( )
+    public Action getAction( )
     {
         return this.action;
     }

@@ -48,7 +48,7 @@ public class Jump extends ActionBase
     public static final String VARIABLE_VELOCITYY = "VelocityY";
 
     // Resolved once in init() so we don't parse the string every tick
-    private enum LiveMode { NONE, CURSOR, IE }
+    private enum LiveMode { NONE, CURSOR, IE, HUNT }
     private LiveMode liveMode = LiveMode.NONE;
 
     public Jump( java.util.ResourceBundle schema, final List<Animation> animations, final VariableMap context )
@@ -65,6 +65,7 @@ public class Jump extends ActionBase
         {
             case "cursor": liveMode = LiveMode.CURSOR; break;
             case "ie":     liveMode = LiveMode.IE;     break;
+            case "hunt":   liveMode = LiveMode.HUNT;   break;
             default:       liveMode = LiveMode.NONE;   break;
         }
     }
@@ -134,7 +135,20 @@ public class Jump extends ActionBase
             case CURSOR: return getEnvironment( ).getCursor( ).getX( );
             case IE:     return getEnvironment( ).getActiveIE( ).toRectangle( ).x
                               + getEnvironment( ).getActiveIE( ).toRectangle( ).width / 2;
-            default:     return eval( getSchema( ).getString( PARAMETER_TARGETX ), Number.class, DEFAULT_TARGETX ).intValue( );
+            case HUNT:
+            {
+                com.group_finity.mascot.Mascot target = findHuntTarget( );
+                if( target != null )
+                {
+                    // Track 90% of the way to the target X, same as the static jump calculation
+                    return getMascot( ).getAnchor( ).x
+                        + (int)Math.round( ( target.getAnchor( ).x - getMascot( ).getAnchor( ).x ) * 0.90 );
+                }
+                // No target found — fall back to static value
+            }
+            default:
+                Number val = eval( getSchema( ).getString( PARAMETER_TARGETX ), Number.class, DEFAULT_TARGETX );
+                return val != null ? val.intValue( ) : DEFAULT_TARGETX;
         }
     }
 
@@ -148,7 +162,49 @@ public class Jump extends ActionBase
             case CURSOR: return getEnvironment( ).getCursor( ).getY( );
             case IE:     return getEnvironment( ).getActiveIE( ).toRectangle( ).y
                               + getEnvironment( ).getActiveIE( ).toRectangle( ).height / 2;
-            default:     return eval( getSchema( ).getString( PARAMETER_TARGETY ), Number.class, DEFAULT_TARGETY ).intValue( );
+            case HUNT:
+            {
+                com.group_finity.mascot.Mascot target = findHuntTarget( );
+                if( target != null )
+                {
+                    return target.getAnchor( ).y;
+                }
+                // No target found — fall back to static value
+            }
+            default:
+                Number val = eval( getSchema( ).getString( PARAMETER_TARGETY ), Number.class, DEFAULT_TARGETY );
+                return val != null ? val.intValue( ) : DEFAULT_TARGETY;
         }
+    }
+
+    /**
+     * Finds the nearest mascot with the "Hunt" affordance.
+     * Returns null if none exists or the manager is unavailable.
+     */
+    private com.group_finity.mascot.Mascot findHuntTarget( )
+    {
+        com.group_finity.mascot.Manager manager = getMascot( ).getManager( );
+        if( manager == null ) return null;
+
+        com.group_finity.mascot.Mascot best = null;
+        double bestDist = Double.MAX_VALUE;
+
+        for( com.group_finity.mascot.Mascot other : manager.getMascotList( ) )
+        {
+            if( other == getMascot( ) ) continue;
+            if( !other.getAffordances( ).contains( "Hunt" ) ) continue;
+
+            double dx = other.getAnchor( ).x - getMascot( ).getAnchor( ).x;
+            double dy = other.getAnchor( ).y - getMascot( ).getAnchor( ).y;
+            double dist = Math.sqrt( dx * dx + dy * dy );
+
+            if( dist < bestDist )
+            {
+                bestDist = dist;
+                best = other;
+            }
+        }
+
+        return best;
     }
 }

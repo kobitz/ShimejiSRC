@@ -286,7 +286,11 @@ public class Configuration
     {
         if( builder.isToggleable( ) )
         {
-            for( String behaviour : Main.getInstance( ).getProperties( ).getProperty( "DisabledBehaviours." + mascot.getImageSet( ), "" ).split( "/" ) )
+            // Check per-mascot disabled list first
+            String perMascotRaw = Main.getInstance( ).getProperties( ).getProperty( "DisabledBehaviours.mascot" + mascot.getId( ), null );
+            String raw = perMascotRaw != null ? perMascotRaw
+                : Main.getInstance( ).getProperties( ).getProperty( "DisabledBehaviours.imageset." + mascot.getImageSet( ), "" );
+            for( String behaviour : raw.split( "/" ) )
             {
                 if( behaviour.equals( builder.getName( ) ) )
                     return false;

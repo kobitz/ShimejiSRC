@@ -1283,6 +1283,20 @@ public class Main
         // Create one mascot
         final Mascot mascot = new Mascot( imageSet );
 
+        // Apply any persisted per-imageSet universal behavior overrides
+        final String[] behaviorKeys = { "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen" };
+        for( String key : behaviorKeys )
+        {
+            String saved = properties.getProperty( key + ".imageset." + imageSet );
+            if( saved != null )
+                properties.setProperty( key + ".mascot" + mascot.getId( ), saved );
+        }
+
+        // Restore saved per-imageSet disabled toggleable behaviours
+        String savedDisabled = properties.getProperty( "DisabledBehaviours.imageset." + imageSet );
+        if( savedDisabled != null && !savedDisabled.isEmpty( ) )
+            properties.setProperty( "DisabledBehaviours.mascot" + mascot.getId( ), savedDisabled );
+
         // Place the mascot at a random x position just above the top of the primary screen.
         final Rectangle primaryBounds = java.awt.GraphicsEnvironment
                 .getLocalGraphicsEnvironment( )
@@ -1358,7 +1372,7 @@ public class Main
         }        
     }
     
-    private boolean toggleBooleanSetting( String propertyName, boolean defaultValue )
+    boolean toggleBooleanSetting( String propertyName, boolean defaultValue )
     {
         if( Boolean.parseBoolean( properties.getProperty( propertyName, defaultValue + "" ) ) )
         {
@@ -1388,7 +1402,7 @@ public class Main
     public void setMascotBehaviorEnabled( final String name, final Mascot mascot, boolean enabled )
     {
         ArrayList<String> list = new ArrayList<String>( );
-        String[ ] data = properties.getProperty( "DisabledBehaviours." + mascot.getImageSet( ), "" ).split( "/" );
+        String[ ] data = properties.getProperty( "DisabledBehaviours.mascot" + mascot.getId( ), "" ).split( "/" );
         
         if( data.length > 0 && !data[ 0 ].equals( "" ) )
             list.addAll( Arrays.asList( data ) );
@@ -1399,14 +1413,14 @@ public class Main
             list.add( name );
         
         if( list.size( ) > 0 )
-            properties.setProperty( "DisabledBehaviours." + mascot.getImageSet( ), list.toString( ).replace( "[", "" ).replace( "]", "" ).replace( ", ", "/" ) );
+            properties.setProperty( "DisabledBehaviours.mascot" + mascot.getId( ), list.toString( ).replace( "[", "" ).replace( "]", "" ).replace( ", ", "/" ) );
         else
-            properties.remove( "DisabledBehaviours." + mascot.getImageSet( ) );
+            properties.remove( "DisabledBehaviours.mascot" + mascot.getId( ) );
         
         updateConfigFile( );
     }
     
-    private void updateConfigFile( )
+    void updateConfigFile( )
     {
         try
         {
@@ -1571,6 +1585,74 @@ public class Main
         return languageBundle;
     }
 
+    /**
+     * Before shutdown, OR-gate each universal behavior flag across all running mascots
+     * of each imageSet and persist as "Breeding.imageset.{imageSet}" etc.
+     * On next launch, createMascot() reads these to restore per-mascot settings.
+     */
+    private void saveImageSetBehaviors( )
+    {
+        final String[] keys = { "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen" };
+        final java.util.List<Mascot> mascots = getManager( ).getMascotList( );
+
+        // Collect all active imageSets
+        java.util.Set<String> imageSets = new java.util.LinkedHashSet<>( );
+        for( Mascot m : mascots )
+            imageSets.add( m.getImageSet( ) );
+
+        for( String imageSet : imageSets )
+        {
+            for( String key : keys )
+            {
+                boolean orResult = false;
+                for( Mascot m : mascots )
+                {
+                    if( !m.getImageSet( ).equals( imageSet ) ) continue;
+                    String perMascot = properties.getProperty( key + ".mascot" + m.getId( ) );
+                    // fall back to global default if this mascot has no override
+                    boolean val = Boolean.parseBoolean(
+                        perMascot != null ? perMascot : properties.getProperty( key, "true" ) );
+                    if( val ) { orResult = true; break; }
+                }
+                properties.setProperty( key + ".imageset." + imageSet, String.valueOf( orResult ) );
+            }
+
+            // Save per-imageSet disabled toggleable behaviours.
+            // A behaviour is considered enabled for the imageSet if ANY mascot of that set has it enabled.
+            // We collect the union of all disabled-behaviour lists, then remove any that at least one mascot has enabled.
+            java.util.Set<String> disabledUnion = new java.util.LinkedHashSet<>( );
+            for( Mascot m : mascots )
+            {
+                if( !m.getImageSet( ).equals( imageSet ) ) continue;
+                String raw = properties.getProperty( "DisabledBehaviours.mascot" + m.getId( ), "" );
+                for( String b : raw.split( "/" ) )
+                    if( !b.isEmpty( ) ) disabledUnion.add( b );
+            }
+            // Remove any behaviour that at least one mascot has enabled (not in its disabled list)
+            java.util.Set<String> toRemove = new java.util.LinkedHashSet<>( );
+            for( String behaviour : disabledUnion )
+            {
+                for( Mascot m : mascots )
+                {
+                    if( !m.getImageSet( ).equals( imageSet ) ) continue;
+                    String raw = properties.getProperty( "DisabledBehaviours.mascot" + m.getId( ), "" );
+                    java.util.List<String> list = new java.util.ArrayList<>( java.util.Arrays.asList( raw.split( "/" ) ) );
+                    if( !list.contains( behaviour ) )
+                    {
+                        toRemove.add( behaviour );
+                        break;
+                    }
+                }
+            }
+            disabledUnion.removeAll( toRemove );
+            if( !disabledUnion.isEmpty( ) )
+                properties.setProperty( "DisabledBehaviours.imageset." + imageSet,
+                    String.join( "/", disabledUnion ) );
+            else
+                properties.remove( "DisabledBehaviours.imageset." + imageSet );
+        }
+    }
+
     public void exit( )
     {
         try
@@ -1580,6 +1662,7 @@ public class Main
         catch( Throwable t ) { }
         try
         {
+            saveImageSetBehaviors( );
             this.getManager( ).disposeAll( );
             this.getManager( ).stop( );
         }

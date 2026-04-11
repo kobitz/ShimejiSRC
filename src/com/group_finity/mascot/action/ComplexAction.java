@@ -97,4 +97,11 @@ public abstract class ComplexAction extends ActionBase {
 		return this.getActions()[this.getCurrentAction()];
 	}
 
+	public Action getCurrentChildAction() {
+		int idx = this.getCurrentAction();
+		Action[] actions = this.getActions();
+		if( idx >= 0 && idx < actions.length ) return actions[idx];
+		return null;
+	}
+
 }

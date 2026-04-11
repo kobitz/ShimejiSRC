@@ -93,11 +93,14 @@ public class CpuTempMonitor
         ProcessBuilder pb = new ProcessBuilder( exePath );
         pb.redirectErrorStream( true );
 
+        // Try-with-resources can't be used here because Process is not AutoCloseable
+        // until Java 9, and this project targets Java 8. Use finally to guarantee cleanup.
+        Process process = null;
+        BufferedReader reader = null;
         try
         {
-            Process process = pb.start( );
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader( process.getInputStream( ) ) );
+            process = pb.start( );
+            reader = new BufferedReader( new InputStreamReader( process.getInputStream( ) ) );
 
             String line;
             while( ( line = reader.readLine( ) ) != null )
@@ -125,6 +128,17 @@ public class CpuTempMonitor
         catch( Exception e )
         {
             log.log( Level.FINE, "Could not run sensor script", e );
+        }
+        finally
+        {
+            if( reader != null )
+            {
+                try { reader.close( ); } catch( Exception ignored ) { }
+            }
+            if( process != null )
+            {
+                process.destroy( );
+            }
         }
     }
 

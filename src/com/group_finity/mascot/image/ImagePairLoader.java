@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import javax.imageio.ImageIO;
 
 import hqx.*;
-import java.awt.Color;
 
 /**
  * Original Author: Yuki Yamada of Group Finity (http://www.group-finity.com/Shimeji/)
@@ -61,25 +60,23 @@ public class ImagePairLoader
     {
         final BufferedImage returnImage = new BufferedImage( source.getWidth( ), source.getHeight( ),
                                                              source.getType( ) == BufferedImage.TYPE_CUSTOM ? BufferedImage.TYPE_INT_ARGB_PRE : source.getType( ) );
-        Color colour;
-        float[ ] components;
-        
-        for( int y = 0; y < returnImage.getHeight( ); ++y )
+
+        // Direct ARGB bit manipulation instead of allocating a Color object (and a float[])
+        // per pixel — for a 128x128 sprite that was ~16k short-lived objects per image load.
+        for( int y = 0; y < source.getHeight( ); ++y )
         {
-            for( int x = 0; x < returnImage.getWidth( ); ++x )
+            for( int x = 0; x < source.getWidth( ); ++x )
             {
-                colour = new Color( source.getRGB( x, y ), true );
-                components = colour.getComponents( null );
-                components[ 3 ] *= opacity;
-                components[ 0 ] = components[ 3 ] * components[ 0 ];
-                components[ 1 ] = components[ 3 ] * components[ 1 ];
-                components[ 2 ] = components[ 3 ] * components[ 2 ];
-                colour = new Color( components[ 0 ], components[ 1 ], components[ 2 ], components[ 3 ] );
-                returnImage.setRGB( x, y, colour.getRGB( ) );
+                int argb = source.getRGB( x, y );
+                int a = (int)( ( ( argb >> 24 ) & 0xFF ) * opacity );
+                int r = ( ( argb >> 16 ) & 0xFF ) * a / 255;
+                int g = ( ( argb >>  8 ) & 0xFF ) * a / 255;
+                int b = (   argb         & 0xFF ) * a / 255;
+                returnImage.setRGB( x, y, ( a << 24 ) | ( r << 16 ) | ( g << 8 ) | b );
             }
         }
-        
-        return returnImage; 
+
+        return returnImage;
     }
     
     private static BufferedImage scale( final BufferedImage source, final double scaling, Filter filter )

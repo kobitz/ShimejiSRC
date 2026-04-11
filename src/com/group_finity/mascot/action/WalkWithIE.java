@@ -36,7 +36,10 @@ public class WalkWithIE extends Move
     @Override
     public boolean hasNext( ) throws VariableException
     {
-        if( !Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Throwing", "true" ) ) )
+        String perMascotThrow = Main.getInstance( ).getProperties( ).getProperty( "Throwing.mascot" + getMascot( ).getId( ) );
+        String perImageSetThrow = perMascotThrow != null ? perMascotThrow : Main.getInstance( ).getProperties( ).getProperty( "Throwing.imageset." + getMascot( ).getImageSet( ) );
+        String effectiveThrow = perImageSetThrow != null ? perImageSetThrow : Main.getInstance( ).getProperties( ).getProperty( "Throwing", "true" );
+        if( !Boolean.parseBoolean( effectiveThrow ) )
         {
             getEnvironment( ).unlockActiveIE( );
             return false;

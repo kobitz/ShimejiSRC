@@ -154,7 +154,7 @@ public abstract class ActionBase implements Action
         return eval( schema.getString( PARAMETER_CONDITION ), Boolean.class, DEFAULT_CONDITION );
     }
 
-    private int getDuration( ) throws VariableException
+    public int getDuration( ) throws VariableException
     {
         return eval( schema.getString( PARAMETER_DURATION ), Number.class, DEFAULT_DURATION ).intValue( );
     }
@@ -174,7 +174,7 @@ public abstract class ActionBase implements Action
         return mascot;
     }
 
-    protected int getTime( )
+    public int getTime( )
     {
         return getMascot( ).getTime( ) - startTime;
     }
@@ -189,7 +189,7 @@ public abstract class ActionBase implements Action
         return eval( schema.getString( "Name" ), String.class, null );
     }
 
-    protected Animation getAnimation( ) throws VariableException
+    public Animation getAnimation( ) throws VariableException
     {
         for( final Animation animation : getAnimations( ) )
         {

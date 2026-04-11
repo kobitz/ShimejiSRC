@@ -144,6 +144,18 @@ public class DebugWindow extends javax.swing.JFrame
         lblBatteryLevelValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
         lblBatteryLevelValue.setText("N/A");
 
+        lblPopulation = new javax.swing.JLabel();
+        lblPopulationValue = new javax.swing.JLabel();
+        lblPopulation.setText("Population");
+        lblPopulationValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+        lblPopulationValue.setText("N/A");
+
+        lblActionTimer = new javax.swing.JLabel();
+        lblActionTimerValue = new javax.swing.JLabel();
+        lblActionTimer.setText("Action Timer");
+        lblActionTimerValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+        lblActionTimerValue.setText("N/A");
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
@@ -154,6 +166,7 @@ public class DebugWindow extends javax.swing.JFrame
                     .addComponent(lblShimejiX)
                     .addComponent(lblShimejiY)
                     .addComponent(lblBehaviour)
+                    .addComponent(lblActionTimer)
                     .addComponent(lblWindowX)
                     .addComponent(lblWindowY)
                     .addComponent(lblWindowWidth)
@@ -168,10 +181,12 @@ public class DebugWindow extends javax.swing.JFrame
                     .addComponent(lblGpuTemp)
                     .addComponent(lblGpuLoad)
                     .addComponent(lblRamLoad)
-                    .addComponent(lblBatteryLevel))
+                    .addComponent(lblBatteryLevel)
+                    .addComponent(lblPopulation))
                 .addGap(42, 42, 42)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(lblBehaviourValue, javax.swing.GroupLayout.DEFAULT_SIZE, 165, Short.MAX_VALUE)
+                    .addComponent(lblActionTimerValue, javax.swing.GroupLayout.DEFAULT_SIZE, 165, Short.MAX_VALUE)
                     .addGroup(layout.createSequentialGroup()
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(lblShimejiYValue)
@@ -190,7 +205,8 @@ public class DebugWindow extends javax.swing.JFrame
                             .addComponent(lblGpuTempValue)
                             .addComponent(lblGpuLoadValue)
                             .addComponent(lblRamLoadValue)
-                            .addComponent(lblBatteryLevelValue))
+                            .addComponent(lblBatteryLevelValue)
+                            .addComponent(lblPopulationValue))
                         .addGap(0, 0, Short.MAX_VALUE)))
                 .addContainerGap())
         );
@@ -201,6 +217,10 @@ public class DebugWindow extends javax.swing.JFrame
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblBehaviour)
                     .addComponent(lblBehaviourValue))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblActionTimer)
+                    .addComponent(lblActionTimerValue))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblShimejiX)
@@ -237,6 +257,10 @@ public class DebugWindow extends javax.swing.JFrame
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblBatteryLevel)
                     .addComponent(lblBatteryLevelValue))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblPopulation)
+                    .addComponent(lblPopulationValue))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblWindowX)
@@ -324,6 +348,19 @@ public class DebugWindow extends javax.swing.JFrame
     {
         lblBatteryLevelValue.setText( level < 0 ? "N/A" : String.format( "%.1f%%", level ) );
     }
+
+    void setPopulation( int total, int imageSetCount )
+    {
+        lblPopulationValue.setText( imageSetCount + " / " + total );
+    }
+    
+    void setActionTimer( int remaining )
+    {
+        if( remaining == Integer.MAX_VALUE )
+            lblActionTimerValue.setText( "\u221e" );
+        else
+            lblActionTimerValue.setText( String.format( "%.1f", Math.max( 0, remaining ) / 20.0 ) );
+    }
     
     void setWindowX( int x )
     {
@@ -383,6 +420,7 @@ public class DebugWindow extends javax.swing.JFrame
           lblEnvironmentY.setText( Main.getInstance( ).getLanguageBundle( ).getString( "EnvironmentY" ) );
           lblEnvironmentWidth.setText( Main.getInstance( ).getLanguageBundle( ).getString( "EnvironmentWidth" ) );
           lblEnvironmentHeight.setText( Main.getInstance( ).getLanguageBundle( ).getString( "EnvironmentHeight" ) );
+          lblActionTimer.setText( Main.getInstance( ).getLanguageBundle( ).getString( "ActionTimer" ) );
         }
         super.setVisible( b );
     }
@@ -425,4 +463,8 @@ public class DebugWindow extends javax.swing.JFrame
     private javax.swing.JLabel lblWindowY;
     private javax.swing.JLabel lblWindowYValue;
     // End of variables declaration//GEN-END:variables
+    private javax.swing.JLabel lblPopulation;
+    private javax.swing.JLabel lblPopulationValue;
+    private javax.swing.JLabel lblActionTimer;
+    private javax.swing.JLabel lblActionTimerValue;
 }

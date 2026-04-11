@@ -16,22 +16,22 @@ import com.group_finity.mascot.exception.VariableException;
 
 public class Script extends Variable {
 
-	private static final ScriptEngine engine = new NashornScriptEngineFactory( ).getScriptEngine( new ScriptFilter( ) );
+	private static final ThreadLocal<ScriptEngine> engine = ThreadLocal.withInitial(
+		( ) -> new NashornScriptEngineFactory( ).getScriptEngine( new ScriptFilter( ) ) );
         
 	private final String source;
 	
 	private final boolean clearAtInitFrame;
 	
-	private final CompiledScript compiled;
+	private volatile Object value;
 	
-	private Object value;
-	
-	public Script(final String source, final boolean clearAtInitFrame)  throws VariableException {
+	public Script(final String source, final boolean clearAtInitFrame) throws VariableException {
             
 		this.source = source;
 		this.clearAtInitFrame = clearAtInitFrame;
+		// Validate syntax by compiling on the current thread's engine
 		try {
-			this.compiled = ((Compilable) engine).compile(this.source);
+			((Compilable) engine.get()).compile(this.source);
 		} catch (final ScriptException e) {
 			throw new VariableException( Main.getInstance( ).getLanguageBundle( ).getString( "ScriptCompilationErrorMessage" ) + ": "+this.source, e);
 		}
@@ -55,14 +55,15 @@ public class Script extends Variable {
 	}
 	
 	@Override
-	public synchronized Object get(final VariableMap variables)  throws VariableException {
+	public synchronized Object get(final VariableMap variables) throws VariableException {
 			
 		if ( getValue()!=null ) {
 			return getValue();
 		}
 
 		try {
-			setValue(getCompiled().eval(variables));
+			CompiledScript compiled = ((Compilable) engine.get()).compile(this.source);
+			setValue(compiled.eval(variables));
 		} catch (final ScriptException e) {
 			throw new VariableException( Main.getInstance( ).getLanguageBundle( ).getString( "ScriptEvaluationErrorMessage" ) + ": "+this.source, e);
 		}
@@ -80,10 +81,6 @@ public class Script extends Variable {
 	
 	private boolean isClearAtInitFrame() {
 		return this.clearAtInitFrame;
-	}
-	
-	private CompiledScript getCompiled() {
-		return this.compiled;
 	}
 	
 	private String getSource() {

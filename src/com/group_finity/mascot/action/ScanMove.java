@@ -34,6 +34,14 @@ public class ScanMove extends BorderedAction
     public static final String PARAMETER_TARGETLOOK = "TargetLook";
 
     private static final boolean DEFAULT_TARGETLOOK = false;
+
+    public static final String PARAMETER_PROXIMITY = "Proximity";
+
+    private static final int DEFAULT_PROXIMITY = 0;
+
+    public static final String PARAMETER_TARGETID = "TargetId";
+
+    private static final int DEFAULT_TARGETID = -1;
     
     private WeakReference<Mascot> target;
     
@@ -55,7 +63,7 @@ public class ScanMove extends BorderedAction
         getMascot( ).getAffordances( ).clear( );
         
         if( getMascot( ).getManager( ) != null )
-            target = getMascot( ).getManager( ).getMascotWithAffordance( getAffordance( ) );
+            target = acquireTarget( );
         putVariable( getSchema( ).getString( "TargetX" ), target != null && target.get( ) != null ? target.get( ).getAnchor( ).x : null );
         putVariable( getSchema( ).getString( "TargetY" ), target != null && target.get( ) != null ? target.get( ).getAnchor( ).y : null );
     }
@@ -65,8 +73,11 @@ public class ScanMove extends BorderedAction
     {
         if( getMascot( ).getManager( ) == null )
             return super.hasNext( );
+
+        if( target == null || target.get( ) == null )
+            return false;
         
-        return super.hasNext( ) && ( turning || ( target != null && target.get( ) != null && target.get( ).getAffordances( ).contains( getAffordance( ) ) ) );
+        return super.hasNext( ) && ( turning || target.get( ).getAffordances( ).contains( getAffordance( ) ) );
     }
 
     @Override
@@ -83,6 +94,14 @@ public class ScanMove extends BorderedAction
             throw new LostGroundException( );
         }
 
+        // Refresh target if it lost its affordance or disappeared; prefer stored ID
+        if( getMascot( ).getManager( ) != null &&
+            ( target == null || target.get( ) == null || !target.get( ).getAffordances( ).contains( getAffordance( ) ) ) )
+            target = acquireTarget( );
+
+        if( target == null || target.get( ) == null )
+            return;
+
         int targetX = target.get( ).getAnchor( ).x;
         int targetY = target.get( ).getAnchor( ).y;
         
@@ -98,25 +117,37 @@ public class ScanMove extends BorderedAction
         boolean down = getMascot( ).getAnchor( ).y < targetY;
         
         // check if turning animation has finished
-        if( turning && getTime( ) >= getAnimation( ).getDuration( ) )
+        if( turning )
         {
-            turning = false;
+            Animation turnAnim = getAnimation( );
+            if( turnAnim != null && getTime( ) >= turnAnim.getDuration( ) )
+            {
+                setTime( getTime( ) - turnAnim.getDuration( ) );
+                turning = false;
+            }
         }
-        
-        getAnimation( ).next( getMascot( ), getTime( ) );
 
-        if( ( getMascot( ).isLookRight( ) && ( getMascot( ).getAnchor( ).x >= targetX ) ) ||
-            ( !getMascot( ).isLookRight( ) && ( getMascot( ).getAnchor( ).x <= targetX ) ) )
+        Animation anim = getAnimation( );
+        if( anim == null )
+            return;
+
+        anim.next( getMascot( ), getTime( ) );
+
+        if( getProximity( ) == 0 )
         {
-            getMascot( ).setAnchor( new Point( targetX, getMascot( ).getAnchor( ).y ) );
-        }
-        if( ( down && ( getMascot( ).getAnchor( ).y >= targetY ) ) ||
-            ( !down && ( getMascot( ).getAnchor( ).y <= targetY ) ) )
-        {
-            getMascot( ).setAnchor( new Point( getMascot( ).getAnchor( ).x, targetY ) );
+            if( ( getMascot( ).isLookRight( ) && ( getMascot( ).getAnchor( ).x >= targetX ) ) ||
+                ( !getMascot( ).isLookRight( ) && ( getMascot( ).getAnchor( ).x <= targetX ) ) )
+            {
+                getMascot( ).setAnchor( new Point( targetX, getMascot( ).getAnchor( ).y ) );
+            }
+            if( ( down && ( getMascot( ).getAnchor( ).y >= targetY ) ) ||
+                ( !down && ( getMascot( ).getAnchor( ).y <= targetY ) ) )
+            {
+                getMascot( ).setAnchor( new Point( getMascot( ).getAnchor( ).x, targetY ) );
+            }
         }
         
-        if( !turning && getMascot( ).getAnchor( ).x == targetX && getMascot( ).getAnchor( ).y == targetY )
+        if( !turning && Math.abs( getMascot( ).getAnchor( ).x - targetX ) <= getProximity( ) )
         {
             try
             {
@@ -142,11 +173,12 @@ public class ScanMove extends BorderedAction
                 log.log( Level.SEVERE, "Fatal Exception", e );
                 Main.showError( Main.getInstance( ).getLanguageBundle( ).getString( "FailedSetBehaviourErrorMessage" ), e );
             }
+            return;
         }
     }
     
     @Override
-    protected Animation getAnimation( ) throws VariableException
+    public Animation getAnimation( ) throws VariableException
     {
         List<Animation> animations = super.getAnimations( );
         for( int index = 0; index < animations.size( ); index++ )
@@ -197,5 +229,25 @@ public class ScanMove extends BorderedAction
     private boolean getTargetLook( ) throws VariableException
     {
         return eval( getSchema( ).getString( PARAMETER_TARGETLOOK ), Boolean.class, DEFAULT_TARGETLOOK );
+    }
+
+    private int getProximity( ) throws VariableException
+    {
+        return eval( PARAMETER_PROXIMITY, Number.class, DEFAULT_PROXIMITY ).intValue( );
+    }
+
+    /**
+     * Returns the nearest mascot with the required affordance.
+     * Using nearest ensures ScanMove always chases the closest valid target
+     * regardless of what any behavior condition may have previously stored.
+     */
+    private WeakReference<Mascot> acquireTarget( ) throws VariableException
+    {
+        return getMascot( ).getManager( ).getMascotNearestWithAffordance( getAffordance( ), getMascot( ).getAnchor( ) );
+    }
+
+    private int getTargetId( ) throws VariableException
+    {
+        return eval( getSchema( ).getString( PARAMETER_TARGETID ), Number.class, DEFAULT_TARGETID ).intValue( );
     }
 }
