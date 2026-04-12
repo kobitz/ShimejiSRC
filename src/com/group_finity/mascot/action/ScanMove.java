@@ -233,7 +233,7 @@ public class ScanMove extends BorderedAction
 
     private int getProximity( ) throws VariableException
     {
-        return eval( PARAMETER_PROXIMITY, Number.class, DEFAULT_PROXIMITY ).intValue( );
+        return eval( getSchema( ).getString( PARAMETER_PROXIMITY ), Number.class, DEFAULT_PROXIMITY ).intValue( );
     }
 
     /**

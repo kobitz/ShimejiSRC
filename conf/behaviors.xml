@@ -1,6 +1,5 @@
 ﻿<?xml version="1.0" encoding="UTF-8" ?>
-<Mascot xmlns="http://www.group-finity.com/Mascot" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.group-finity.com/Mascot Mascot.xsd">
+<Mascot xmlns="http://www.group-finity.com/Mascot" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
 	<BehaviorList>
 	
@@ -170,117 +169,115 @@
 		</Condition>
 		
 
-		<Behavior Name="ScaleUp" Frequency="0" />
+<Behavior Name="ScaleUp" Frequency="0" />
 
-		<Behavior Name="ScaleDown" Frequency="0" />
+<Behavior Name="ScaleDown" Frequency="0" />
 
 			
-        <Behavior Name="JumpToCursor" Frequency="30" Toggleable="true"
-			Condition="#{
-				var dx = mascot.environment.cursor.x - mascot.anchor.x;
-				var dy = mascot.anchor.y - mascot.environment.cursor.y;
-				var dist = Math.sqrt(dx*dx + dy*dy);
-				dist &lt;= 800
+<Behavior Name="JumpToCursor" Frequency="30" Toggleable="true"
+            Condition="#{
+                var dx = mascot.environment.cursor.x - mascot.anchor.x;
+                var dy = mascot.anchor.y - mascot.environment.cursor.y;
+                var dist = Math.sqrt(dx*dx + dy*dy);
+                dist &lt;= 400
+            }"/>
+	
+<Behavior Name="MoveLeft" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
+			} return false;
+			})()
 			}">
 			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="MoveRight" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &lt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="RunLeft" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="RunRight" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &lt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="DashLeft" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="DashRight" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &lt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="ManualJump" Frequency="10" >
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
 			</NextBehaviorList>
 		</Behavior>
 	
-		<Behavior Name="MoveLeft" Frequency="5000" Toggleable="true"
-			Condition="#{(function(){
-				var others = mascot.manager.getMascotList();
-				for(var i=0;i &lt; others.size();i++){
-					var o=others.get(i); if(o===mascot) continue;
-					var dx=o.anchor.x-mascot.anchor.x;
-					var dy=o.anchor.y-mascot.anchor.y;
-					if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
-				} return false;
-			})()
-			}">
-			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
-			</NextBehaviorList>
-		</Behavior>
-		<Behavior Name="MoveRight" Frequency="5000" Toggleable="true"
-			Condition="#{(function(){
-				var others = mascot.manager.getMascotList();
-				for(var i=0;i &lt; others.size();i++){
-					var o=others.get(i); if(o===mascot) continue;
-					var dx=o.anchor.x-mascot.anchor.x;
-					var dy=o.anchor.y-mascot.anchor.y;
-					if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &lt;=0) return true;
-				} return false;
-			})()
-			}">
-			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
-			</NextBehaviorList>
-		</Behavior>
-		<Behavior Name="RunLeft" Frequency="5000" Toggleable="true"
-			Condition="#{(function(){
-				var others = mascot.manager.getMascotList();
-				for(var i=0;i &lt; others.size();i++){
-					var o=others.get(i); if(o===mascot) continue;
-					var dx=o.anchor.x-mascot.anchor.x;
-					var dy=o.anchor.y-mascot.anchor.y;
-					if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
-				} return false;
-			})()
-			}">
-			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
-			</NextBehaviorList>
-		</Behavior>
-		<Behavior Name="RunRight" Frequency="5000" Toggleable="true"
-			Condition="#{(function(){
-				var others = mascot.manager.getMascotList();
-				for(var i=0;i &lt; others.size();i++){
-					var o=others.get(i); if(o===mascot) continue;
-					var dx=o.anchor.x-mascot.anchor.x;
-					var dy=o.anchor.y-mascot.anchor.y;
-					if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
-				} return false;
-			})()
-			}">
-			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
-			</NextBehaviorList>
-		</Behavior>
-		<Behavior Name="DashLeft" Frequency="5000" Toggleable="true"
-			Condition="#{(function(){
-				var others = mascot.manager.getMascotList();
-				for(var i=0;i &lt; others.size();i++){
-					var o=others.get(i); if(o===mascot) continue;
-					var dx=o.anchor.x-mascot.anchor.x;
-					var dy=o.anchor.y-mascot.anchor.y;
-					if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
-				} return false;
-			})()
-			}">
-			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
-			</NextBehaviorList>
-		</Behavior>
-		<Behavior Name="DashRight" Frequency="5000" Toggleable="true"
-			Condition="#{(function(){
-				var others = mascot.manager.getMascotList();
-				for(var i=0;i &lt; others.size();i++){
-					var o=others.get(i); if(o===mascot) continue;
-					var dx=o.anchor.x-mascot.anchor.x;
-					var dy=o.anchor.y-mascot.anchor.y;
-					if(Math.sqrt(dx*dx+dy*dy) &lt;=(32 * mascot.currentScale) &amp;&amp; dx &gt;=0) return true;
-				} return false;
-			})()
-			}">
-			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
-			</NextBehaviorList>
-		</Behavior>
-        <Behavior Name="ManualJump" Frequency="10" >
-			<NextBehaviorList Add="false">
-				<BehaviorReference Name="Fall" Frequency="1" />
-			</NextBehaviorList>
-		</Behavior>
+		<Behavior Name="ShortStandAfterAction" Frequency="0" Hidden="true" />
 	</BehaviorList>
 </Mascot>

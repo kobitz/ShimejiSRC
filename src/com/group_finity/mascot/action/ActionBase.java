@@ -4,7 +4,9 @@ import java.util.List;
 import java.util.logging.Logger;
 import java.util.ResourceBundle;
 
+import com.group_finity.mascot.Main;
 import com.group_finity.mascot.Mascot;
+import com.group_finity.mascot.script.Constant;
 import com.group_finity.mascot.animation.Animation;
 import com.group_finity.mascot.environment.MascotEnvironment;
 import com.group_finity.mascot.exception.LostGroundException;
@@ -20,6 +22,26 @@ import com.group_finity.mascot.script.VariableMap;
 public abstract class ActionBase implements Action
 {
     private static final Logger log = Logger.getLogger( ActionBase.class.getName( ) );
+
+    // Cached scaling constant — read once from properties, reused across all init() calls
+    // to avoid allocating a new Constant object every tick per mascot.
+    private static Constant scalingConstant = null;
+
+    private static Constant getScalingConstant( )
+    {
+        if( scalingConstant == null )
+        {
+            double value = Double.parseDouble( Main.getInstance( ).getProperties( ).getProperty( "Scaling", "1.0" ) );
+            scalingConstant = new Constant( value );
+        }
+        return scalingConstant;
+    }
+
+    /** Call this when the user changes the Scaling setting so the cached value is refreshed. */
+    public static void invalidateScalingConstant( )
+    {
+        scalingConstant = null;
+    }
 
     public static final String PARAMETER_DURATION = "Duration";
 
@@ -75,6 +97,7 @@ public abstract class ActionBase implements Action
 
         getVariables( ).put( "mascot", mascot );
         getVariables( ).put( "action", this );
+        getVariables( ).getRawMap( ).put( "scaling", getScalingConstant( ) );
 
         getVariables( ).init( );
 
