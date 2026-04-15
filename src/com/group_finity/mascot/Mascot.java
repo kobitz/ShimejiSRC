@@ -30,6 +30,7 @@ import com.group_finity.mascot.environment.Area;
 import com.group_finity.mascot.environment.MascotEnvironment;
 import com.group_finity.mascot.exception.CantBeAliveException;
 import com.group_finity.mascot.hotspot.Hotspot;
+import com.group_finity.mascot.image.ImagePairs;
 import com.group_finity.mascot.image.MascotImage;
 import com.group_finity.mascot.image.NativeImage;
 import com.group_finity.mascot.image.TranslucentWindow;
@@ -406,7 +407,7 @@ public class Mascot
 
         // Add the Behaviors submenu.  Currently slightly buggy, sometimes the menu ghosts.
         JLongMenu submenu = new JLongMenu( languageBundle.getString( "SetBehaviour" ), 30 );
-        JLongMenu allowedSubmenu = new JLongMenu( languageBundle.getString( "AllowedBehaviours" ), 30 );
+        JLongMenu allowedSubmenu = new JLongMenu( languageBundle.getString( "PersonalBehaviours" ), 30 );
         // The MenuScroller would look better than the JLongMenu, but the initial positioning is not working correctly.
         //MenuScroller.setScrollerFor(submenu, 30, 125);
         submenu.setAutoscrolls( true );
@@ -470,72 +471,170 @@ public class Mascot
         final java.util.Properties props = Main.getInstance( ).getProperties( );
 
         final JCheckBoxMenuItem breedingMenu = new JCheckBoxMenuItem( languageBundle.getString( "BreedingCloning" ),
-            ( props.getProperty( "Breeding." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Breeding." + mascotKey ) ) : props.getProperty( "Breeding.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Breeding.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Breeding", "true" ) ) ) );
+            ( props.getProperty( "Breeding.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Breeding.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Breeding", "true" ) ) ) );
         breedingMenu.addItemListener( new ItemListener( )
         {
             public void itemStateChanged( final ItemEvent e )
             {
-                props.setProperty( "Breeding." + mascotKey, String.valueOf( breedingMenu.isSelected( ) ) );
+                props.setProperty( "Breeding.imageset." + getImageSet( ), String.valueOf( breedingMenu.isSelected( ) ) );
+                Main.getInstance( ).updateConfigFile( );
             }
         } );
 
         final JCheckBoxMenuItem transientMenu = new JCheckBoxMenuItem( languageBundle.getString( "BreedingTransient" ),
-            ( props.getProperty( "Transients." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Transients." + mascotKey ) ) : props.getProperty( "Transients.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transients.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transients", "true" ) ) ) );
+            ( props.getProperty( "Transients.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transients.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transients", "true" ) ) ) );
         transientMenu.addItemListener( new ItemListener( )
         {
             public void itemStateChanged( final ItemEvent e )
             {
-                props.setProperty( "Transients." + mascotKey, String.valueOf( transientMenu.isSelected( ) ) );
+                props.setProperty( "Transients.imageset." + getImageSet( ), String.valueOf( transientMenu.isSelected( ) ) );
+                Main.getInstance( ).updateConfigFile( );
             }
         } );
 
         final JCheckBoxMenuItem transformationMenu = new JCheckBoxMenuItem( languageBundle.getString( "Transformation" ),
-            ( props.getProperty( "Transformation." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Transformation." + mascotKey ) ) : props.getProperty( "Transformation.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transformation.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transformation", "true" ) ) ) );
+            ( props.getProperty( "Transformation.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transformation.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transformation", "true" ) ) ) );
         transformationMenu.addItemListener( new ItemListener( )
         {
             public void itemStateChanged( final ItemEvent e )
             {
-                props.setProperty( "Transformation." + mascotKey, String.valueOf( transformationMenu.isSelected( ) ) );
+                props.setProperty( "Transformation.imageset." + getImageSet( ), String.valueOf( transformationMenu.isSelected( ) ) );
+                Main.getInstance( ).updateConfigFile( );
             }
         } );
 
         final JCheckBoxMenuItem throwingMenu = new JCheckBoxMenuItem( languageBundle.getString( "ThrowingWindows" ),
-            ( props.getProperty( "Throwing." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Throwing." + mascotKey ) ) : props.getProperty( "Throwing.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Throwing.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Throwing", "true" ) ) ) );
+            ( props.getProperty( "Throwing.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Throwing.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Throwing", "true" ) ) ) );
         throwingMenu.addItemListener( new ItemListener( )
         {
             public void itemStateChanged( final ItemEvent e )
             {
-                props.setProperty( "Throwing." + mascotKey, String.valueOf( throwingMenu.isSelected( ) ) );
+                props.setProperty( "Throwing.imageset." + getImageSet( ), String.valueOf( throwingMenu.isSelected( ) ) );
+                Main.getInstance( ).updateConfigFile( );
             }
         } );
 
         final JCheckBoxMenuItem soundsMenu = new JCheckBoxMenuItem( languageBundle.getString( "SoundEffects" ),
-            ( props.getProperty( "Sounds." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Sounds." + mascotKey ) ) : props.getProperty( "Sounds.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Sounds.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Sounds", "true" ) ) ) );
+            ( props.getProperty( "Sounds.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Sounds.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Sounds", "true" ) ) ) );
         soundsMenu.addItemListener( new ItemListener( )
         {
             public void itemStateChanged( final ItemEvent e )
             {
-                props.setProperty( "Sounds." + mascotKey, String.valueOf( soundsMenu.isSelected( ) ) );
+                props.setProperty( "Sounds.imageset." + getImageSet( ), String.valueOf( soundsMenu.isSelected( ) ) );
+                Main.getInstance( ).updateConfigFile( );
             }
         } );
 
         final JCheckBoxMenuItem multiscreenMenu = new JCheckBoxMenuItem( languageBundle.getString( "Multiscreen" ),
-            ( props.getProperty( "Multiscreen." + mascotKey ) != null ? Boolean.parseBoolean( props.getProperty( "Multiscreen." + mascotKey ) ) : props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Multiscreen", "true" ) ) ) );
+            ( props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Multiscreen", "true" ) ) ) );
         multiscreenMenu.addItemListener( new ItemListener( )
         {
             public void itemStateChanged( final ItemEvent e )
             {
-                props.setProperty( "Multiscreen." + mascotKey, String.valueOf( multiscreenMenu.isSelected( ) ) );
+                props.setProperty( "Multiscreen.imageset." + getImageSet( ), String.valueOf( multiscreenMenu.isSelected( ) ) );
+                Main.getInstance( ).updateConfigFile( );
             }
         } );
 
-        JLongMenu universalSubmenu = new JLongMenu( languageBundle.getString( "AllowedBehaviours" ), 30 );
+        JLongMenu universalSubmenu = new JLongMenu( languageBundle.getString( "UniversalBehaviours" ), 30 );
         universalSubmenu.add( breedingMenu );
         universalSubmenu.add( transientMenu );
         universalSubmenu.add( transformationMenu );
         universalSubmenu.add( throwingMenu );
         universalSubmenu.add( soundsMenu );
         universalSubmenu.add( multiscreenMenu );
+
+        // Personal Filter submenu — lets users override the global filter for this imageSet
+        final String imageSetFilterKey = "Filter.imageset." + getImageSet( );
+        final String globalFilter = props.getProperty( "Filter", "false" );
+        final String currentFilter = props.getProperty( imageSetFilterKey, globalFilter );
+
+        final JCheckBoxMenuItem filterNearestMenu = new JCheckBoxMenuItem(
+            languageBundle.getString( "PersonalFilterNearest" ),
+            currentFilter.equalsIgnoreCase( "false" ) || currentFilter.equalsIgnoreCase( "nearest" ) );
+        final JCheckBoxMenuItem filterBicubicMenu = new JCheckBoxMenuItem(
+            languageBundle.getString( "PersonalFilterBicubic" ),
+            currentFilter.equalsIgnoreCase( "bicubic" ) );
+        final JCheckBoxMenuItem filterHqxMenu = new JCheckBoxMenuItem(
+            languageBundle.getString( "PersonalFilterHqx" ),
+            currentFilter.equalsIgnoreCase( "true" ) || currentFilter.equalsIgnoreCase( "hqx" ) );
+
+        final Runnable applyPersonalFilter = new Runnable( )
+        {
+            public void run( )
+            {
+                // Determine which filter is now selected
+                String chosen;
+                if( filterBicubicMenu.isSelected( ) )
+                    chosen = "bicubic";
+                else if( filterHqxMenu.isSelected( ) )
+                    chosen = "hqx";
+                else
+                    chosen = "false";
+
+                props.setProperty( imageSetFilterKey, chosen );
+
+                // Clear cached images for this imageSet so they reload with the new filter
+                ImagePairs.removeAll( getImageSet( ) );
+
+                // Reload configuration and respawn
+                final String imageSet = getImageSet( );
+                final boolean isExit = Main.getInstance( ).getManager( ).isExitOnLastRemoved( );
+                Main.getInstance( ).getManager( ).setExitOnLastRemoved( false );
+                dispose( );
+                Main.getInstance( ).loadConfiguration( imageSet );
+                Main.getInstance( ).createMascot( imageSet );
+                Main.getInstance( ).getManager( ).setExitOnLastRemoved( isExit );
+            }
+        };
+
+        filterNearestMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                if( filterNearestMenu.isSelected( ) )
+                {
+                    filterBicubicMenu.setSelected( false );
+                    filterHqxMenu.setSelected( false );
+                    applyPersonalFilter.run( );
+                }
+                else if( !filterBicubicMenu.isSelected( ) && !filterHqxMenu.isSelected( ) )
+                    filterNearestMenu.setSelected( true );
+            }
+        } );
+        filterBicubicMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                if( filterBicubicMenu.isSelected( ) )
+                {
+                    filterNearestMenu.setSelected( false );
+                    filterHqxMenu.setSelected( false );
+                    applyPersonalFilter.run( );
+                }
+                else if( !filterNearestMenu.isSelected( ) && !filterHqxMenu.isSelected( ) )
+                    filterBicubicMenu.setSelected( true );
+            }
+        } );
+        filterHqxMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                if( filterHqxMenu.isSelected( ) )
+                {
+                    filterNearestMenu.setSelected( false );
+                    filterBicubicMenu.setSelected( false );
+                    applyPersonalFilter.run( );
+                }
+                else if( !filterNearestMenu.isSelected( ) && !filterBicubicMenu.isSelected( ) )
+                    filterHqxMenu.setSelected( true );
+            }
+        } );
+
+        JLongMenu personalFilterSubmenu = new JLongMenu( languageBundle.getString( "PersonalFilter" ), 30 );
+        personalFilterSubmenu.add( filterNearestMenu );
+        personalFilterSubmenu.add( filterBicubicMenu );
+        personalFilterSubmenu.add( filterHqxMenu );
 
         popup.add( increaseMenu );
         popup.add( new JSeparator( ) );
@@ -548,6 +647,7 @@ public class Mascot
         popup.add( universalSubmenu );
         if( allowedSubmenu.getMenuComponentCount( ) > 0 )
             popup.add( allowedSubmenu );
+        popup.add( personalFilterSubmenu );
         popup.add( new JSeparator( ) );
         popup.add( pauseMenu );
         popup.add( new JSeparator( ) );
@@ -718,7 +818,7 @@ public class Mascot
                         };
                     }
                     com.group_finity.mascot.image.ScalableNativeImage scalable =
-                        scalables.computeIfAbsent( getImage(), com.group_finity.mascot.image.ScalableNativeImage::new );
+                        scalables.computeIfAbsent( getImage(), img -> new com.group_finity.mascot.image.ScalableNativeImage( img, getImageSet() ) );
 
                     MascotImage scaled = scalable.get( currentScale );
                     if( scaled != null )
@@ -748,9 +848,6 @@ public class Mascot
                     lastScaledImage = null;
                 }
 
-                // Set the window region
-                getWindow().asComponent().setBounds(bounds);
-
                 // Set Images
                 getWindow().setImage(displayImage.getImage());
 
@@ -760,8 +857,10 @@ public class Mascot
                     getWindow().asComponent().setVisible(true);
                 }
 
-                // Redraw
-                getWindow().updateImage();
+                // Reposition and redraw atomically — prevents one-frame glitch when ImageAnchor changes.
+                // setBounds is called after so the Swing component stays in sync for layout/bounds queries.
+                getWindow().updateImage(bounds);
+                getWindow().asComponent().setBounds(bounds);
             }
             else
             {

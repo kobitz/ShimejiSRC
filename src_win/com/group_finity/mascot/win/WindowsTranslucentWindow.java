@@ -2,6 +2,7 @@ package com.group_finity.mascot.win;
 
 import java.awt.Graphics;
 import java.awt.Component;
+import java.awt.Rectangle;
 import javax.swing.JWindow;
 
 import com.group_finity.mascot.image.NativeImage;
@@ -38,59 +39,56 @@ class WindowsTranslucentWindow extends JWindow implements TranslucentWindow {
 	 * @param imageHandle bitmap handle.
 	 * @param alpha concentrations shown. 0 = not at all, 255 = full display.
 	 */
-	private void paint(final Pointer imageHandle, final int alpha) {
-            
-            //this.setSize( WIDTH, HEIGHT );
-		
+	private void paint(final Pointer imageHandle, final int alpha, final Rectangle targetBounds) {
+
 		final Pointer hWnd = Native.getComponentPointer(this);
-		
+
 		if ( User32.INSTANCE.IsWindow(hWnd)!=0 ) {
-			
+
 			final int exStyle = User32.INSTANCE.GetWindowLongW(hWnd, User32.GWL_EXSTYLE);
 			if ( (exStyle&User32.WS_EX_LAYERED)==0 ) {
 				User32.INSTANCE.SetWindowLongW(hWnd, User32.GWL_EXSTYLE, exStyle | User32.WS_EX_LAYERED);
 			}
 
-			// Create a DC source of the image
 			final Pointer clientDC = User32.INSTANCE.GetDC(hWnd);
 			final Pointer memDC = Gdi32.INSTANCE.CreateCompatibleDC(clientDC);
-			final Pointer oldBmp = Gdi32.INSTANCE.SelectObject(memDC, imageHandle );
-			
+			final Pointer oldBmp = Gdi32.INSTANCE.SelectObject(memDC, imageHandle);
+
 			User32.INSTANCE.ReleaseDC(hWnd, clientDC);
 
-			// Destination Area
-			final RECT windowRect = new RECT();
-			User32.INSTANCE.GetWindowRect(hWnd, windowRect);
-
-			// Forward
 			final BLENDFUNCTION bf = new BLENDFUNCTION();
 			bf.BlendOp = BLENDFUNCTION.AC_SRC_OVER;
 			bf.BlendFlags = 0;
-			bf.SourceConstantAlpha = (byte)alpha; // Level set
+			bf.SourceConstantAlpha = (byte)alpha;
 			bf.AlphaFormat = BLENDFUNCTION.AC_SRC_ALPHA;
 
 			final POINT lt = new POINT();
-			lt.x = windowRect.left;
-			lt.y = windowRect.top;
 			final SIZE size = new SIZE();
-			size.cx = windowRect.Width();
-			size.cy = windowRect.Height();
-			final POINT zero = new POINT();
-			User32.INSTANCE.UpdateLayeredWindow( 
-					hWnd, Pointer.NULL, 
-					lt, size,
-					memDC, zero, 0, bf, User32.ULW_ALPHA );
 
-			// Replace the bitmap you
+			if ( targetBounds != null ) {
+				// Atomic reposition + image update in one native call — eliminates one-frame glitch
+				lt.x = targetBounds.x;
+				lt.y = targetBounds.y;
+				size.cx = targetBounds.width;
+				size.cy = targetBounds.height;
+			} else {
+				// Repaint in place using current window rect
+				final RECT windowRect = new RECT();
+				User32.INSTANCE.GetWindowRect(hWnd, windowRect);
+				lt.x = windowRect.left;
+				lt.y = windowRect.top;
+				size.cx = windowRect.Width();
+				size.cy = windowRect.Height();
+			}
+
+			final POINT zero = new POINT();
+			User32.INSTANCE.UpdateLayeredWindow(
+					hWnd, Pointer.NULL,
+					lt, size,
+					memDC, zero, 0, bf, User32.ULW_ALPHA);
+
 			Gdi32.INSTANCE.SelectObject(memDC, oldBmp);
 			Gdi32.INSTANCE.DeleteDC(memDC);
-
-            // Bring to front
-//            if( alwaysOnTop )
-//            {
-//                User32.INSTANCE.BringWindowToTop( hWnd );
-//            }
-            
 		}
 	}
 
@@ -113,7 +111,7 @@ class WindowsTranslucentWindow extends JWindow implements TranslucentWindow {
 	public void paint(final Graphics g) {
 		if (getImage() != null) {
 			// JNI with drawing images using the a value.
-			paint(getImage().getHandle(), getAlpha());
+			paint(getImage().getHandle(), getAlpha(), null);
 		}
 	}
 
@@ -134,6 +132,13 @@ class WindowsTranslucentWindow extends JWindow implements TranslucentWindow {
 	}
 
         @Override
+
+	public void updateImage( final java.awt.Rectangle bounds ) {
+		if (getImage() != null) {
+			paint(getImage().getHandle(), getAlpha(), bounds);
+		}
+	}
+
 	public void updateImage() {
 		repaint();
 	}

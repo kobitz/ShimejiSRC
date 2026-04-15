@@ -101,7 +101,8 @@ public class AnimationBuilder
         final double opacity = Double.parseDouble( Main.getInstance( ).getProperties( ).getProperty( "Opacity", "1.0" ) );
         final double scaling = Double.parseDouble( Main.getInstance( ).getProperties( ).getProperty( "Scaling", "1.0" ) );
         
-        String filterText = Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" );
+        String filterText = Main.getInstance( ).getProperties( ).getProperty( "Filter.imageset." + imageSet,
+                            Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" ) );
         Filter filter = Filter.NEAREST_NEIGHBOUR;
         if( filterText.equalsIgnoreCase( "true" ) || filterText.equalsIgnoreCase( "hqx" ) )
             filter = ImagePairLoader.Filter.HQX;

@@ -58,6 +58,10 @@ class WindowsEnvironment extends Environment
     // While locked, tickForMascot() skips the nearest-window search.
     private boolean activeIELocked = false;
 
+    // All viable IE window rects on this mascot's screen, refreshed each scan.
+    // Exposed via getAllIE() so scripts can clamp walk targets to avoid windows.
+    private final List<Area> allIEAreas = new ArrayList<>();
+
     // Throttle: only re-run the expensive EnumWindows scan every N ticks.
     // Between scans the previous result is reused. Window positions change
     // slowly enough (~320ms between scans at 40ms/tick) that this is invisible.
@@ -369,6 +373,21 @@ class WindowsEnvironment extends Environment
             }
         }
 
+        // Cache all viable window rects for getAllIE() — used by scripts to
+        // clamp walk targets so mascots don't walk through windows.
+        allIEAreas.clear();
+        Rectangle mascotScreenFinal = mascotScreen;
+        for( int i = 0; i < handles.size(); i++ )
+        {
+            if( isViableIE( handles.get( i ) ) != IEResult.IE ) continue;
+            Rectangle r = rects.get( i );
+            if( mascotScreenFinal != null && !r.intersects( mascotScreenFinal ) ) continue;
+            Area a = new Area();
+            a.set( r );
+            a.setVisible( true );
+            allIEAreas.add( a );
+        }
+
         // Floor candidate wins if found; otherwise fall back to Euclidean nearest.
         return bestFloor != null ? bestFloor : bestFallback;
     }
@@ -472,6 +491,12 @@ class WindowsEnvironment extends Environment
     public Area getActiveIE( )
     {
         return activeIE;
+    }
+
+    @Override
+    public List<Area> getAllIE( )
+    {
+        return allIEAreas;
     }
 
     @Override

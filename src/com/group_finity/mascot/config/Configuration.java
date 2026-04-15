@@ -174,6 +174,7 @@ public class Configuration
         final VariableMap context = new VariableMap( );
         context.putAll( getConstants( ) ); // put first so they can't override mascot
         context.put( "mascot", mascot );
+        context.put( "scaling", Double.parseDouble( Main.getInstance( ).getProperties( ).getProperty( "Scaling", "1.0" ) ) );
 
         final List<BehaviorBuilder> candidates = new ArrayList<BehaviorBuilder>( );
         long totalFrequency = 0;

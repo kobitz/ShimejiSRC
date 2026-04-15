@@ -313,7 +313,7 @@ public class Main
         HotkeyManager.getInstance( ).init( getManager( ) );
     }
 
-    private boolean loadConfiguration( final String imageSet )
+    public boolean loadConfiguration( final String imageSet )
     {
         try
         {
@@ -1283,15 +1283,6 @@ public class Main
         // Create one mascot
         final Mascot mascot = new Mascot( imageSet );
 
-        // Apply any persisted per-imageSet universal behavior overrides
-        final String[] behaviorKeys = { "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen" };
-        for( String key : behaviorKeys )
-        {
-            String saved = properties.getProperty( key + ".imageset." + imageSet );
-            if( saved != null )
-                properties.setProperty( key + ".mascot" + mascot.getId( ), saved );
-        }
-
         // Restore saved per-imageSet disabled toggleable behaviours
         String savedDisabled = properties.getProperty( "DisabledBehaviours.imageset." + imageSet );
         if( savedDisabled != null && !savedDisabled.isEmpty( ) )
@@ -1402,7 +1393,10 @@ public class Main
     public void setMascotBehaviorEnabled( final String name, final Mascot mascot, boolean enabled )
     {
         ArrayList<String> list = new ArrayList<String>( );
-        String[ ] data = properties.getProperty( "DisabledBehaviours.mascot" + mascot.getId( ), "" ).split( "/" );
+        String perMascotRaw = properties.getProperty( "DisabledBehaviours.mascot" + mascot.getId( ), null );
+        String seedRaw = perMascotRaw != null ? perMascotRaw
+            : properties.getProperty( "DisabledBehaviours.imageset." + mascot.getImageSet( ), "" );
+        String[ ] data = seedRaw.split( "/" );
         
         if( data.length > 0 && !data[ 0 ].equals( "" ) )
             list.addAll( Arrays.asList( data ) );
@@ -1416,7 +1410,41 @@ public class Main
             properties.setProperty( "DisabledBehaviours.mascot" + mascot.getId( ), list.toString( ).replace( "[", "" ).replace( "]", "" ).replace( ", ", "/" ) );
         else
             properties.remove( "DisabledBehaviours.mascot" + mascot.getId( ) );
-        
+
+        // Re-derive the imageset key immediately so the setting persists on next launch.
+        // A behaviour is disabled for the imageset only if ALL mascots of that set have it disabled.
+        final String imageSet = mascot.getImageSet( );
+        final java.util.List<Mascot> mascots = getManager( ).getMascotList( );
+        java.util.Set<String> disabledUnion = new java.util.LinkedHashSet<>( );
+        for( Mascot m : mascots )
+        {
+            if( !m.getImageSet( ).equals( imageSet ) ) continue;
+            String raw = properties.getProperty( "DisabledBehaviours.mascot" + m.getId( ), "" );
+            for( String b : raw.split( "/" ) )
+                if( !b.isEmpty( ) ) disabledUnion.add( b );
+        }
+        // Remove any behaviour that at least one mascot has enabled
+        java.util.Set<String> toRemove = new java.util.LinkedHashSet<>( );
+        for( String behaviour : disabledUnion )
+        {
+            for( Mascot m : mascots )
+            {
+                if( !m.getImageSet( ).equals( imageSet ) ) continue;
+                String raw = properties.getProperty( "DisabledBehaviours.mascot" + m.getId( ), "" );
+                java.util.List<String> mList = new java.util.ArrayList<>( Arrays.asList( raw.split( "/" ) ) );
+                if( !mList.contains( behaviour ) )
+                {
+                    toRemove.add( behaviour );
+                    break;
+                }
+            }
+        }
+        disabledUnion.removeAll( toRemove );
+        if( !disabledUnion.isEmpty( ) )
+            properties.setProperty( "DisabledBehaviours.imageset." + imageSet, String.join( "/", disabledUnion ) );
+        else
+            properties.remove( "DisabledBehaviours.imageset." + imageSet );
+
         updateConfigFile( );
     }
     
@@ -1424,6 +1452,15 @@ public class Main
     {
         try
         {
+            // Remove any stale per-mascot keys (e.g. Breeding.mascot3) before saving.
+            // Settings are now written directly as imageset-level keys on change,
+            // so mascotN keys are never needed in the saved file.
+            for( String key : new java.util.ArrayList<>( properties.stringPropertyNames( ) ) )
+            {
+                if( key.matches( ".+\\.mascot\\d+$" ) )
+                    properties.remove( key );
+            }
+
             FileOutputStream output = new FileOutputStream( Paths.get( ".", "conf", "settings.properties" ).toFile( ) );
             try
             {
@@ -1565,7 +1602,7 @@ public class Main
         return java.util.Collections.unmodifiableList( imageSets );
     }
 
-    private Manager getManager( )
+    public Manager getManager( )
     {
         return this.manager;
     }
@@ -1662,7 +1699,6 @@ public class Main
         catch( Throwable t ) { }
         try
         {
-            saveImageSetBehaviors( );
             this.getManager( ).disposeAll( );
             this.getManager( ).stop( );
         }

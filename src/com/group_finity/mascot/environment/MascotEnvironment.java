@@ -70,6 +70,14 @@ public class MascotEnvironment
         
         return activeIE;
     }
+
+    /** All viable window rects on this mascot's screen.
+     *  Accessible from scripts as: mascot.environment.allIE
+     *  Returns a List&lt;Area&gt; — each Area has .left, .right, .top, .bottom, .width, .height. */
+    public java.util.List<Area> getAllIE( )
+    {
+        return impl.getAllIE( );
+    }
     
     public String getActiveIETitle( )
     {

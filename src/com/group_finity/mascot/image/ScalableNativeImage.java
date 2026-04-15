@@ -28,13 +28,20 @@ public class ScalableNativeImage
         } );
 
     private final MascotImage  source;
+    private final String       imageSet;
     private final AtomicReference<CachedEntry> ready    = new AtomicReference<>( null );
     private volatile boolean                   building = false;
     private volatile double                    buildingScale = Double.NaN;
 
     public ScalableNativeImage( MascotImage source )
     {
-        this.source = source;
+        this( source, null );
+    }
+
+    public ScalableNativeImage( MascotImage source, String imageSet )
+    {
+        this.source   = source;
+        this.imageSet = imageSet;
     }
 
     public MascotImage getSource( ) { return source; }
@@ -58,7 +65,10 @@ public class ScalableNativeImage
             final Point         center = source.getCenter( );
 
             // Read filter setting on the submitting thread (Main is thread-safe for getProperties)
-            final String filterProp = Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" );
+            final String filterProp = imageSet != null
+                ? Main.getInstance( ).getProperties( ).getProperty( "Filter.imageset." + imageSet,
+                    Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" ) )
+                : Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" );
             final Object interpolation = filterProp.equalsIgnoreCase( "bicubic" )
                 ? RenderingHints.VALUE_INTERPOLATION_BICUBIC
                 : RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR;

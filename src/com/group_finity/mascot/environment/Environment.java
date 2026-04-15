@@ -7,7 +7,9 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Toolkit;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,6 +21,14 @@ public abstract class Environment
     protected abstract Area getWorkArea( );
 
     public abstract Area getActiveIE( );
+
+    /** Returns all viable interactive window areas on this mascot's screen.
+     *  Used by scripts to clamp walk targets so mascots don't walk through windows.
+     *  Returns an empty list on platforms that don't support window enumeration. */
+    public List<Area> getAllIE( )
+    {
+        return Collections.emptyList( );
+    }
         
     public abstract String getActiveIETitle( );
 

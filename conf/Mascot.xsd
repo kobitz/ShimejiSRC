@@ -156,7 +156,6 @@
   		<attribute name="Frequency" type="int" use="required" />
   		<attribute name="Condition" type="tns:Parameter" />
   		<attribute name="Hidden" type="boolean" />
-  		<attribute name="Toggleable" type="boolean" />
     </complexType>
     
     <complexType name="NextBehaviorList">
