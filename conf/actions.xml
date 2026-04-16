@@ -297,6 +297,10 @@
 	
 		<!-- Manual Movement -->
 
+		<Action Name="ShortStandAfterAction" Type="Sequence" Loop="false">
+			<ActionReference Name="Stand" Duration="${50+Math.random()*100}" />
+		</Action>
+
 		<Action Name="MoveLeft" Type="Sequence" Loop="false">
 			<ActionReference Name="Look" LookRight="false" />
 			<Action Type="Select">
@@ -309,7 +313,7 @@
 				<ActionReference Name="Falling"
 					InitialVX="-8"
 					InitialVY="-1"
-					Duration="3"/>
+					Duration="100"/>
 			</Action>
 		</Action>
 
@@ -325,7 +329,7 @@
 				<ActionReference Name="Falling"
 					InitialVX="8"
 					InitialVY="-1"
-					Duration="3"/>
+					Duration="100"/>
 			</Action>
 		</Action>
 
@@ -339,7 +343,7 @@
 				<ActionReference Name="Falling"
 					InitialVX="-12"
 					InitialVY="-1"
-					Duration="3"/>
+					Duration="100"/>
 			</Action>
 		</Action>
 
@@ -353,7 +357,7 @@
 				<ActionReference Name="Falling"
 					InitialVX="12"
 					InitialVY="-1"
-					Duration="3"/>
+					Duration="100"/>
 			</Action>
 		</Action>
 
@@ -367,7 +371,7 @@
 				<ActionReference Name="Falling"
 					InitialVX="-20"
 					InitialVY="-1"
-					Duration="3"/>
+					Duration="100"/>
 			</Action>
 		</Action>
 
@@ -381,11 +385,9 @@
 				<ActionReference Name="Falling"
 					InitialVX="20"
 					InitialVY="-1"
-					Duration="3"/>
+					Duration="100"/>
 			</Action>
 		</Action>
-
-		
 
 		<Action Name="ManualJump" Type="Sequence" Loop="false">
 			<Action Type="Select">
@@ -394,8 +396,8 @@
 					Condition="${mascot.lookRight &amp;&amp; (mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor))}">
 					<ActionReference Name="Look" LookRight="false" />
 					<ActionReference Name="Jumping"
-						TargetX="${mascot.anchor.x - Math.round(192 * mascot.currentScale)}"
-						TargetY="${mascot.anchor.y - Math.round(192 * mascot.currentScale)}"/>
+						TargetX="${mascot.anchor.x - Math.round(384 * mascot.currentScale * scaling)}"
+						TargetY="${mascot.anchor.y - Math.round(384 * mascot.currentScale * scaling)}"/>
 					<Action Type="Sequence">
 						<Action Type="Select">
 							<Action Type="Sequence"
@@ -406,7 +408,7 @@
 							<Action Type="Sequence"
 								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
 								<ActionReference Name="Stand" 
-								Duration="10" />
+								Duration="1" />
 							</Action>							
 							<!-- Still airborne → keep falling with momentum -->
 							<ActionReference Name="Falling"
@@ -422,8 +424,8 @@
 					Condition="${!mascot.lookRight &amp;&amp; (mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor))}">
 					<ActionReference Name="Look" LookRight="true" />
 					<ActionReference Name="Jumping"
-						TargetX="${mascot.anchor.x + Math.round(192 * mascot.currentScale)}"
-						TargetY="${mascot.anchor.y - Math.round(192 * mascot.currentScale)}" />
+						TargetX="${mascot.anchor.x + Math.round(384 * mascot.currentScale * scaling)}"
+						TargetY="${mascot.anchor.y - Math.round(384 * mascot.currentScale * scaling)}" />
 					<Action Type="Sequence">
 						<Action Type="Select">
 							<Action Type="Sequence"
@@ -434,7 +436,7 @@
 							<Action Type="Sequence"
 								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
 								<ActionReference Name="Stand" 
-								Duration="10" />
+								Duration="1" />
 							</Action>							
 							<!-- Still airborne → keep falling with momentum -->
 							<ActionReference Name="Falling"
@@ -450,9 +452,9 @@
 					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
 					<ActionReference Name="Jumping"
 						TargetX="${mascot.lookRight
-							? mascot.anchor.x + Math.round(128 * mascot.currentScale)
-							: mascot.anchor.x - Math.round(128 * mascot.currentScale)}"
-						TargetY="${mascot.anchor.y - Math.round(192 * mascot.currentScale)}" />
+							? mascot.anchor.x + Math.round(256 * mascot.currentScale * scaling)
+							: mascot.anchor.x - Math.round(256 * mascot.currentScale * scaling)}"
+						TargetY="${mascot.anchor.y - Math.round(384 * mascot.currentScale * scaling)}" />
 					<Action Type="Sequence">
 						<Action Type="Select">
 							<Action Type="Sequence"
@@ -463,7 +465,7 @@
 							<Action Type="Sequence"
 								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
 								<ActionReference Name="Stand" 
-								Duration="10" />
+								Duration="1" />
 							</Action>							
 							<!-- Still airborne → keep falling with momentum -->
 							<ActionReference Name="Falling"
@@ -912,11 +914,12 @@
 			<ActionReference Name="Bouncing" />
 		</Action>
 		
+		
 		<Action Name="JumpToCursor" Type="Sequence" Loop="false">
 			<!-- Jump toward cursor -->
 			<ActionReference Name="Jumping"
 				TargetX="${mascot.environment.cursor.x}"
-				TargetY="${mascot.environment.cursor.y - Math.round(10 * mascot.currentScale)}"
+				TargetY="${mascot.environment.cursor.y - Math.round(20 * mascot.currentScale * scaling)}"
 				Duration="${100 + Math.random() * 100}"  />
 			<!-- Loop until we reach cursor -->
 			<Action Type="Sequence">
@@ -926,13 +929,13 @@
 					<Action Type="Sequence"
 						Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
 						<ActionReference Name="GrabWall" 
-						Duration="10" />
+						Duration="1" />
 					</Action>
 					<!-- Landed on top of IE window or Hit the floor → stand on it -->
 					<Action Type="Sequence"
 						Condition="${mascot.environment.activeIE.topBorder.isOn(mascot.anchor) || mascot.environment.workArea.bottomBorder.isOn(mascot.anchor)}">
 						<ActionReference Name="Stand" 
-						Duration="10" />
+						Duration="1" />
 					</Action>
 					<!-- Cursor is above → jump again toward new cursor position -->
 					<Action Type="Sequence"
@@ -955,7 +958,7 @@
 							Duration="${Math.max(10, Math.sqrt(Math.pow(mascot.environment.cursor.x - mascot.anchor.x, 2) + Math.pow(mascot.environment.cursor.y - mascot.anchor.y, 2)) * 0.02)}"/>
 						<!-- Intercepted cursor during fall → grab -->
 						<Action Type="Sequence"
-							Condition="${(function(){ var dx = mascot.environment.cursor.x - mascot.anchor.x; var dy = mascot.environment.cursor.y - mascot.anchor.y; return Math.sqrt(dx*dx + dy*dy) &lt;= Math.round(200 * mascot.currentScale); })()}">
+							Condition="#{(function(){ var dx = mascot.environment.cursor.x - mascot.anchor.x; var dy = mascot.environment.cursor.y - mascot.anchor.y; return Math.sqrt(dx*dx + dy*dy) &lt;= Math.round(200 * mascot.currentScale * scaling); })()}">
 							<ActionReference Name="Dragged" />
 						</Action>
 					</Action>
