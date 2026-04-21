@@ -122,6 +122,16 @@ public class Mascot
      * restored on the next program launch.
      */
     private boolean pinnedLocation = false;
+
+    // ── Jump air-steer ────────────────────────────────────────────────────────
+    // Written by HotkeyManager on a directional key-press, consumed once by
+    // Jump.getTargetX() each tick. Volatile so the JNH thread and tick thread
+    // see it without locking.
+    private volatile int jumpTargetXOffset = 0;
+
+    // ── Manual-only mode ──────────────────────────────────────────────────────
+    // When true, buildNextBehavior only allows Fall/Dragged/Thrown/Stand/GrabWall.
+    private boolean manualOnly = false;
     // The property key under which this mascot's location is saved.
     // Set at save time and carried across restarts so removePinnedLocation()
     // always deletes the right key regardless of the current runtime id.
@@ -181,6 +191,11 @@ public class Mascot
                 currentScale = Double.parseDouble( saved );
         }
         catch( NumberFormatException ignored ) { }
+
+        // Restore per-mascot manualOnly flag if it was persisted
+        String savedManualOnly = Main.getInstance( ).getProperties( ).getProperty( "ManualOnly.mascot" + id );
+        if( savedManualOnly != null )
+            manualOnly = Boolean.parseBoolean( savedManualOnly );
 
         log.log( Level.INFO, "Created a mascot ({0})", this );
 
@@ -438,6 +453,19 @@ public class Mascot
             }
         } );
 
+        // "Manual Only" checkbox — restricts autonomous behavior to Stand/Fall/Dragged/Thrown/GrabWall.
+        // All other behaviors can still be triggered manually via hotkey or right-click menu.
+        final JCheckBoxMenuItem manualOnlyMenu = new JCheckBoxMenuItem( "Manual Only", manualOnly );
+        manualOnlyMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                manualOnly = manualOnlyMenu.isSelected( );
+                Main.getInstance( ).getProperties( ).setProperty( "ManualOnly.mascot" + id, String.valueOf( manualOnly ) );
+                Main.getInstance( ).updateConfigFile( );
+            }
+        } );
+
         // "Paused" Menu item
         final JMenuItem pauseMenu = new JMenuItem( isAnimating( ) ? languageBundle.getString( "PauseAnimations" ) : languageBundle.getString( "ResumeAnimations" ) );
         pauseMenu.addActionListener( new ActionListener( )
@@ -477,7 +505,8 @@ public class Mascot
                             {
                                 try
                                 {	
-                                    setBehavior( config.buildBehavior( command ) );
+                                    if( isCurrentActionInterruptable( ) )
+                                        setBehavior( config.buildBehavior( command ) );
                                 }
                                 catch( Exception err )
                                 {
@@ -693,6 +722,7 @@ public class Mascot
         popup.add( personalFilterSubmenu );
         popup.add( new JSeparator( ) );
         popup.add( saveLocationMenu );
+        popup.add( manualOnlyMenu );
         popup.add( pauseMenu );
 
         final boolean currentAlwaysOnTop = Boolean.parseBoolean(
@@ -974,6 +1004,7 @@ public class Mascot
 
         animating = false;
         Main.getInstance( ).getProperties( ).remove( "DisabledBehaviours.mascot" + id );
+        Main.getInstance( ).getProperties( ).remove( "ManualOnly.mascot" + id );
         for( String key : new String[]{ "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen" } )
             Main.getInstance( ).getProperties( ).remove( key + ".mascot" + id );
         getWindow( ).dispose( );
@@ -1089,6 +1120,29 @@ public class Mascot
         return behavior;
     }
 
+    /**
+     * Returns false if the current action has Draggable="false", meaning it
+     * should not be interrupted by external triggers (hotkeys, right-click menu).
+     * Internal transitions from UserBehavior (natural completion, fall, etc.) bypass this.
+     */
+    public boolean isCurrentActionInterruptable( )
+    {
+        if( behavior instanceof com.group_finity.mascot.behavior.UserBehavior )
+        {
+            com.group_finity.mascot.action.Action action =
+                ( (com.group_finity.mascot.behavior.UserBehavior) behavior ).getAction( );
+            if( action instanceof com.group_finity.mascot.action.ActionBase )
+            {
+                try
+                {
+                    return ( (com.group_finity.mascot.action.ActionBase) action ).isDraggable( );
+                }
+                catch( com.group_finity.mascot.exception.VariableException ignored ) { }
+            }
+        }
+        return true;
+    }
+
     public void setBehavior( final Behavior behavior ) throws CantBeAliveException
     {
         this.behavior = behavior;
@@ -1150,6 +1204,19 @@ public class Mascot
 
     public void setCurrentScale( double scale ) { this.currentScale = scale; }
     public double getCurrentScale( )            { return currentScale; }
+
+    /** Consume the queued jump X nudge (returns offset and resets to 0). */
+    public int consumeJumpTargetXOffset( )
+    {
+        int v = jumpTargetXOffset;
+        jumpTargetXOffset = 0;
+        return v;
+    }
+    /** Queue a one-shot nudge to the active Jump's targetX. Called from JNH thread. */
+    public void addJumpTargetXOffset( int dx ) { jumpTargetXOffset += dx; }
+
+    public boolean isManualOnly( )          { return manualOnly; }
+    public void setManualOnly( boolean v )  { manualOnly = v; }
 
     public boolean isPinnedLocation( )         { return pinnedLocation; }
     public void setPinnedLocation( boolean v ) { pinnedLocation = v; }

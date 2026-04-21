@@ -14,6 +14,7 @@ Shimeji-ee is a Windows desktop mascot that freely wanders and plays around the 
 8. Source
 9. Library
 10. Trouble Shooting
+11. Changes
 
 ==== Homepage ==== 
 
@@ -62,6 +63,7 @@ The logging.properties file defines how logging errors is done.
 The actions.xml file specifies the different actions Shimeji can do.  When listing images, only include the file name.  More detail on this file will hopefully be added later.
 The behaviors.xml file specifies when Shimeji performs each action.  More detail on this file will /hopefully be added later.
 The settings.properties file details which Shimeji are active as well as the windows with which they can interact. These settings can be changed using the program itself.
+The hotkeys.properties file defines global hotkey bindings that trigger specific behaviors.  See the section on Hotkeys below for details.
 
 Each type of Shimeji is configured through:
 
@@ -92,6 +94,28 @@ Dragged
 Thrown
 
 The icon used for the system tray is img/icon.png
+
+==== Hotkeys ====
+
+Global hotkeys can be configured in conf/hotkeys.properties.  Each line maps a key combo to a behavior name.
+
+Format: <combo>=<BehaviorName>
+
+Key combo syntax (case-insensitive, tokens joined by +):
+  Modifiers : ctrl, shift, alt, meta
+  Keys      : F1-F12, A-Z, 0-9, SPACE, ENTER, HOME, END, etc.
+  Mouse     : MOUSE1 (left), MOUSE2 (right), MOUSE3 (middle), MOUSE4, MOUSE5
+
+To target a specific mascot image set, prefix the behavior name with the image set name and a colon:
+  MOUSE4=Mario:JumpToCursor
+
+To make a key loop the behavior for as long as it is held down, suffix the behavior name with !hold:
+  RIGHT=Mario:MoveRight!hold
+  LEFT=Mario:MoveLeft!hold
+
+Without !hold, the key fires once on press.  With !hold, the behavior plays through cleanly to the end and loops until the key is released, at which point the mascot returns to normal behavior.
+
+Lines starting with # are comments.  Blank lines are ignored.
 
 ==== How to Quit ==== 
 
@@ -129,3 +153,85 @@ If the Shimeji-ee icon appears, but no Shimeji appear:
 3. Make sure you have Java on your system.
 4. If you're somewhat computer savvy, you can try running Shimeji-ee from the command line.  Navigate to the Shimeji-ee directory and run this command: "C:\Program Files (x86)\Java\jre6\bin\java" -jar Shimeji-ee.jar
 5. Try checking the log (ShimejiLogX.log) for errors.  If you find a bug (which is very likely), post it up on the Shimeji-ee homepage in the issues section.
+
+==== Changes ====
+
+The following changes have been made from the base Shimeji-ee source.
+
+---- Multi-Window Support ----
+
+The interactive window detection system has been overhauled.  Previously, each mascot performed its own full EnumWindows scan every tick, meaning 12 mascots would trigger 12 separate scans per tick.  Now, WindowsEnvironment.beginTick() runs a single shared EnumWindows scan once per tick, and all mascots read from that shared snapshot.  This significantly reduces CPU overhead when many mascots are running.
+
+Multi-monitor awareness has also been improved.  The work area is now calculated per-monitor using MonitorFromPoint and GetMonitorInfo, allowing Shimeji to correctly respect taskbar positions and work area boundaries on each individual screen in a multi-monitor setup.
+
+---- Global Hotkeys ----
+
+A new HotkeyManager class provides global hotkey support via the JNativeHook library.  Hotkeys are configured in conf/hotkeys.properties and can trigger any named behavior on all mascots or on a specific image set.  Keys support modifier combinations (ctrl, shift, alt, meta) and mouse buttons (MOUSE1-MOUSE5).
+
+A hold-to-loop mode is available by appending !hold to the behavior name.  When a key is held, the behavior plays through cleanly to completion and loops from the start, rather than restarting on every OS key-repeat event.  Releasing the key returns the mascot to its normal behavior on its next natural action completion.
+
+---- Dynamic Scaling ----
+
+Mascots can now be scaled at runtime using the new Scale action type.  Scale smoothly interpolates the mascot's display size toward a target scale factor each tick.  The scale can be driven by script expressions, for example tying mascot size to CPU load.  Per-image-set scale values are persisted in settings.properties so a mascot remembers its size on next spawn.
+
+XML usage:
+  <Action Name="ScaleWithLoad" Type="Embedded"
+          Class="com.group_finity.mascot.action.Scale"
+          Target="#{mascot.environment.cpuLoad / 100.0 * 1.9 + 0.1}"
+          Speed="0.03" />
+
+---- System Sensor Monitoring ----
+
+A new CpuTempMonitor class polls system hardware sensor data every few seconds using a PowerShell script and LibreHardwareMonitorLib.dll.  The following values are exposed to XML scripting via mascot.environment:
+
+  cpuTemp      - CPU Core Average temperature (degrees C)
+  cpuLoad      - CPU Total load (%)
+  gpuTemp      - GPU Core temperature (degrees C)
+  gpuLoad      - GPU Core load (%)
+  ramLoad      - Total RAM usage (%)
+  batteryLevel - Battery charge level (%)
+
+All values return -1 if unavailable.  Requirements: LibreHardwareMonitorLib.dll and get_cpu_temp.ps1 placed in the Shimeji root folder, and Shimeji running as administrator.
+
+---- Affordance System ----
+
+A new affordance system allows mascots to advertise capabilities and react to each other.  Two new action types support this:
+
+AffordanceStay - A Stay-type action that advertises an affordance string while active, and watches for a nearby mascot advertising a specified trigger affordance.  When a triggering mascot is found within the configured Proximity distance, this mascot automatically transitions to a specified TriggerBehavior.  This enables mascot interactions such as a block waiting to be hit without requiring cross-mascot script calls.
+
+XML usage:
+  <Action Name="Stand" Type="Embedded"
+          Class="com.group_finity.mascot.action.AffordanceStay"
+          Affordance="BlockHittable"
+          TriggerAffordance="BlockHitSignal"
+          TriggerBehavior="SpawnContents"
+          Proximity="80">
+    <Animation> ... </Animation>
+  </Action>
+
+Manager also exposes getNearestAffordance() and triggerBehavior() methods for scripts that need to locate and interact with other mascots directly.
+
+---- Synchronized Animation ----
+
+A new SyncedStay action type locks a Stay animation's phase to a global wall-clock tick counter, so every mascot instance using the action displays the same animation frame at the same moment, regardless of when each mascot spawned or had its action reset.
+
+XML usage:
+  <Action Name="Stand" Type="Embedded"
+          Class="com.group_finity.mascot.action.SyncedStay">
+    <Animation>
+      <Pose Image="/shime1.png" ImageAnchor="64,216" Velocity="0,0" Duration="24" />
+      ...
+    </Animation>
+  </Action>
+
+---- Always On Top Controls ----
+
+Per-mascot and global Always On Top settings have been added.  Each mascot's right-click menu includes an Always On Top toggle that persists per image set in settings.properties.  A global Always On Top setting and a separate Always On Top for the debug window are available in the Settings dialog.
+
+---- Performance Improvements ----
+
+The main tick loop in Manager has been optimized: mascot.tick() and mascot.apply() are now combined into a single list pass instead of two separate loops.  The mascot list snapshot is only rebuilt when the mascot list actually changes rather than every tick.
+
+---- Additional Languages ----
+
+Korean (ko-KR) and Korean romanization (kr) language files have been added, bringing the total supported interface languages to: English, Arabic, Catalan, German, Spanish, Finnish, French, Croatian, Italian, Japanese, Korean, Dutch, Polish, Brazilian Portuguese, European Portuguese, Romanian, Russian, Serbian, Vietnamese, Simplified Chinese, and Traditional Chinese.

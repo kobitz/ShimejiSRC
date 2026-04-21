@@ -147,8 +147,21 @@ public class Jump extends ActionBase
                 // No target found — fall back to static value
             }
             default:
+            {
                 Number val = eval( getSchema( ).getString( PARAMETER_TARGETX ), Number.class, DEFAULT_TARGETX );
-                return val != null ? val.intValue( ) : DEFAULT_TARGETX;
+                int baseX = val != null ? val.intValue( ) : DEFAULT_TARGETX;
+                int steer = getMascot( ).consumeJumpTargetXOffset( );
+                if( steer != 0 )
+                {
+                    double currentDX = baseX - getMascot( ).getAnchor( ).x;
+                    if( ( steer < 0 && currentDX > 0 ) || ( steer > 0 && currentDX < 0 ) )
+                        // Reverse input — redirect target to current X (straight up from here)
+                        baseX = getMascot( ).getAnchor( ).x;
+                    else
+                        baseX += (int)( steer * getMascot( ).getCurrentScale( ) );
+                }
+                return baseX;
+            }
         }
     }
 

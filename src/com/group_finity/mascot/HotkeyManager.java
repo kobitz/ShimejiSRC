@@ -9,12 +9,14 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 
 /**
  * Global hotkey manager for Shimeji.
@@ -52,8 +54,11 @@ import java.util.logging.Logger;
  * Lines starting with # are comments. Blank lines are ignored.
  * Duplicate key lines are merged: later lines are appended with comma.
  */
+
 public class HotkeyManager implements NativeKeyListener, NativeMouseListener
 {
+    // This tracks keys that have already triggered a behavior so they don't "stutter"
+    private final Set<Integer> toggledKeys = new HashSet<>();
     private static final Logger log = Logger.getLogger( HotkeyManager.class.getName( ) );
 
     private static final String HOTKEYS_FILE = "conf/hotkeys.properties";
@@ -201,8 +206,18 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
     // ── NativeKeyListener ─────────────────────────────────────────────────────
 
     @Override
-    public void nativeKeyPressed( NativeKeyEvent e )
-    {
+    public void nativeKeyPressed(NativeKeyEvent e) {
+        int keyCode = e.getKeyCode();
+
+        // 1. THE BOUNCER: If the key is already pressed, stop and do nothing!
+        if (toggledKeys.contains(keyCode)) {
+            return; 
+        }
+
+        // 2. THE NOTE: Record that the key is now pressed
+        toggledKeys.add(keyCode);
+
+        // 3. YOUR ORIGINAL CODE (Now safely inside the method):
         String combo = buildKeyCombo( e );
         java.util.List<Binding> list = bindings.get( combo );
         if( list == null ) return;
@@ -212,15 +227,14 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
             if( b.hold )
             {
                 // Register as held — suppress OS repeats entirely.
-                // The loop is driven by tickHeldKeys() instead.
                 heldCombos.add( combo );
-                // Fire immediately on first press so there's no initial delay.
+                // Fire immediately on first press
                 if( manager != null )
                     fireBindingEntry( b.behaviorEntry, manager, false );
             }
             else
             {
-                // One-shot: fire normally on press.
+                // One-shot fire
                 if( manager != null )
                     fireBindingEntry( b.behaviorEntry, manager, false );
             }
@@ -228,11 +242,14 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
     }
 
     @Override
-    public void nativeKeyReleased( NativeKeyEvent e )
-    {
-        // Remove from held set so tickHeldKeys stops looping it.
+    public void nativeKeyReleased(NativeKeyEvent e) {
+        // 1. Clear the "Bouncer" clipboard so the key can be pressed again later
+        toggledKeys.remove(e.getKeyCode());
+
+        // 2. Your existing logic to stop the looping
         heldCombos.remove( buildKeyCombo( e ) );
     }
+    
 
     @Override public void nativeKeyTyped( NativeKeyEvent e ) { }
 
@@ -281,15 +298,50 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
                 if( reFireMode )
                     mgr.reFireBehaviorIfFinished( imageSet, behavior );
                 else
+                {
+                    applyJumpSteerIfDirectional( behavior, imageSet, mgr );
                     mgr.setBehaviorAllSafe( imageSet, behavior );
+                }
             }
             else
             {
                 if( reFireMode )
                     mgr.reFireBehaviorIfFinished( null, part );
                 else
+                {
+                    applyJumpSteerIfDirectional( part, null, mgr );
                     mgr.setBehaviorAllSafe( part );
+                }
             }
+        }
+    }
+
+    /**
+     * If the behavior name contains "Left" or "Right", nudge the Jump targetX
+     * of any mascot (matching imageSet if non-null) that is currently mid-jump.
+     * Uses ±8 px (pre-scale) matching the MoveLeft/MoveRight fall-nudge value.
+     * The mascot's Jump.getTargetX() will consume and apply the offset next tick.
+     */
+    private void applyJumpSteerIfDirectional( final String behaviorName,
+                                              final String imageSet,
+                                              final Manager mgr )
+    {
+        String lower = behaviorName.toLowerCase( );
+        int dx;
+        if(      lower.contains( "left"  ) ) dx = -8;
+        else if( lower.contains( "right" ) ) dx =  8;
+        else return;
+
+        for( com.group_finity.mascot.Mascot mascot : mgr.getMascotList( ) )
+        {
+            if( imageSet != null && !mascot.getImageSet( ).equals( imageSet ) ) continue;
+            // Only steer if the mascot is currently executing a Jump action
+            com.group_finity.mascot.behavior.Behavior beh = mascot.getBehavior( );
+            if( !( beh instanceof com.group_finity.mascot.behavior.UserBehavior ) ) continue;
+            com.group_finity.mascot.action.Action action =
+                ( (com.group_finity.mascot.behavior.UserBehavior) beh ).getAction( );
+            if( action instanceof com.group_finity.mascot.action.Jump )
+                mascot.addJumpTargetXOffset( dx );
         }
     }
 

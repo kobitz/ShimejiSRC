@@ -169,6 +169,21 @@ public class Configuration
 		}
 	}
 
+    /**
+     * Returns true if the behavior is allowed to run when the mascot is in manualOnly mode.
+     * Allowed set: Fall, Dragged, Thrown, and any behavior whose name contains
+     * "Stand" or "GrabWall" (case-insensitive).
+     */
+    private boolean isManualOnlyAllowed( final String behaviorName )
+    {
+        String n = behaviorName.toLowerCase( );
+        return n.equals( schema.getString( UserBehavior.BEHAVIOURNAME_FALL    ).toLowerCase( ) )
+            || n.equals( schema.getString( UserBehavior.BEHAVIOURNAME_DRAGGED ).toLowerCase( ) )
+            || n.equals( schema.getString( UserBehavior.BEHAVIOURNAME_THROWN  ).toLowerCase( ) )
+            || n.contains( "stand" )
+            || n.contains( "grabwall" );
+    }
+
     public Behavior buildNextBehavior( final String previousName, final Mascot mascot ) throws BehaviorInstantiationException
     {
         final VariableMap context = new VariableMap( );
@@ -182,7 +197,8 @@ public class Configuration
         {
             try
             {
-                if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot ) )
+                if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot )
+                    && ( !mascot.isManualOnly( ) || isManualOnlyAllowed( behaviorFactory.getName( ) ) ) )
                 {
                     candidates.add( behaviorFactory );
                     totalFrequency += behaviorFactory.getFrequency( );
@@ -206,7 +222,8 @@ public class Configuration
             {
                 try
                 {
-                    if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot ) )
+                    if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot )
+                        && ( !mascot.isManualOnly( ) || isManualOnlyAllowed( behaviorFactory.getName( ) ) ) )
                     {
                         candidates.add( behaviorFactory );
                         totalFrequency += behaviorFactory.getFrequency( );

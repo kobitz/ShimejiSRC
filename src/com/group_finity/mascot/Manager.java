@@ -29,6 +29,44 @@ import java.awt.Point;
  *    producing a smooth loop rather than replaying the start animation repeatedly.
  */
 public class Manager {
+		/**
+	 * Finds the nearest mascot with a specific affordance within a range.
+	 * Useful for Mario finding blocks to hit.
+	 */
+	public Mascot getNearestAffordance(Mascot self, String affordance, int maxDx, int maxDy) {
+		Mascot best = null;
+		double bestDist = Double.MAX_VALUE;
+
+		synchronized (this.getMascots()) {
+			for (Mascot o : this.getMascots()) {
+				if (o == self || !o.getAffordances().contains(affordance)) continue;
+
+				int dx = Math.abs(o.getAnchor().x - self.getAnchor().x);
+				int dy = self.getAnchor().y - o.getAnchor().y; // Up is positive
+
+				if (dx <= maxDx && dy > 0 && dy <= maxDy) {
+					if (dx < bestDist) {
+						bestDist = dx;
+						best = o;
+					}
+				}
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Triggers a behavior on another mascot (e.g., Mario hitting a Question Block).
+	 */
+	public void triggerBehavior(Mascot target, String behaviorName) {
+		try {
+			com.group_finity.mascot.config.Configuration cfg = 
+				Main.getInstance().getConfiguration(target.getImageSet());
+			target.setBehavior(cfg.buildBehavior(behaviorName, target));
+		} catch (Exception e) {
+			log.log(Level.WARNING, "Remote trigger failed", e);
+		}
+	}
 
 	private static final Logger log = Logger.getLogger(Manager.class.getName());
 
@@ -174,7 +212,7 @@ public class Manager {
 							try {
 								com.group_finity.mascot.config.Configuration cfg =
 									Main.getInstance().getConfiguration( mascot.getImageSet() );
-								if( cfg.getBehaviorBuilders().containsKey( heldBehavior ) )
+								if( cfg.getBehaviorBuilders().containsKey( heldBehavior ) && mascot.isCurrentActionInterruptable( ) )
 									mascot.setBehavior( cfg.buildBehavior( heldBehavior, mascot ) );
 							} catch( Exception ex ) {
 								log.log( java.util.logging.Level.WARNING, "Hold-loop reset failed", ex );
@@ -263,7 +301,7 @@ public class Manager {
 				{
 					com.group_finity.mascot.config.Configuration configuration =
 						Main.getInstance( ).getConfiguration( mascot.getImageSet( ) );
-					if( configuration.getBehaviorBuilders( ).containsKey( name ) )
+					if( configuration.getBehaviorBuilders( ).containsKey( name ) && mascot.isCurrentActionInterruptable( ) )
 						mascot.setBehavior( configuration.buildBehavior( name, mascot ) );
 				}
 				catch( final com.group_finity.mascot.exception.BehaviorInstantiationException e )
@@ -296,7 +334,7 @@ public class Manager {
 				{
 					com.group_finity.mascot.config.Configuration configuration =
 						Main.getInstance( ).getConfiguration( mascot.getImageSet( ) );
-					if( configuration.getBehaviorBuilders( ).containsKey( name ) )
+					if( configuration.getBehaviorBuilders( ).containsKey( name ) && mascot.isCurrentActionInterruptable( ) )
 						mascot.setBehavior( configuration.buildBehavior( name, mascot ) );
 				}
 				catch( final com.group_finity.mascot.exception.BehaviorInstantiationException e )
@@ -344,7 +382,8 @@ public class Manager {
 						continue;   // still running — let it finish
 				}
 
-				mascot.setBehavior( configuration.buildBehavior( behaviorName, mascot ) );
+				if( mascot.isCurrentActionInterruptable( ) )
+					mascot.setBehavior( configuration.buildBehavior( behaviorName, mascot ) );
 			}
 			catch( final com.group_finity.mascot.exception.BehaviorInstantiationException e )
 			{
