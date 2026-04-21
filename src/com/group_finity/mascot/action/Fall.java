@@ -112,8 +112,9 @@ public class Fall extends ActionBase {
             getMascot( ).setAnchor( new Point( x, y ) );
             if( dy > 0 )
             {
-                // HACK IE
-                for( int j = -80; j<=0; ++j )
+                // HACK IE — snap onto window top only if within 25 scaled px above
+                int snapRange = (int)( 25 * getMascot( ).getCurrentScale( ) );
+                for( int j = -snapRange; j<=0; ++j )
                 {
                     getMascot( ).setAnchor( new Point( x, y + j ) );
                     if( getEnvironment( ).getFloor( true ).isOn( getMascot( ).getAnchor( ) ) )

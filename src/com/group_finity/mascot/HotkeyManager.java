@@ -11,6 +11,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,29 +20,37 @@ import java.util.logging.Logger;
  * Global hotkey manager for Shimeji.
  *
  * Reads hotkey-to-behavior mappings from conf/hotkeys.properties and fires
- * manager.setBehaviorAll() for every active mascot when a bound key is pressed.
+ * manager.setBehaviorAllSafe() for every active mascot when a bound key is pressed.
+ *
+ * HOLD-TO-LOOP:
+ * When a key is held down the OS fires repeated nativeKeyPressed events which
+ * would snap the mascot back to frame 1 of its animation on every repeat.
+ * Instead, HotkeyManager tracks which combos are currently held and suppresses
+ * the OS repeats. Manager.tick() calls tickHeldKeys() each tick, which calls
+ * manager.reFireBehaviorIfFinished() — that only re-fires the behavior when
+ * the current action has fully completed, so the animation plays through
+ * cleanly to the end and then loops from the start. Release the key and the
+ * mascot falls back to normal behavior on its next natural completion.
  *
  * --- conf/hotkeys.properties format ---
  *
- * Each line is:   <combo>=<BehaviorName>
+ * Each line is:  <combo>=<BehaviorName>
  *
  * Key combo syntax (case-insensitive, tokens joined by +):
  *   Modifiers : ctrl, shift, alt, meta
- *   Keys      : any NativeKeyEvent.VC_* name with the VC_ stripped, e.g.
+ *   Keys      : any NativeKeyEvent.VC_* name with VC_ stripped, e.g.
  *               F1, F2, A, B, SPACE, ENTER, HOME, etc.
  *   Mouse     : MOUSE1, MOUSE2, MOUSE3, MOUSE4, MOUSE5
  *
- * Examples:
- *   ctrl+shift+j=JumpToCursor
- *   F9=ChaseMouse
- *   ctrl+alt+d=Dismissed
- *   MOUSE4=JumpToCursor
+ * To mark a binding as hold-to-loop, suffix the behavior name with !hold:
+ *   RIGHT=Mario:MoveRight!hold
+ *   LEFT=Mario:MoveLeft!hold
+ *
+ * Without !hold, the key fires once on press (original behaviour).
+ * With !hold, the behavior loops for as long as the key is held.
  *
  * Lines starting with # are comments. Blank lines are ignored.
- * The behavior name must match a behavior defined in the mascot's behaviors.xml.
- * If a mascot's image set does not define the named behavior it is silently
- * skipped for that mascot (no crash).
- * --------------------------------------
+ * Duplicate key lines are merged: later lines are appended with comma.
  */
 public class HotkeyManager implements NativeKeyListener, NativeMouseListener
 {
@@ -59,23 +69,37 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
         return instance;
     }
 
-    // Maps normalised combo string -> behavior name
-    private final Map<String, String> bindings = new LinkedHashMap<>( );
+    // ── Binding data ──────────────────────────────────────────────────────────
+
+    /** Parsed entry: behavior name + whether it is marked !hold */
+    private static class Binding {
+        final String  behaviorEntry; // e.g. "Mario:MoveRight" or "MoveRight"
+        final boolean hold;          // true → loop while held; false → fire once on press
+        Binding( String entry, boolean hold ) {
+            this.behaviorEntry = entry;
+            this.hold          = hold;
+        }
+    }
+
+    // combo → list of bindings (comma-joined in file maps to multiple entries)
+    private final Map<String, java.util.List<Binding>> bindings = new LinkedHashMap<>( );
+
+    // ── Hold state ────────────────────────────────────────────────────────────
+
+    /**
+     * Combos currently held by the user AND marked !hold.
+     * Written from JNativeHook's thread; read from Manager's tick thread.
+     * ConcurrentHashMap for thread-safe access without blocking either side.
+     */
+    private final Set<String> heldCombos = ConcurrentHashMap.newKeySet( );
 
     private Manager manager;
     private boolean hooked = false;
 
     private HotkeyManager( ) { }
 
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
+    // ── Public API ────────────────────────────────────────────────────────────
 
-    /**
-     * Call once after the Manager is started.
-     * Loads conf/hotkeys.properties and registers the OS-level hook.
-     * Safe to call even if the file doesn't exist (just does nothing).
-     */
     public void init( final Manager manager )
     {
         this.manager = manager;
@@ -106,9 +130,6 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
         }
     }
 
-    /**
-     * Call during application shutdown so JNativeHook cleans up its thread.
-     */
     public void shutdown( )
     {
         if( hooked )
@@ -117,9 +138,6 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
             {
                 GlobalScreen.removeNativeKeyListener( this );
                 GlobalScreen.removeNativeMouseListener( this );
-                // Replace the event dispatcher with one that shuts down
-                // immediately — this prevents JNativeHook's thread from
-                // blocking System.exit() after unregisterNativeHook().
                 GlobalScreen.setEventDispatcher( new java.util.concurrent.ThreadPoolExecutor(
                     1, 1, 0, java.util.concurrent.TimeUnit.SECONDS,
                     new java.util.concurrent.ArrayBlockingQueue<>( 1 ),
@@ -136,103 +154,165 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
             }
             hooked = false;
         }
+        heldCombos.clear( );
     }
 
-    // -------------------------------------------------------------------------
-    // NativeKeyListener
-    // -------------------------------------------------------------------------
+    /**
+     * Returns the held !hold behavior name for the given imageSet, or null if none held.
+     * Called per-mascot from Manager.tick() after mascot.tick() to detect when the held
+     * behavior has completed and needs to be restarted.
+     *
+     * If multiple held combos match (unlikely), returns the first one found.
+     * imageSet may be null to match bindings with no imageSet prefix.
+     */
+    public String getHeldBehaviorFor( final String imageSet )
+    {
+        if( heldCombos.isEmpty( ) ) return null;
+        for( String combo : heldCombos )
+        {
+            java.util.List<Binding> list = bindings.get( combo );
+            if( list == null ) continue;
+            for( Binding b : list )
+            {
+                if( !b.hold ) continue;
+                // Parse the behavior entry to check imageSet match
+                for( String part : b.behaviorEntry.split( "," ) )
+                {
+                    part = part.trim( );
+                    if( part.isEmpty( ) ) continue;
+                    if( part.contains( ":" ) )
+                    {
+                        String[] kv = part.split( ":", 2 );
+                        String   is = kv[0].trim( );
+                        String   bv = kv[1].trim( );
+                        if( is.equals( imageSet ) ) return bv;
+                    }
+                    else
+                    {
+                        // No imageSet prefix — applies to all
+                        return part;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    // ── NativeKeyListener ─────────────────────────────────────────────────────
 
     @Override
     public void nativeKeyPressed( NativeKeyEvent e )
     {
         String combo = buildKeyCombo( e );
-        String behavior = bindings.get( combo );
-        if( behavior != null )
-            fireBehavior( behavior );
+        java.util.List<Binding> list = bindings.get( combo );
+        if( list == null ) return;
+
+        for( Binding b : list )
+        {
+            if( b.hold )
+            {
+                // Register as held — suppress OS repeats entirely.
+                // The loop is driven by tickHeldKeys() instead.
+                heldCombos.add( combo );
+                // Fire immediately on first press so there's no initial delay.
+                if( manager != null )
+                    fireBindingEntry( b.behaviorEntry, manager, false );
+            }
+            else
+            {
+                // One-shot: fire normally on press.
+                if( manager != null )
+                    fireBindingEntry( b.behaviorEntry, manager, false );
+            }
+        }
     }
 
-    @Override public void nativeKeyReleased( NativeKeyEvent e ) { }
-    @Override public void nativeKeyTyped( NativeKeyEvent e )    { }
+    @Override
+    public void nativeKeyReleased( NativeKeyEvent e )
+    {
+        // Remove from held set so tickHeldKeys stops looping it.
+        heldCombos.remove( buildKeyCombo( e ) );
+    }
 
-    // -------------------------------------------------------------------------
-    // NativeMouseListener
-    // -------------------------------------------------------------------------
+    @Override public void nativeKeyTyped( NativeKeyEvent e ) { }
+
+    // ── NativeMouseListener ───────────────────────────────────────────────────
 
     @Override
     public void nativeMousePressed( NativeMouseEvent e )
     {
         String combo = buildMouseCombo( e );
-        String behavior = bindings.get( combo );
-        if( behavior != null )
-            fireBehavior( behavior );
+        java.util.List<Binding> list = bindings.get( combo );
+        if( list == null ) return;
+        for( Binding b : list )
+        {
+            if( b.hold ) heldCombos.add( combo );
+            if( manager != null ) fireBindingEntry( b.behaviorEntry, manager, false );
+        }
     }
 
-    @Override public void nativeMouseReleased( NativeMouseEvent e ) { }
-    @Override public void nativeMouseClicked( NativeMouseEvent e )  { }
-
-    // -------------------------------------------------------------------------
-    // Internal helpers
-    // -------------------------------------------------------------------------
-
-    private void fireBehavior( final String behaviorName )
+    @Override
+    public void nativeMouseReleased( NativeMouseEvent e )
     {
-        if( manager == null )
-            return;
+        heldCombos.remove( buildMouseCombo( e ) );
+    }
 
-        for( String entry : behaviorName.split( "," ) )
+    @Override public void nativeMouseClicked( NativeMouseEvent e ) { }
+
+    // ── Internal helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Fire a single behavior entry string (may be "ImageSet:Behavior" or just "Behavior").
+     * @param reFireMode if true, calls reFireBehaviorIfFinished (for hold-loop ticks)
+     *                   instead of setBehaviorAllSafe (which always interrupts).
+     */
+    private void fireBindingEntry( final String entry, final Manager mgr, final boolean reFireMode )
+    {
+        for( String part : entry.split( "," ) )
         {
-            entry = entry.trim( );
-            if( entry.isEmpty( ) ) continue;
+            part = part.trim( );
+            if( part.isEmpty( ) ) continue;
 
-            if( entry.contains( ":" ) )
+            if( part.contains( ":" ) )
             {
-                // Format is ImageSet:BehaviorName — target only that image set
-                String[] parts = entry.split( ":", 2 );
-                String imageSet = parts[0].trim( );
-                String behavior = parts[1].trim( );
-                manager.setBehaviorAllSafe( imageSet, behavior );
+                String[] kv      = part.split( ":", 2 );
+                String imageSet  = kv[0].trim( );
+                String behavior  = kv[1].trim( );
+                if( reFireMode )
+                    mgr.reFireBehaviorIfFinished( imageSet, behavior );
+                else
+                    mgr.setBehaviorAllSafe( imageSet, behavior );
             }
             else
             {
-                // No prefix — fire for all mascots
-                manager.setBehaviorAllSafe( entry );
+                if( reFireMode )
+                    mgr.reFireBehaviorIfFinished( null, part );
+                else
+                    mgr.setBehaviorAllSafe( part );
             }
         }
     }
 
-    /**
-     * Builds a normalised combo key from a key event, e.g. "ctrl+shift+f9".
-     */
     private String buildKeyCombo( NativeKeyEvent e )
     {
         StringBuilder sb = new StringBuilder( );
         int mod = e.getModifiers( );
-
         if( ( mod & NativeKeyEvent.CTRL_MASK  ) != 0 ) sb.append( "ctrl+"  );
         if( ( mod & NativeKeyEvent.SHIFT_MASK ) != 0 ) sb.append( "shift+" );
         if( ( mod & NativeKeyEvent.ALT_MASK   ) != 0 ) sb.append( "alt+"   );
         if( ( mod & NativeKeyEvent.META_MASK  ) != 0 ) sb.append( "meta+"  );
-
-        // getKeyText gives human-readable names like "F9", "A", "Space"
         sb.append( NativeKeyEvent.getKeyText( e.getKeyCode( ) ).toLowerCase( ).replace( " ", "" ) );
-
         return sb.toString( );
     }
 
-    /**
-     * Builds a normalised combo key from a mouse button event, e.g. "mouse4".
-     * Modifier keys held during mouse press are included, e.g. "ctrl+mouse4".
-     */
     private String buildMouseCombo( NativeMouseEvent e )
     {
         StringBuilder sb = new StringBuilder( );
         int mod = e.getModifiers( );
-
         if( ( mod & NativeMouseEvent.CTRL_MASK  ) != 0 ) sb.append( "ctrl+"  );
         if( ( mod & NativeMouseEvent.SHIFT_MASK ) != 0 ) sb.append( "shift+" );
         if( ( mod & NativeMouseEvent.ALT_MASK   ) != 0 ) sb.append( "alt+"   );
         if( ( mod & NativeMouseEvent.META_MASK  ) != 0 ) sb.append( "meta+"  );
-
         sb.append( "mouse" ).append( e.getButton( ) );
         return sb.toString( );
     }
@@ -265,13 +345,19 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
 
                 String normKey = rawKey.toLowerCase( ).replaceAll( "\\s*\\+\\s*", "+" );
 
-                // If the key already exists, append with comma
-                if( bindings.containsKey( normKey ) )
-                    bindings.put( normKey, bindings.get( normKey ) + "," + rawVal );
-                else
-                    bindings.put( normKey, rawVal );
+                // Parse !hold suffix
+                boolean hold = false;
+                if( rawVal.endsWith( "!hold" ) )
+                {
+                    hold   = true;
+                    rawVal = rawVal.substring( 0, rawVal.length( ) - "!hold".length( ) ).trim( );
+                }
 
-                log.log( Level.INFO, "HotkeyManager: bound [{0}] -> {1}", new Object[]{ normKey, bindings.get( normKey ) } );
+                Binding binding = new Binding( rawVal, hold );
+                bindings.computeIfAbsent( normKey, k -> new java.util.ArrayList<>( ) ).add( binding );
+
+                log.log( Level.INFO, "HotkeyManager: bound [{0}] -> {1}{2}",
+                    new Object[]{ normKey, rawVal, hold ? " [hold-loop]" : "" } );
             }
         }
         catch( IOException e )

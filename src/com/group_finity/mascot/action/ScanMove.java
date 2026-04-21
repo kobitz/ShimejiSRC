@@ -42,6 +42,10 @@ public class ScanMove extends BorderedAction
     public static final String PARAMETER_TARGETID = "TargetId";
 
     private static final int DEFAULT_TARGETID = -1;
+
+    public static final String PARAMETER_MAXDY = "MaxDY";
+
+    private static final int DEFAULT_MAXDY = Integer.MAX_VALUE;
     
     private WeakReference<Mascot> target;
     
@@ -77,7 +81,8 @@ public class ScanMove extends BorderedAction
         if( target == null || target.get( ) == null )
             return false;
         
-        return super.hasNext( ) && ( turning || target.get( ).getAffordances( ).contains( getAffordance( ) ) );
+        return super.hasNext( ) && ( turning || target.get( ).getAffordances( ).contains( getAffordance( ) ) )
+            && Math.abs( target.get( ).getAnchor( ).y - getMascot( ).getAnchor( ).y ) <= getMaxDY( );
     }
 
     @Override
@@ -147,7 +152,8 @@ public class ScanMove extends BorderedAction
             }
         }
         
-        if( !turning && Math.abs( getMascot( ).getAnchor( ).x - targetX ) <= getProximity( ) )
+        if( !turning && Math.abs( getMascot( ).getAnchor( ).x - targetX ) <= getProximity( )
+            && Math.abs( getMascot( ).getAnchor( ).y - targetY ) <= getMaxDY( ) )
         {
             try
             {
@@ -244,6 +250,11 @@ public class ScanMove extends BorderedAction
     private WeakReference<Mascot> acquireTarget( ) throws VariableException
     {
         return getMascot( ).getManager( ).getMascotNearestWithAffordance( getAffordance( ), getMascot( ).getAnchor( ) );
+    }
+
+    private int getMaxDY( ) throws VariableException
+    {
+        return eval( getSchema( ).getString( PARAMETER_MAXDY ), Number.class, DEFAULT_MAXDY ).intValue( );
     }
 
     private int getTargetId( ) throws VariableException

@@ -292,7 +292,9 @@ public class Main
         // Create the tray icon
         createTrayIcon( );
         
-        // Create the first mascot
+        // Create the first mascot, unless this imageSet has pinned mascots that
+        // will be restored by restorePinnedMascots() — in that case skip the
+        // random spawn so we don't get an extra mascot falling in from the top.
         for( String imageSet : imageSets )
         {
             String informationAlreadySeen = properties.getProperty( "InformationDismissed", "" );
@@ -306,8 +308,13 @@ public class Main
                 setMascotInformationDismissed( imageSet );
                 updateConfigFile( );
             }
-            createMascot( imageSet );
+            if( !hasPinnedMascots( imageSet ) )
+                createMascot( imageSet );
         }
+
+        // Restore any mascots that had "Save Location" pinned in a previous session.
+        // These spawn at their exact saved positions with their saved behavior.
+        restorePinnedMascots( );
 
         getManager( ).start( );
         HotkeyManager.getInstance( ).init( getManager( ) );
@@ -1330,6 +1337,115 @@ public class Main
         }
     }
     
+    /**
+     * Spawns a mascot of the given imageSet at an exact saved position, restoring
+     * the named behavior directly so it starts in the same state it was pinned in.
+     * Falls back to buildNextBehavior if the behavior name is missing or unknown.
+     */
+    private void createMascotAt( final String imageSet, final String behaviorName,
+                                  final int x, final int y, final boolean lookRight,
+                                  final String pinnedPropertyKey )
+    {
+        log.log( Level.INFO, "Restoring pinned mascot ({0}) at ({1},{2})", new Object[]{ imageSet, x, y } );
+
+        final Mascot mascot = new Mascot( imageSet );
+
+        // Restore saved per-imageSet disabled toggleable behaviours
+        String savedDisabled = properties.getProperty( "DisabledBehaviours.imageset." + imageSet );
+        if( savedDisabled != null && !savedDisabled.isEmpty( ) )
+            properties.setProperty( "DisabledBehaviours.mascot" + mascot.getId( ), savedDisabled );
+
+        mascot.setAnchor( new java.awt.Point( x, y ) );
+        mascot.getEnvironment( ).tick( );
+        mascot.setLookRight( lookRight );
+        mascot.setPinnedLocation( true );
+        mascot.setPinnedKey( pinnedPropertyKey );
+
+        try
+        {
+            com.group_finity.mascot.behavior.Behavior behavior = null;
+            if( behaviorName != null && !behaviorName.isEmpty( ) )
+            {
+                try
+                {
+                    behavior = getConfiguration( imageSet ).buildBehavior( behaviorName );
+                }
+                catch( Exception ignored )
+                {
+                    // Saved behavior no longer exists — fall through to default
+                }
+            }
+            if( behavior == null )
+                behavior = getConfiguration( imageSet ).buildNextBehavior( null, mascot );
+
+            mascot.setBehavior( behavior );
+            this.getManager( ).add( mascot );
+        }
+        catch( final com.group_finity.mascot.exception.BehaviorInstantiationException e )
+        {
+            log.log( Level.SEVERE, "Failed to restore pinned mascot", e );
+            mascot.dispose( );
+        }
+        catch( final com.group_finity.mascot.exception.CantBeAliveException e )
+        {
+            log.log( Level.SEVERE, "Fatal Error restoring pinned mascot", e );
+            mascot.dispose( );
+        }
+        catch( Exception e )
+        {
+            log.log( Level.SEVERE, imageSet + " error restoring pinned mascot", e );
+            mascot.dispose( );
+        }
+    }
+
+    /** Returns true if there is at least one saved PinnedMascot entry for the given imageSet. */
+    private boolean hasPinnedMascots( final String imageSet )
+    {
+        for( String key : properties.stringPropertyNames( ) )
+        {
+            if( !key.startsWith( "PinnedMascot." ) ) continue;
+            final String value = properties.getProperty( key );
+            if( value != null && value.startsWith( imageSet + "|" ) ) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Reads all "PinnedMascot.N" entries from properties and spawns each one at
+     * its saved location. Called once at startup after configurations are loaded.
+     */
+    private void restorePinnedMascots( )
+    {
+        for( String key : new java.util.ArrayList<>( properties.stringPropertyNames( ) ) )
+        {
+            if( !key.startsWith( "PinnedMascot." ) ) continue;
+
+            final String value = properties.getProperty( key );
+            if( value == null || value.isEmpty( ) ) continue;
+
+            final String[] parts = value.split( "\\|", -1 );
+            if( parts.length < 5 ) continue;
+
+            final String imageSet   = parts[ 0 ];
+            final String behavior   = parts[ 1 ];
+            final int    x;
+            final int    y;
+            final boolean lookRight;
+            try
+            {
+                x         = Integer.parseInt( parts[ 2 ] );
+                y         = Integer.parseInt( parts[ 3 ] );
+                lookRight = Boolean.parseBoolean( parts[ 4 ] );
+            }
+            catch( NumberFormatException ignored ) { continue; }
+
+            // Only restore if we actually have a configuration loaded for this imageSet
+            if( !configurations.containsKey( imageSet ) ) continue;
+
+            createMascotAt( imageSet, behavior, x, y, lookRight, key );
+        }
+    }
+
     private void refreshLanguage( )
     {
         ResourceBundle.Control utf8Control = new Utf8ResourceBundleControl( false );
@@ -1452,9 +1568,10 @@ public class Main
     {
         try
         {
-            // Remove any stale per-mascot keys (e.g. Breeding.mascot3) before saving.
-            // Settings are now written directly as imageset-level keys on change,
-            // so mascotN keys are never needed in the saved file.
+            // Remove any stale per-mascot runtime keys (e.g. Breeding.mascot3) before saving.
+            // These are written transiently at runtime and should never persist to disk.
+            // Note: "PinnedMascot.N" keys are intentionally NOT matched here — they use
+            // the word "PinnedMascot" as prefix, not "...mascotN" suffix, so they survive.
             for( String key : new java.util.ArrayList<>( properties.stringPropertyNames( ) ) )
             {
                 if( key.matches( ".+\\.mascot\\d+$" ) )

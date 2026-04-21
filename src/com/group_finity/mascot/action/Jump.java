@@ -97,7 +97,7 @@ public class Jump extends ActionBase
 
         final double distance = Math.sqrt( distanceX * distanceX + distanceY * distanceY );
 
-        final double velocity = getVelocity( );
+        final double velocity = getVelocity( ) * getMascot( ).getCurrentScale( );
 
         if( distance != 0 )
         {

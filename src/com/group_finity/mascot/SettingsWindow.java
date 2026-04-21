@@ -55,6 +55,7 @@ public class SettingsWindow extends javax.swing.JDialog
     private Boolean alwaysShowShimejiChooser = false;
     private Boolean alwaysShowInformationScreen = false;
     private Boolean alwaysOnTopDebugWindow = false;
+    private Boolean alwaysOnTop = true;
     private String filter = "nearest";
     private double scaling = 1.0;
     private double opacity = 1.0;
@@ -109,6 +110,7 @@ public class SettingsWindow extends javax.swing.JDialog
         alwaysShowShimejiChooser = Boolean.parseBoolean( properties.getProperty( "AlwaysShowShimejiChooser", "false" ) );
         alwaysShowInformationScreen = Boolean.parseBoolean( properties.getProperty( "AlwaysShowInformationScreen", "false" ) );
         alwaysOnTopDebugWindow = Boolean.parseBoolean( properties.getProperty( "AlwaysOnTopDebugWindow", "false" ) );
+        alwaysOnTop = Boolean.parseBoolean( properties.getProperty( "AlwaysOnTop", "true" ) );
         String filterText = Main.getInstance( ).getProperties( ).getProperty( "Filter", "false" );
         filter = "nearest";
         if( filterText.equalsIgnoreCase( "true" ) || filterText.equalsIgnoreCase( "hqx" ) )
@@ -127,6 +129,7 @@ public class SettingsWindow extends javax.swing.JDialog
         chkAlwaysShowShimejiChooser.setSelected( alwaysShowShimejiChooser );
         chkAlwaysShowInformationScreen.setSelected( alwaysShowInformationScreen );
         chkAlwaysOnTopDebugWindow.setSelected( alwaysOnTopDebugWindow );
+        chkAlwaysOnTop.setSelected( alwaysOnTop );
         if( filter.equals( "bicubic" ) )
             radFilterBicubic.setSelected( true );
         else if( filter.equals( "hqx" ) )
@@ -248,6 +251,7 @@ public class SettingsWindow extends javax.swing.JDialog
         chkAlwaysShowShimejiChooser.setText( language.getString( "AlwaysShowShimejiChooser" ) );
         chkAlwaysShowInformationScreen.setText( language.getString( "AlwaysShowInformationScreen" ) );
         chkAlwaysOnTopDebugWindow.setText( language.getString( "AlwaysOnTopDebugWindow" ) );
+        chkAlwaysOnTop.setText( language.containsKey( "AlwaysOnTop" ) ? language.getString( "AlwaysOnTop" ) : "Always On Top" );
         lblOpacity.setText( language.getString( "Opacity" ) );
         lblScaling.setText( language.getString( "Scaling" ) );
         lblFilter.setText( language.getString( "FilterOptions" ) );
@@ -425,6 +429,7 @@ public class SettingsWindow extends javax.swing.JDialog
         lblOpacity = new javax.swing.JLabel();
         chkAlwaysShowInformationScreen = new javax.swing.JCheckBox();
         chkAlwaysOnTopDebugWindow = new javax.swing.JCheckBox();
+        chkAlwaysOnTop = new javax.swing.JCheckBox();
         pnlInteractiveWindows = new javax.swing.JPanel();
         pnlInteractiveTabs = new javax.swing.JTabbedPane();
         pnlWhitelistTab = new javax.swing.JPanel();
@@ -629,6 +634,14 @@ public class SettingsWindow extends javax.swing.JDialog
                 chkAlwaysOnTopDebugWindowItemStateChanged(evt);
             }
         });
+        chkAlwaysOnTop.setText("Always On Top");
+        chkAlwaysOnTop.addItemListener(new java.awt.event.ItemListener()
+        {
+            public void itemStateChanged(java.awt.event.ItemEvent evt)
+            {
+                chkAlwaysOnTopItemStateChanged(evt);
+            }
+        });
 
         javax.swing.GroupLayout pnlGeneralLayout = new javax.swing.GroupLayout(pnlGeneral);
         pnlGeneral.setLayout(pnlGeneralLayout);
@@ -651,7 +664,8 @@ public class SettingsWindow extends javax.swing.JDialog
                                 .addComponent(radFilterHqx))))
                     .addComponent(lblOpacity)
                     .addComponent(chkAlwaysShowInformationScreen)
-                    .addComponent(chkAlwaysOnTopDebugWindow))
+                    .addComponent(chkAlwaysOnTopDebugWindow)
+                    .addComponent(chkAlwaysOnTop))
                 .addContainerGap(26, Short.MAX_VALUE))
         );
         pnlGeneralLayout.setVerticalGroup(
@@ -663,6 +677,8 @@ public class SettingsWindow extends javax.swing.JDialog
                 .addComponent(chkAlwaysShowInformationScreen)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(chkAlwaysOnTopDebugWindow)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(chkAlwaysOnTop)
                 .addGap(18, 18, 18)
                 .addComponent(lblOpacity)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
@@ -1901,6 +1917,10 @@ public class SettingsWindow extends javax.swing.JDialog
                 properties.setProperty( "AlwaysShowShimejiChooser", alwaysShowShimejiChooser.toString( ) );
                 properties.setProperty( "AlwaysShowInformationScreen", alwaysShowInformationScreen.toString( ) );
                 properties.setProperty( "AlwaysOnTopDebugWindow", alwaysOnTopDebugWindow.toString( ) );
+                properties.setProperty( "AlwaysOnTop", alwaysOnTop.toString( ) );
+                // Apply to all running mascots
+                for( com.group_finity.mascot.Mascot m : Main.getInstance( ).getManager( ).getMascotList( ) )
+                    m.applyAlwaysOnTop( );
                 properties.setProperty( "Opacity", Double.toString( opacity ) );
                 properties.setProperty( "Scaling", Double.toString( scaling ) );
                 properties.setProperty( "Filter", filter );
@@ -2142,6 +2162,11 @@ public class SettingsWindow extends javax.swing.JDialog
     {//GEN-HEADEREND:event_chkAlwaysShowInformationScreenItemStateChanged
         alwaysShowInformationScreen = evt.getStateChange( ) == ItemEvent.SELECTED;
     }//GEN-LAST:event_chkAlwaysShowInformationScreenItemStateChanged
+
+    private void chkAlwaysOnTopItemStateChanged(java.awt.event.ItemEvent evt)
+    {
+        alwaysOnTop = evt.getStateChange( ) == ItemEvent.SELECTED;
+    }
 
     private void chkAlwaysOnTopDebugWindowItemStateChanged(java.awt.event.ItemEvent evt)//GEN-FIRST:event_chkAlwaysOnTopDebugWindowItemStateChanged
     {//GEN-HEADEREND:event_chkAlwaysOnTopDebugWindowItemStateChanged
@@ -2617,6 +2642,7 @@ public class SettingsWindow extends javax.swing.JDialog
     private javax.swing.JButton btnWhiteColourChange;
     private javax.swing.JCheckBox chkAlwaysShowInformationScreen;
     private javax.swing.JCheckBox chkAlwaysOnTopDebugWindow;
+    private javax.swing.JCheckBox chkAlwaysOnTop;
     private javax.swing.JCheckBox chkAlwaysShowShimejiChooser;
     private javax.swing.JCheckBox chkWindowModeEnabled;
     private javax.swing.JComboBox<String> cmbBackgroundImageMode;

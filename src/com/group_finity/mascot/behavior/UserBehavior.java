@@ -102,7 +102,7 @@ public class UserBehavior implements Behavior
         return this.action;
     }
 
-    private String getName( )
+    public String getName( )
     {
         return this.name;
     }

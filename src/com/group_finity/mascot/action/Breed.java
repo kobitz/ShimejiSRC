@@ -88,6 +88,8 @@ public class Breed extends Animate
         void breed( ) throws VariableException
         {
             double scaling = Double.parseDouble( Main.getInstance( ).getProperties( ).getProperty( "Scaling", "1.0" ) );
+            double currentScale = action.getMascot( ).getCurrentScale( );
+            double combinedScale = scaling * currentScale;
             String childType = Main.getInstance( ).getConfiguration( getBornMascot( ) ) != null ? getBornMascot( ) : action.getMascot( ).getImageSet( );
         
             for( int index = 0; index < getBornCount( ); index++ )
@@ -98,13 +100,13 @@ public class Breed extends Animate
 
                 if( action.getMascot( ).isLookRight( ) )
                 {
-                    mascot.setAnchor( new Point( action.getMascot( ).getAnchor( ).x - ( (int)Math.round( getBornX( ) * scaling ) ),
-                                                 action.getMascot( ).getAnchor( ).y + ( (int)Math.round( getBornY( ) * scaling ) ) ) );
+                    mascot.setAnchor( new Point( action.getMascot( ).getAnchor( ).x - ( (int)Math.round( getBornX( ) * combinedScale ) ),
+                                                 action.getMascot( ).getAnchor( ).y + ( (int)Math.round( getBornY( ) * combinedScale ) ) ) );
                 }
                 else
                 {
-                    mascot.setAnchor( new Point( action.getMascot( ).getAnchor( ).x + ( (int)Math.round( getBornX( ) * scaling ) ), 
-                                                 action.getMascot( ).getAnchor( ).y + ( (int)Math.round( getBornY( ) * scaling ) ) ) );
+                    mascot.setAnchor( new Point( action.getMascot( ).getAnchor( ).x + ( (int)Math.round( getBornX( ) * combinedScale ) ), 
+                                                 action.getMascot( ).getAnchor( ).y + ( (int)Math.round( getBornY( ) * combinedScale ) ) ) );
                 }
                 mascot.setLookRight( action.getMascot( ).isLookRight( ) );
 

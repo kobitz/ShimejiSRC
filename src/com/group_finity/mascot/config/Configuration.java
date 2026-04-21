@@ -220,8 +220,8 @@ public class Configuration
         }
 
         if( totalFrequency == 0 )
-        {
-            if( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Multiscreen", "true" ) ) )
+{
+        if( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Multiscreen", "true" ) ) )
             {
                 mascot.setAnchor( new Point( (int)( Math.random( ) * ( mascot.getEnvironment( ).getScreen( ).getRight( ) - mascot.getEnvironment( ).getScreen( ).getLeft( ) ) ) + mascot.getEnvironment( ).getScreen( ).getLeft( ),
                                              mascot.getEnvironment( ).getScreen( ).getTop( ) - 256 ) );
@@ -258,7 +258,15 @@ public class Configuration
             }
             else
             {
-                if( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Multiscreen", "true" ) ) )
+                final java.awt.Point recovery = mascot.getSavedAnchor( );
+                if( recovery != null )
+                {
+                    mascot.setAnchor( new java.awt.Point( recovery.x, recovery.y ) );
+                    final String savedBehavior = mascot.getSavedBehaviorName( );
+                    if( savedBehavior != null && behaviorBuilders.containsKey( savedBehavior ) )
+                        return buildBehavior( savedBehavior );
+                }
+                else if( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Multiscreen", "true" ) ) )
                 {
                     mascot.setAnchor( new Point( (int)( Math.random( ) * ( mascot.getEnvironment( ).getScreen( ).getRight( ) - mascot.getEnvironment( ).getScreen( ).getLeft( ) ) ) + mascot.getEnvironment( ).getScreen( ).getLeft( ),
                                                  mascot.getEnvironment( ).getScreen( ).getTop( ) - 256 ) );
@@ -283,6 +291,11 @@ public class Configuration
             throw new BehaviorInstantiationException( Main.getInstance( ).getLanguageBundle( ).getString( "NoBehaviourFoundErrorMessage" ) + " (" + name + ")" );
     }
     
+    public boolean hasBehavior( final String name )
+    {
+        return behaviorBuilders.containsKey( name );
+    }
+
     public boolean isBehaviorEnabled( final BehaviorBuilder builder, final Mascot mascot )
     {
         if( builder.isToggleable( ) )

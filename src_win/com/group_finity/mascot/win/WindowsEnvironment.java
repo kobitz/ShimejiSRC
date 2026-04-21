@@ -4,7 +4,6 @@ import com.group_finity.mascot.Main;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -25,18 +24,41 @@ import java.util.logging.*;
  * Original Author: Yuki Yamada of Group Finity (http://www.group-finity.com/Shimeji/)
  * Currently developed by Shimeji-ee Group.
  *
- * Modified for per-mascot independent window tracking:
- *  - Each mascot gets its own WindowsEnvironment instance (via NativeFactoryImpl)
- *  - tickForMascot() finds the nearest visible, unoccluded interactive window
- *  - A carry-lock prevents re-scanning while a mascot is carrying a window
+ * PERFORMANCE OPTIMIZATIONS:
+ *
+ *  1. Shared EnumWindows scan: Manager.tick() calls WindowsEnvironment.beginTick() ONCE
+ *     before the mascot loop. All mascots read from that snapshot instead of each running
+ *     their own scan. 12 mascots → 1 EnumWindows/tick instead of 12.
+ *
+ *  2. Per-window work (DwmGetWindowAttribute, IsZoomed, IsIconic, GetWindowTextW,
+ *     GetWindowLongW) done once per window per tick in the shared scan, not per mascot.
+ *
+ *  3. Thread-confined reusable RECT/LongByReference for the scan loop — no per-window
+ *     allocation of native structs.
+ *
+ *  4. Area object pool in allIEAreas: existing Area instances recycled across ticks.
+ *
+ *  5. ieCache bounded LRU (max 256) prevents unbounded growth over long sessions.
+ *
+ *  6. IE_SCAN_INTERVAL = 1 is affordable now that cost is O(windows), not
+ *     O(windows × mascots).
  */
-class WindowsEnvironment extends Environment
+public class WindowsEnvironment extends Environment
 {
     // ── Shared (static) state ────────────────────────────────────────────────
 
-    // isIE() result cache, keyed by HWND. Only TRUE results are cached permanently;
-    // negatives are re-evaluated every time so newly-created windows aren't missed.
-    private static final HashMap<Pointer, Boolean> ieCache = new LinkedHashMap<>();
+    // LRU-bounded isIE() result cache (TRUE entries only).
+    // FALSE results are never cached so newly-created windows get a fresh check each tick.
+    private static final int IE_CACHE_MAX = 256;
+    private static final LinkedHashMap<Pointer, Boolean> ieCache =
+        new LinkedHashMap<Pointer, Boolean>( IE_CACHE_MAX, 0.75f, true )
+        {
+            @Override
+            protected boolean removeEldestEntry( java.util.Map.Entry<Pointer, Boolean> eldest )
+            {
+                return size( ) > IE_CACHE_MAX;
+            }
+        };
 
     private static String[]  windowTitles          = null;
     private static String[]  windowTitlesBlacklist = null;
@@ -45,43 +67,60 @@ class WindowsEnvironment extends Environment
 
     private enum IEResult { INVALID, NOT_IE, IE_OUT_OF_BOUNDS, IE }
 
-    // ── Per-instance state (one per mascot) ──────────────────────────────────
+    // ── Shared scan snapshot (written once per tick by beginTick) ─────────────
+    // All fields are written before sharedHandles so readers can use sharedHandles
+    // as a publication guard: if sharedHandles is non-null the rest are ready.
 
-    // The Area exposed to the rest of the engine via getActiveIE()
-    private final Area activeIE = new Area();
-    private final Area workArea = new Area();
+    private static List<Pointer>   sharedHandles   = new ArrayList<>( );
+    private static List<Rectangle> sharedRects     = new ArrayList<>( );
+    private static List<IEResult>  sharedViability = new ArrayList<>( );
+    private static List<Integer>   sharedExStyles  = new ArrayList<>( );
 
-    // The actual HWND of the window activeIE describes
-    private Pointer activeIEobject = null;
+    // Reusable native structs — manager thread only (single-threaded tick loop).
+    private static final RECT            reuseOut   = new RECT( );
+    private static final RECT            reuseIn    = new RECT( );
+    private static final LongByReference reuseFlags = new LongByReference( );
 
-    // Carry lock: set by WalkWithIE/FallWithIE/ThrowIE while they hold a window.
-    // While locked, tickForMascot() skips the nearest-window search.
-    private boolean activeIELocked = false;
+    /**
+     * Called ONCE by Manager.tick() at the top of each tick, before the mascot loop.
+     * Runs the single shared EnumWindows scan for this tick.
+     */
+    public static void beginTick( )
+    {
+        final List<Pointer>   handles   = new ArrayList<>( 64 );
+        final List<Rectangle> rects     = new ArrayList<>( 64 );
+        final List<IEResult>  viability = new ArrayList<>( 64 );
+        final List<Integer>   exStyles  = new ArrayList<>( 64 );
 
-    // All viable IE window rects on this mascot's screen, refreshed each scan.
-    // Exposed via getAllIE() so scripts can clamp walk targets to avoid windows.
-    private final List<Area> allIEAreas = new ArrayList<>();
+        User32.INSTANCE.EnumWindows( new User32.WNDENUMPROC( )
+        {
+            @Override
+            public boolean callback( Pointer ie, Pointer data )
+            {
+                if( User32.INSTANCE.IsWindowVisible( ie ) == 0 )
+                    return true;
 
-    // Throttle: only re-run the expensive EnumWindows scan every N ticks.
-    // Between scans the previous result is reused. Window positions change
-    // slowly enough (~320ms between scans at 40ms/tick) that this is invisible.
-    private static final int IE_SCAN_INTERVAL = 4;
-    // Counter cycles atomically so each new instance starts at a different
-    // offset, spreading scans across ticks rather than all firing together.
-    private static final java.util.concurrent.atomic.AtomicInteger instanceCounter =
-        new java.util.concurrent.atomic.AtomicInteger( 0 );
-    // Start at IE_SCAN_INTERVAL so the very first tick always runs a full scan
-    // (workArea and activeIE must be populated before anything reads them).
-    // The modulo offset staggers multiple mascots so they don't all scan on tick 0.
-    private int ticksSinceIEScan = IE_SCAN_INTERVAL +
-        ( instanceCounter.getAndIncrement( ) % IE_SCAN_INTERVAL );
+                // getIERectReuse uses static RECT structs — safe here (single thread, non-reentrant)
+                Rectangle r = getIERectReuse( ie );
+                handles.add( ie );
+                rects.add( r );
+                viability.add( computeViabilityReuse( ie, r ) );
+                exStyles.add( User32.INSTANCE.GetWindowLongW( ie, User32.GWL_EXSTYLE ) );
+                return true;
+            }
+        }, null );
 
-    // ── isIE / isViableIE ────────────────────────────────────────────────────
+        // Publish — all lists written before sharedHandles (the guard)
+        sharedRects     = rects;
+        sharedViability = viability;
+        sharedExStyles  = exStyles;
+        sharedHandles   = handles;
+    }
+
+    // ── isIE / viability ─────────────────────────────────────────────────────
 
     private static boolean isIE( final Pointer ie )
     {
-        // Only cache TRUE results. FALSE is re-evaluated each call so windows
-        // that weren't ready on the first check (e.g. ToyBox) get a fair shot.
         final Boolean cached = ieCache.get( ie );
         if( Boolean.TRUE.equals( cached ) )
             return true;
@@ -93,7 +132,6 @@ class WindowsEnvironment extends Environment
         if( ieTitle.isEmpty( ) || ieTitle.equals( "Program Manager" ) )
             return false;
 
-        // Blacklist takes precedence
         boolean blacklistInUse = false;
         if( windowTitlesBlacklist == null )
             windowTitlesBlacklist = Main.getInstance( ).getProperties( )
@@ -108,7 +146,6 @@ class WindowsEnvironment extends Environment
             }
         }
 
-        // Whitelist
         boolean whitelistInUse = false;
         if( windowTitles == null )
             windowTitles = Main.getInstance( ).getProperties( )
@@ -133,12 +170,35 @@ class WindowsEnvironment extends Environment
         return true;
     }
 
+    /** Reuses static structs — manager thread only. rect already computed by caller. */
+    private static IEResult computeViabilityReuse( final Pointer ie, final Rectangle r )
+    {
+        reuseFlags.setValue( 0 );
+        NativeLong result = Dwmapi.INSTANCE.DwmGetWindowAttribute(
+            ie, Dwmapi.DWMWA_CLOAKED, reuseFlags, 8 );
+        if( result.longValue( ) != 0x80070057 &&
+            ( result.longValue( ) != 0 || reuseFlags.getValue( ) != 0 ) )
+            return IEResult.NOT_IE;
+
+        if( User32.INSTANCE.IsZoomed( ie ) != 0 )
+            return IEResult.INVALID;
+
+        if( isIE( ie ) && User32.INSTANCE.IsIconic( ie ) == 0 )
+        {
+            if( r != null && r.intersects( getScreenRect( ) ) )
+                return IEResult.IE;
+            return IEResult.IE_OUT_OF_BOUNDS;
+        }
+
+        return IEResult.NOT_IE;
+    }
+
+    /** Allocating viability check — kept for the restoreAllIEs fallback path only. */
     private static IEResult isViableIE( final Pointer ie )
     {
         if( User32.INSTANCE.IsWindowVisible( ie ) == 0 )
             return IEResult.NOT_IE;
 
-        // Skip cloaked windows (metro apps that are technically "visible" but hidden)
         LongByReference flagsRef = new LongByReference( );
         NativeLong result = Dwmapi.INSTANCE.DwmGetWindowAttribute(
             ie, Dwmapi.DWMWA_CLOAKED, flagsRef, 8 );
@@ -160,8 +220,27 @@ class WindowsEnvironment extends Environment
         return IEResult.NOT_IE;
     }
 
-    // ── Window geometry helpers ───────────────────────────────────────────────
+    // ── Window geometry ───────────────────────────────────────────────────────
 
+    /** Uses static RECT objects — manager thread only. Returns a fresh Rectangle. */
+    private static Rectangle getIERectReuse( final Pointer ie )
+    {
+        User32.INSTANCE.GetWindowRect( ie, reuseOut );
+        if( getWindowRgnBox( ie, reuseIn ) == User32.ERROR )
+        {
+            reuseIn.left   = 0;
+            reuseIn.top    = 0;
+            reuseIn.right  = reuseOut.right  - reuseOut.left;
+            reuseIn.bottom = reuseOut.bottom - reuseOut.top;
+        }
+        return new Rectangle(
+            reuseOut.left + reuseIn.left,
+            reuseOut.top  + reuseIn.top,
+            reuseIn.Width( ),
+            reuseIn.Height( ) );
+    }
+
+    /** Allocating version — for one-off calls outside the shared scan. */
     private static Rectangle getIERect( final Pointer ie )
     {
         final RECT out = new RECT( );
@@ -197,20 +276,17 @@ class WindowsEnvironment extends Environment
     private static boolean moveIE( final Pointer ie, final Rectangle rect )
     {
         if( ie == null ) return false;
-
         final RECT out = new RECT( );
         User32.INSTANCE.GetWindowRect( ie, out );
         final RECT in = new RECT( );
         if( getWindowRgnBox( ie, in ) == User32.ERROR )
         {
-            in.left   = 0;
-            in.top    = 0;
+            in.left = 0; in.top = 0;
             in.right  = out.right  - out.left;
             in.bottom = out.bottom - out.top;
         }
         User32.INSTANCE.MoveWindow( ie,
-            rect.x - in.left,
-            rect.y - in.top,
+            rect.x - in.left, rect.y - in.top,
             rect.width  + out.Width()  - in.Width(),
             rect.height + out.Height() - in.Height(),
             1 );
@@ -243,152 +319,106 @@ class WindowsEnvironment extends Environment
         }, null );
     }
 
-    // ── Per-mascot window detection ───────────────────────────────────────────
+    // ── Per-instance state ────────────────────────────────────────────────────
+
+    private final Area activeIE  = new Area( );
+    private final Area workArea  = new Area( );
+
+    private Pointer activeIEobject = null;
+    private boolean activeIELocked = false;
+
+    // Reused across ticks — Area objects recycled, not re-allocated.
+    private final List<Area> allIEAreas = new ArrayList<>( );
+
+    // IE_SCAN_INTERVAL = 1: every tick. Affordable now that scan cost is shared.
+    private static final int IE_SCAN_INTERVAL = 1;
+
+    private static final java.util.concurrent.atomic.AtomicInteger instanceCounter =
+        new java.util.concurrent.atomic.AtomicInteger( 0 );
+
+    private int ticksSinceIEScan = IE_SCAN_INTERVAL +
+        ( instanceCounter.getAndIncrement( ) % IE_SCAN_INTERVAL );
+
+    // ── Per-mascot window selection ───────────────────────────────────────────
 
     /**
-     * Find the interactive window whose top surface is the best floor for the
-     * mascot's anchor point, considering z-order occlusion.
-     *
-     * A single EnumWindows pass collects all handles + rects in z-order.
-     *
-     * Selection priority:
-     *   1. FLOOR candidate: window whose top edge is at or below the anchor Y,
-     *      AND whose X range covers the anchor X (i.e. the mascot is standing
-     *      on it). Among these, prefer the one with the highest top edge
-     *      (smallest top Y ≤ anchor.y) — that's the actual surface underfoot.
-     *      Horizontally adjacent windows (e.g. a box the mascot walks into)
-     *      are excluded because their X range doesn't cover anchor.x.
-     *   2. FALLBACK: if no floor candidate exists (mascot is mid-air or near
-     *      a window edge), fall back to the Euclidean-nearest viable window,
-     *      same as the original behaviour.
-     *
-     * WS_EX_LAYERED windows (transparent overlays like shimeji itself) are
-     * skipped in the occlusion check because they don't actually block anything.
+     * Reads the shared snapshot to find the nearest/floor IE window for this mascot.
+     * No native calls — all data was computed in beginTick().
      */
-    private Pointer findNearestIE( final Point anchor )
+    private Pointer findNearestIEFromSnapshot( final Point anchor )
     {
-        final List<Pointer>   handles = new ArrayList<>();
-        final List<Rectangle> rects   = new ArrayList<>();
+        final List<Pointer>   handles   = sharedHandles;
+        final List<Rectangle> rects     = sharedRects;
+        final List<IEResult>  viability = sharedViability;
+        final List<Integer>   exStyles  = sharedExStyles;
 
-        User32.INSTANCE.EnumWindows( new User32.WNDENUMPROC( )
-        {
-            @Override
-            public boolean callback( Pointer ie, Pointer data )
-            {
-                if( User32.INSTANCE.IsWindowVisible( ie ) != 0 )
-                {
-                    Rectangle r = getIERect( ie );
-                    handles.add( ie );
-                    rects.add( r != null ? r : new Rectangle( 0, 0, 0, 0 ) );
-                }
-                return true;
-            }
-        }, null );
-
-        // Determine which screen the mascot is currently on.
-        // Windows on other screens are not reachable and should be ignored.
         Rectangle mascotScreen = null;
         for( Rectangle sr : screenRects.values( ) )
-        {
-            if( sr.contains( anchor ) )
-            {
-                mascotScreen = sr;
-                break;
-            }
-        }
-        // Fallback: use primary screen rect if anchor isn't inside any screen
-        // (e.g. dragged to a gap between monitors)
-        if( mascotScreen == null )
-            mascotScreen = getScreenRect( );
+            if( sr.contains( anchor ) ) { mascotScreen = sr; break; }
+        if( mascotScreen == null ) mascotScreen = getScreenRect( );
 
-        // Pass 1: find the best floor surface — a window whose top edge is the
-        // highest surface at or below the anchor, covering anchor.x.
-        // This correctly ignores adjacent windows (boxes being walked into)
-        // whose X range does not include the mascot's foot position.
-        Pointer bestFloor    = null;
-        int     bestFloorTop = Integer.MIN_VALUE; // highest top = largest Y ≤ anchor.y
-
-        // Pass 2 fallback: Euclidean nearest (original behaviour, used when
-        // no floor candidate exists — e.g. mascot mid-air near a window side).
+        Pointer bestFloor        = null;
+        int     bestFloorTop     = Integer.MIN_VALUE;
         Pointer bestFallback     = null;
         double  bestFallbackDist = Double.MAX_VALUE;
 
-        for( int i = 0; i < handles.size(); i++ )
+        final int n = handles.size( );
+        for( int i = 0; i < n; i++ )
         {
-            Pointer ie = handles.get( i );
-            if( isViableIE( ie ) != IEResult.IE ) continue;
-
+            if( viability.get( i ) != IEResult.IE ) continue;
             Rectangle r = rects.get( i );
-
-            // Skip windows that are not on the same screen as the mascot
             if( !r.intersects( mascotScreen ) ) continue;
 
-            // Occlusion check: is any opaque window higher in z-order covering
-            // the sample point (anchor.x clamped to window) at this window's top?
-            int sampleX = Math.max( r.x, Math.min( anchor.x, r.x + r.width - 1 ) );
+            int     sampleX  = Math.max( r.x, Math.min( anchor.x, r.x + r.width - 1 ) );
             boolean occluded = false;
             for( int j = 0; j < i; j++ )
             {
-                // Skip WS_EX_LAYERED windows — they are transparent overlays
-                int exStyle = User32.INSTANCE.GetWindowLongW(
-                    handles.get( j ), User32.GWL_EXSTYLE );
-                if( ( exStyle & User32.WS_EX_LAYERED ) != 0 ) continue;
-                if( rects.get( j ).contains( sampleX, r.y ) )
-                {
-                    occluded = true;
-                    break;
-                }
+                if( ( exStyles.get( j ) & User32.WS_EX_LAYERED ) != 0 ) continue;
+                if( rects.get( j ).contains( sampleX, r.y ) ) { occluded = true; break; }
             }
             if( occluded ) continue;
 
-            // ── Floor candidate check ─────────────────────────────────────
-            // The window's top edge must be at or below the anchor Y, and the
-            // window's X range must cover the anchor X (mascot is above it).
-            // A small margin (4px) handles sub-pixel anchor placement at edges.
             boolean coversX  = anchor.x >= r.x - 4 && anchor.x <= r.x + r.width + 4;
             boolean belowTop = r.y <= anchor.y;
             if( coversX && belowTop )
             {
-                // Among all floor candidates, prefer the highest top edge
-                // (i.e. the surface the mascot is most immediately standing on).
-                if( r.y > bestFloorTop )
-                {
-                    bestFloorTop = r.y;
-                    bestFloor    = ie;
-                }
-                continue; // don't also consider this window as a fallback
+                if( r.y > bestFloorTop ) { bestFloorTop = r.y; bestFloor = handles.get( i ); }
+                continue;
             }
 
-            // ── Fallback: Euclidean nearest ───────────────────────────────
-            int dx = Math.max( r.x - anchor.x,
-                     Math.max( 0, anchor.x - ( r.x + r.width  ) ) );
-            int dy = Math.max( r.y - anchor.y,
-                     Math.max( 0, anchor.y - ( r.y + r.height ) ) );
+            int dx = Math.max( r.x - anchor.x, Math.max( 0, anchor.x - ( r.x + r.width  ) ) );
+            int dy = Math.max( r.y - anchor.y, Math.max( 0, anchor.y - ( r.y + r.height ) ) );
             double dist = Math.sqrt( (double)(dx * dx + dy * dy) );
-
-            if( dist < bestFallbackDist )
-            {
-                bestFallbackDist = dist;
-                bestFallback     = ie;
-            }
+            if( dist < bestFallbackDist ) { bestFallbackDist = dist; bestFallback = handles.get( i ); }
         }
 
-        // Cache all viable window rects for getAllIE() — used by scripts to
-        // clamp walk targets so mascots don't walk through windows.
-        allIEAreas.clear();
-        Rectangle mascotScreenFinal = mascotScreen;
-        for( int i = 0; i < handles.size(); i++ )
+        // Rebuild allIEAreas, recycling existing Area objects
+        int areaIdx = 0;
+        for( int i = 0; i < n; i++ )
         {
-            if( isViableIE( handles.get( i ) ) != IEResult.IE ) continue;
+            if( viability.get( i ) != IEResult.IE ) continue;
             Rectangle r = rects.get( i );
-            if( mascotScreenFinal != null && !r.intersects( mascotScreenFinal ) ) continue;
-            Area a = new Area();
+            if( !r.intersects( mascotScreen ) ) continue;
+
+            int     sampleX  = r.x + r.width / 2;
+            boolean occluded = false;
+            for( int j = 0; j < i; j++ )
+            {
+                if( ( exStyles.get( j ) & User32.WS_EX_LAYERED ) != 0 ) continue;
+                if( rects.get( j ).contains( sampleX, r.y ) ) { occluded = true; break; }
+            }
+            if( occluded ) continue;
+
+            Area a;
+            if( areaIdx < allIEAreas.size( ) ) a = allIEAreas.get( areaIdx );
+            else { a = new Area( ); allIEAreas.add( a ); }
             a.set( r );
             a.setVisible( true );
-            allIEAreas.add( a );
+            areaIdx++;
         }
+        while( allIEAreas.size( ) > areaIdx )
+            allIEAreas.remove( allIEAreas.size( ) - 1 );
 
-        // Floor candidate wins if found; otherwise fall back to Euclidean nearest.
         return bestFloor != null ? bestFloor : bestFallback;
     }
 
@@ -397,31 +427,29 @@ class WindowsEnvironment extends Environment
     @Override
     public void tickForMascot( final Point mascotAnchor )
     {
-        super.tick();
+        super.tick( );
 
         if( activeIELocked )
         {
-            // While carrying: just refresh activeIE from the real window position
             if( activeIEobject != null )
             {
                 Rectangle r = getIERect( activeIEobject );
                 if( r != null )
                 {
-                    activeIE.setVisible( r.intersects( getScreen().toRectangle() ) );
+                    activeIE.setVisible( r.intersects( getScreen( ).toRectangle( ) ) );
                     activeIE.set( r );
                 }
             }
             return;
         }
 
-        // Only run the expensive EnumWindows scan every IE_SCAN_INTERVAL ticks.
-        // On off-ticks, just refresh the known window's position cheaply.
         ticksSinceIEScan++;
         if( ticksSinceIEScan >= IE_SCAN_INTERVAL )
         {
             ticksSinceIEScan = 0;
             workArea.set( getWorkAreaRect( mascotAnchor ) );
-            activeIEobject = findNearestIE( mascotAnchor );
+            // Read from the shared snapshot populated by beginTick() this tick
+            activeIEobject = findNearestIEFromSnapshot( mascotAnchor );
         }
 
         if( activeIEobject == null )
@@ -439,7 +467,7 @@ class WindowsEnvironment extends Environment
             }
             else
             {
-                activeIE.setVisible( r.intersects( getScreen().toRectangle() ) );
+                activeIE.setVisible( r.intersects( getScreen( ).toRectangle( ) ) );
                 activeIE.set( r );
             }
         }
@@ -447,57 +475,27 @@ class WindowsEnvironment extends Environment
 
     // ── Carry lock ────────────────────────────────────────────────────────────
 
-    @Override
-    public void lockActiveIE( )
-    {
-        activeIELocked = true;
-    }
-
-    @Override
-    public void unlockActiveIE( )
-    {
-        activeIELocked = false;
-    }
+    @Override public void lockActiveIE( )   { activeIELocked = true;  }
+    @Override public void unlockActiveIE( ) { activeIELocked = false; }
 
     // ── Environment overrides ─────────────────────────────────────────────────
 
-    @Override
-    public void dispose( ) { }
+    @Override public void dispose( ) { }
 
     @Override
     public void moveActiveIE( final Point point )
     {
         if( activeIEobject == null ) return;
-        final int w = activeIE.getWidth();
-        final int h = activeIE.getHeight();
+        final int w = activeIE.getWidth( );
+        final int h = activeIE.getHeight( );
         moveIE( activeIEobject, new Rectangle( point.x, point.y, w, h ) );
-        // Keep activeIE in sync immediately so carry actions see the new position
         activeIE.set( new Rectangle( point.x, point.y, w, h ) );
     }
 
-    @Override
-    public void restoreIE( )
-    {
-        restoreAllIEs();
-    }
-
-    @Override
-    public Area getWorkArea( )
-    {
-        return workArea;
-    }
-
-    @Override
-    public Area getActiveIE( )
-    {
-        return activeIE;
-    }
-
-    @Override
-    public List<Area> getAllIE( )
-    {
-        return allIEAreas;
-    }
+    @Override public void restoreIE( )     { restoreAllIEs( );  }
+    @Override public Area getWorkArea( )   { return workArea;   }
+    @Override public Area getActiveIE( )   { return activeIE;   }
+    @Override public List<Area> getAllIE( ) { return allIEAreas; }
 
     @Override
     public String getActiveIETitle( )
@@ -529,18 +527,14 @@ class WindowsEnvironment extends Environment
                     boolean isPrimary = ( mi.dwFlags.intValue( ) & 1 ) != 0;
                     if( isPrimary )
                     {
-                        // Always use SPI_GETWORKAREA for primary — proven reliable
                         final RECT rect = new RECT( );
                         User32.INSTANCE.SystemParametersInfoW( User32.SPI_GETWORKAREA, 0, rect, 0 );
                         return new Rectangle( rect.left, rect.top,
                                               rect.right - rect.left, rect.bottom - rect.top );
                     }
-                    // Secondary monitor — use GetMonitorInfo rcWork
                     return new Rectangle(
-                        mi.rcWork.left,
-                        mi.rcWork.top,
-                        mi.rcWork.right  - mi.rcWork.left,
-                        mi.rcWork.bottom - mi.rcWork.top );
+                        mi.rcWork.left, mi.rcWork.top,
+                        mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top );
                 }
             }
         }

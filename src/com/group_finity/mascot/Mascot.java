@@ -84,6 +84,20 @@ public class Mascot
     private Point anchor = new Point( 0, 0 );
 
     /**
+     * Last known good on-screen anchor position. Updated every tick after a
+     * successful behavior step while the mascot is within screen bounds.
+     * Used as the recovery position instead of a random off-screen drop when
+     * the engine would otherwise teleport the mascot to a random location.
+     */
+    private Point savedAnchor = null;
+
+    /**
+     * Behavior name recorded at the same time as savedAnchor, so recovery
+     * can restart the correct behavior rather than defaulting to Fall.
+     */
+    private String savedBehaviorName = null;
+
+    /**
      * Image to display.
      */
     private MascotImage image = null;
@@ -102,6 +116,16 @@ public class Mascot
      * Object representing the long-term behavior.
      */
     private Behavior behavior = null;
+
+    /**
+     * Whether this mascot's location (and behavior) is pinned and will be
+     * restored on the next program launch.
+     */
+    private boolean pinnedLocation = false;
+    // The property key under which this mascot's location is saved.
+    // Set at save time and carried across restarts so removePinnedLocation()
+    // always deletes the right key regardless of the current runtime id.
+    private String pinnedKey = null;
 
     /**
      * Increases with each tick of the timer.
@@ -160,8 +184,8 @@ public class Mascot
 
         log.log( Level.INFO, "Created a mascot ({0})", this );
 
-        // Always show on top
-        getWindow( ).setAlwaysOnTop( true );
+        // Always on top — global setting AND per-imageset override, both default true
+        applyAlwaysOnTop( );
 
         // Register the mouse handler
         getWindow( ).asComponent( ).addMouseListener( new MouseAdapter( )
@@ -325,6 +349,9 @@ public class Mascot
             @Override
             public void actionPerformed( final ActionEvent e )
             {
+                // Clear any saved pin so a dismissed mascot doesn't respawn next launch.
+                if( pinnedLocation )
+                    removePinnedLocation( );
                 dispose( );
             }
         } );
@@ -392,6 +419,22 @@ public class Mascot
             public void actionPerformed( final ActionEvent e )
             {
                 Main.getInstance( ).exit( );
+            }
+        } );
+
+        // "Save Location" checkbox — pins this mascot's current position and behavior
+        // so it is restored at the same spot on next launch.
+        final JCheckBoxMenuItem saveLocationMenu = new JCheckBoxMenuItem(
+            languageBundle.getString( "SaveLocation" ), pinnedLocation );
+        saveLocationMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                pinnedLocation = saveLocationMenu.isSelected( );
+                if( pinnedLocation )
+                    savePinnedLocation( );
+                else
+                    removePinnedLocation( );
             }
         } );
 
@@ -649,7 +692,24 @@ public class Mascot
             popup.add( allowedSubmenu );
         popup.add( personalFilterSubmenu );
         popup.add( new JSeparator( ) );
+        popup.add( saveLocationMenu );
         popup.add( pauseMenu );
+
+        final boolean currentAlwaysOnTop = Boolean.parseBoolean(
+            props.getProperty( "AlwaysOnTop.imageset." + getImageSet( ), "true" ) );
+        final JCheckBoxMenuItem alwaysOnTopMenu = new JCheckBoxMenuItem(
+            ( languageBundle.containsKey( "AlwaysOnTop" ) ? languageBundle.getString( "AlwaysOnTop" ) : "Always On Top" ), currentAlwaysOnTop );
+        alwaysOnTopMenu.addItemListener( new ItemListener( )
+        {
+            @Override
+            public void itemStateChanged( final ItemEvent e )
+            {
+                final boolean onTop = alwaysOnTopMenu.isSelected( );
+                props.setProperty( "AlwaysOnTop.imageset." + getImageSet( ), String.valueOf( onTop ) );
+                applyAlwaysOnTop( );
+            }
+        } );
+        popup.add( alwaysOnTopMenu );
         popup.add( new JSeparator( ) );
         popup.add( disposeMenu );
         popup.add( oneMenu );
@@ -717,6 +777,14 @@ public class Mascot
                     log.log( Level.SEVERE, "Fatal Error.", e );
                     Main.showError( Main.getInstance( ).getLanguageBundle( ).getString( "CouldNotGetNextBehaviourErrorMessage" ), e );
                     dispose( );
+                }
+
+                // Track last known good on-screen position for recovery.
+                final java.awt.Rectangle b = getBounds( );
+                if( b != null && environment.getScreen( ).toRectangle( ).intersects( b ) )
+                {
+                    savedAnchor = new Point( anchor.x, anchor.y );
+                    savedBehaviorName = getCurrentBehaviorName( );
                 }
 
                 setTime( getTime( ) + 1 );
@@ -957,6 +1025,16 @@ public class Mascot
         this.anchor = anchor;
     }
 
+    public Point getSavedAnchor( )
+    {
+        return savedAnchor;
+    }
+
+    public String getSavedBehaviorName( )
+    {
+        return savedBehaviorName;
+    }
+
     public MascotImage getImage( )
     {
         return image;
@@ -1047,6 +1125,19 @@ public class Mascot
         return environment;
     }
 
+    /**
+     * Applies the always-on-top state based on the global setting AND the per-imageset override.
+     * Global off overrides everything. Global on respects per-imageset opt-out.
+     */
+    public void applyAlwaysOnTop( )
+    {
+        final java.util.Properties props = Main.getInstance( ).getProperties( );
+        final boolean globalOnTop = Boolean.parseBoolean( props.getProperty( "AlwaysOnTop", "true" ) );
+        final boolean perImageSet = Boolean.parseBoolean(
+            props.getProperty( "AlwaysOnTop.imageset." + getImageSet( ), "true" ) );
+        getWindow( ).setAlwaysOnTop( globalOnTop && perImageSet );
+    }
+
     public ArrayList<String> getAffordances( )
     {
 	return affordances;
@@ -1059,6 +1150,52 @@ public class Mascot
 
     public void setCurrentScale( double scale ) { this.currentScale = scale; }
     public double getCurrentScale( )            { return currentScale; }
+
+    public boolean isPinnedLocation( )         { return pinnedLocation; }
+    public void setPinnedLocation( boolean v ) { pinnedLocation = v; }
+    public void setPinnedKey( String key )     { pinnedKey = key; }
+
+    /** Returns the name of the current UserBehavior, or null if unavailable. */
+    public String getCurrentBehaviorName( )
+    {
+        if( behavior instanceof com.group_finity.mascot.behavior.UserBehavior )
+            return ( (com.group_finity.mascot.behavior.UserBehavior) behavior ).getName( );
+        return null;
+    }
+
+    /**
+     * Saves this mascot's current anchor, direction, and behavior name into the
+     * "PinnedMascots" property so it is restored on next launch.
+     * Writes through to disk immediately via updateConfigFile().
+     */
+    public void savePinnedLocation( )
+    {
+        final String behaviorName = getCurrentBehaviorName( );
+        final String entry = imageSet + "|"
+            + ( behaviorName != null ? behaviorName : "" ) + "|"
+            + getAnchor( ).x + "|"
+            + getAnchor( ).y + "|"
+            + isLookRight( );
+
+        // Each mascot gets its own property slot keyed by its unique id so that
+        // multiple pinned mascots (even of the same imageSet) coexist cleanly.
+        pinnedKey = "PinnedMascot." + id;
+        Main.getInstance( ).getProperties( ).setProperty( pinnedKey, entry );
+        Main.getInstance( ).updateConfigFile( );
+    }
+
+    /**
+     * Removes this mascot's saved location entry and writes through to disk.
+     */
+    public void removePinnedLocation( )
+    {
+        // Use pinnedKey (the key that was actually written) rather than the
+        // current runtime id, which changes between sessions.
+        final String key = pinnedKey != null ? pinnedKey : "PinnedMascot." + id;
+        Main.getInstance( ).getProperties( ).remove( key );
+        pinnedKey = null;
+        Main.getInstance( ).updateConfigFile( );
+    }
 
     public void setImageSet( final String set )
     {
