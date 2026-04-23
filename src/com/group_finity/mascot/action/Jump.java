@@ -76,6 +76,9 @@ public class Jump extends ActionBase
         final int targetX = getTargetX( );
         final int targetY = getTargetY( );
 
+        getMascot( ).setUserData( "jumpCurrentTargetX", targetX );
+        getMascot( ).setUserData( "jumpCurrentTargetY", targetY );
+
         final double distanceX = targetX - getMascot( ).getAnchor( ).x;
         final double distanceY = targetY - getMascot( ).getAnchor( ).y - Math.abs( distanceX ) / 2;
 
@@ -89,6 +92,10 @@ public class Jump extends ActionBase
     {
         final int targetX = getTargetX( );
         final int targetY = getTargetY( );
+
+        // Cache current targets so XML/scripts can read them back (e.g. for mid-air steering)
+        getMascot( ).setUserData( "jumpCurrentTargetX", targetX );
+        getMascot( ).setUserData( "jumpCurrentTargetY", targetY );
 
         getMascot( ).setLookRight( getMascot( ).getAnchor( ).x < targetX );
 
@@ -106,6 +113,9 @@ public class Jump extends ActionBase
 
             putVariable( getSchema( ).getString( VARIABLE_VELOCITYX ), velocity * distanceX / distance );
             putVariable( getSchema( ).getString( VARIABLE_VELOCITYY ), velocity * distanceY / distance );
+
+            // Store jump exit velocity so Fall can carry momentum from the jump
+            getMascot( ).setUserData( "jumpExitVelocityX", velocityX );
 
             getMascot( ).setAnchor( new Point( getMascot( ).getAnchor( ).x + velocityX,
                                                getMascot( ).getAnchor( ).y + velocityY ) );

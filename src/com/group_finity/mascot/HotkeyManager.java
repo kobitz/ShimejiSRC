@@ -203,6 +203,40 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
         return null;
     }
 
+    /**
+     * Returns the held directional: -1 if a "left" behavior is held, +1 if "right", 0 if neither.
+     * Used by Jump TargetX calculation to bias the jump direction.
+     */
+    public int getHeldDirectional( final String imageSet )
+    {
+        if( heldCombos.isEmpty( ) ) return 0;
+        for( String combo : heldCombos )
+        {
+            java.util.List<Binding> list = bindings.get( combo );
+            if( list == null ) continue;
+            for( Binding b : list )
+            {
+                if( !b.hold ) continue;
+                for( String part : b.behaviorEntry.split( "," ) )
+                {
+                    part = part.trim( );
+                    if( part.isEmpty( ) ) continue;
+                    String bv = part;
+                    if( part.contains( ":" ) )
+                    {
+                        String[] kv = part.split( ":", 2 );
+                        if( !kv[0].trim( ).equals( imageSet ) ) continue;
+                        bv = kv[1].trim( );
+                    }
+                    String lower = bv.toLowerCase( );
+                    if( lower.contains( "left"  ) ) return -1;
+                    if( lower.contains( "right" ) ) return  1;
+                }
+            }
+        }
+        return 0;
+    }
+
     // ── NativeKeyListener ─────────────────────────────────────────────────────
 
     @Override
@@ -299,8 +333,8 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
                     mgr.reFireBehaviorIfFinished( imageSet, behavior );
                 else
                 {
-                    applyJumpSteerIfDirectional( behavior, imageSet, mgr );
-                    mgr.setBehaviorAllSafe( imageSet, behavior );
+                    if( !applyJumpSteerIfDirectional( behavior, imageSet, mgr ) )
+                        mgr.setBehaviorAllSafe( imageSet, behavior );
                 }
             }
             else
@@ -309,8 +343,8 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
                     mgr.reFireBehaviorIfFinished( null, part );
                 else
                 {
-                    applyJumpSteerIfDirectional( part, null, mgr );
-                    mgr.setBehaviorAllSafe( part );
+                    if( !applyJumpSteerIfDirectional( part, null, mgr ) )
+                        mgr.setBehaviorAllSafe( part );
                 }
             }
         }
@@ -319,30 +353,56 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
     /**
      * If the behavior name contains "Left" or "Right", nudge the Jump targetX
      * of any mascot (matching imageSet if non-null) that is currently mid-jump.
-     * Uses ±8 px (pre-scale) matching the MoveLeft/MoveRight fall-nudge value.
-     * The mascot's Jump.getTargetX() will consume and apply the offset next tick.
+     * Returns true if at least one matching mascot was mid-Jump — the caller
+     * should then skip setBehaviorAllSafe so the jump is not interrupted.
      */
-    private void applyJumpSteerIfDirectional( final String behaviorName,
-                                              final String imageSet,
-                                              final Manager mgr )
+    /**
+     * For directional behaviors (name contains "left"/"right"):
+     * - If the mascot is mid-Jump, queues a steer nudge and suppresses setBehaviorAllSafe.
+     * - If airborne but not mid-Jump (free-falling), also suppresses setBehaviorAllSafe
+     *   so the Falling nudge branch in the MoveLeft/Right action can handle it instead.
+     * - If on the ground, returns false so normal walking fires.
+     *
+     * Uses mascot.isJumping() for Jump detection (no environment read, thread-safe).
+     * Falls back to floor check for the airborne-but-not-jumping case.
+     */
+    private boolean applyJumpSteerIfDirectional( final String behaviorName,
+                                                 final String imageSet,
+                                                 final Manager mgr )
     {
         String lower = behaviorName.toLowerCase( );
         int dx;
         if(      lower.contains( "left"  ) ) dx = -8;
         else if( lower.contains( "right" ) ) dx =  8;
-        else return;
+        else return false;
 
+        boolean suppressBehavior = false;
         for( com.group_finity.mascot.Mascot mascot : mgr.getMascotList( ) )
         {
             if( imageSet != null && !mascot.getImageSet( ).equals( imageSet ) ) continue;
-            // Only steer if the mascot is currently executing a Jump action
-            com.group_finity.mascot.behavior.Behavior beh = mascot.getBehavior( );
-            if( !( beh instanceof com.group_finity.mascot.behavior.UserBehavior ) ) continue;
-            com.group_finity.mascot.action.Action action =
-                ( (com.group_finity.mascot.behavior.UserBehavior) beh ).getAction( );
-            if( action instanceof com.group_finity.mascot.action.Jump )
+
+            // isJumping() is thread-safe (reads volatile behavior reference)
+            if( mascot.isJumping( ) )
+            {
                 mascot.addJumpTargetXOffset( dx );
+                suppressBehavior = true;
+                continue;
+            }
+
+            // For non-Jump airborne states, use floor check to decide
+            try
+            {
+                com.group_finity.mascot.environment.MascotEnvironment env = mascot.getEnvironment( );
+                java.awt.Point anchor = mascot.getAnchor( );
+                boolean onGround = env.getFloor( ).isOn( anchor )
+                                || env.getActiveIE( ).getTopBorder( ).isOn( anchor );
+                if( !onGround )
+                    suppressBehavior = true;
+                // On ground: allow normal walk to fire
+            }
+            catch( Exception ignored ) { }
         }
+        return suppressBehavior;
     }
 
     private String buildKeyCombo( NativeKeyEvent e )

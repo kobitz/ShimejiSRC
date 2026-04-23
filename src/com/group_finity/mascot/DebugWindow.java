@@ -156,6 +156,18 @@ public class DebugWindow extends javax.swing.JFrame
         lblActionTimerValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
         lblActionTimerValue.setText("N/A");
 
+        lblDeltaX = new javax.swing.JLabel();
+        lblDeltaXValue = new javax.swing.JLabel();
+        lblDeltaX.setText("Delta X");
+        lblDeltaXValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+        lblDeltaXValue.setText("N/A");
+
+        lblDeltaY = new javax.swing.JLabel();
+        lblDeltaYValue = new javax.swing.JLabel();
+        lblDeltaY.setText("Delta Y");
+        lblDeltaYValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+        lblDeltaYValue.setText("N/A");
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
@@ -182,7 +194,9 @@ public class DebugWindow extends javax.swing.JFrame
                     .addComponent(lblGpuLoad)
                     .addComponent(lblRamLoad)
                     .addComponent(lblBatteryLevel)
-                    .addComponent(lblPopulation))
+                    .addComponent(lblPopulation)
+                    .addComponent(lblDeltaX)
+                    .addComponent(lblDeltaY))
                 .addGap(42, 42, 42)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(lblBehaviourValue, javax.swing.GroupLayout.DEFAULT_SIZE, 165, Short.MAX_VALUE)
@@ -206,7 +220,9 @@ public class DebugWindow extends javax.swing.JFrame
                             .addComponent(lblGpuLoadValue)
                             .addComponent(lblRamLoadValue)
                             .addComponent(lblBatteryLevelValue)
-                            .addComponent(lblPopulationValue))
+                            .addComponent(lblPopulationValue)
+                            .addComponent(lblDeltaXValue)
+                            .addComponent(lblDeltaYValue))
                         .addGap(0, 0, Short.MAX_VALUE)))
                 .addContainerGap())
         );
@@ -261,6 +277,14 @@ public class DebugWindow extends javax.swing.JFrame
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblPopulation)
                     .addComponent(lblPopulationValue))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblDeltaX)
+                    .addComponent(lblDeltaXValue))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblDeltaY)
+                    .addComponent(lblDeltaYValue))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblWindowX)
@@ -401,6 +425,16 @@ public class DebugWindow extends javax.swing.JFrame
     {
         lblEnvironmentHeightValue.setText( String.format( "%d", height ) );
     }
+
+    void setDeltaX( int dx )
+    {
+        lblDeltaXValue.setText( String.format( "%d", dx ) );
+    }
+
+    void setDeltaY( int dy )
+    {
+        lblDeltaYValue.setText( String.format( "%d", dy ) );
+    }
     
     @Override
     public void setVisible( boolean b )
@@ -467,4 +501,8 @@ public class DebugWindow extends javax.swing.JFrame
     private javax.swing.JLabel lblPopulationValue;
     private javax.swing.JLabel lblActionTimer;
     private javax.swing.JLabel lblActionTimerValue;
+    private javax.swing.JLabel lblDeltaX;
+    private javax.swing.JLabel lblDeltaXValue;
+    private javax.swing.JLabel lblDeltaY;
+    private javax.swing.JLabel lblDeltaYValue;
 }

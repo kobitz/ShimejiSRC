@@ -123,6 +123,15 @@ public class Mascot
      */
     private boolean pinnedLocation = false;
 
+    // ── General-purpose script scratchpad ────────────────────────────────────────
+    // Allows XML/JS scripts to store transient per-mascot values (e.g. jump target block X).
+    private final java.util.Map<String, Object> userData = new java.util.HashMap<>( );
+
+    // ── Movement velocity tracking ───────────────────────────────────────────────
+    // Updated every setAnchor call so XML can read horizontal speed at jump time.
+    private int lastDeltaX = 0;
+    private int lastDeltaY = 0;
+
     // ── Jump air-steer ────────────────────────────────────────────────────────
     // Written by HotkeyManager on a directional key-press, consumed once by
     // Jump.getTargetX() each tick. Volatile so the JNH thread and tick thread
@@ -132,6 +141,10 @@ public class Mascot
     // ── Manual-only mode ──────────────────────────────────────────────────────
     // When true, buildNextBehavior only allows Fall/Dragged/Thrown/Stand/GrabWall.
     private boolean manualOnly = false;
+
+    // ── Floor collision ────────────────────────────────────────────────────────
+    // When false, workarea bottom is not treated as a floor for this mascot.
+    private boolean floorEnabled = true;
     // The property key under which this mascot's location is saved.
     // Set at save time and carried across restarts so removePinnedLocation()
     // always deletes the right key regardless of the current runtime id.
@@ -196,6 +209,10 @@ public class Mascot
         String savedManualOnly = Main.getInstance( ).getProperties( ).getProperty( "ManualOnly.mascot" + id );
         if( savedManualOnly != null )
             manualOnly = Boolean.parseBoolean( savedManualOnly );
+
+        String savedFloorEnabled = Main.getInstance( ).getProperties( ).getProperty( "FloorEnabled.mascot" + id );
+        if( savedFloorEnabled != null )
+            floorEnabled = Boolean.parseBoolean( savedFloorEnabled );
 
         log.log( Level.INFO, "Created a mascot ({0})", this );
 
@@ -466,6 +483,17 @@ public class Mascot
             }
         } );
 
+        final JCheckBoxMenuItem floorMenu = new JCheckBoxMenuItem( "Floor Collision", floorEnabled );
+        floorMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                floorEnabled = floorMenu.isSelected( );
+                Main.getInstance( ).getProperties( ).setProperty( "FloorEnabled.mascot" + id, String.valueOf( floorEnabled ) );
+                Main.getInstance( ).updateConfigFile( );
+            }
+        } );
+
         // "Paused" Menu item
         final JMenuItem pauseMenu = new JMenuItem( isAnimating( ) ? languageBundle.getString( "PauseAnimations" ) : languageBundle.getString( "ResumeAnimations" ) );
         pauseMenu.addActionListener( new ActionListener( )
@@ -723,6 +751,7 @@ public class Mascot
         popup.add( new JSeparator( ) );
         popup.add( saveLocationMenu );
         popup.add( manualOnlyMenu );
+        popup.add( floorMenu );
         popup.add( pauseMenu );
 
         final boolean currentAlwaysOnTop = Boolean.parseBoolean(
@@ -825,6 +854,8 @@ public class Mascot
                 debugWindow.setBehaviour( behavior.toString( ).substring( 9, behavior.toString( ).length( ) - 1 ).replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " ) );
                 debugWindow.setShimejiX( anchor.x );
                 debugWindow.setShimejiY( anchor.y );
+                debugWindow.setDeltaX( lastDeltaX );
+                debugWindow.setDeltaY( lastDeltaY );
                 
                 Area activeWindow = environment.getActiveIE( );
                 debugWindow.setWindowTitle( environment.getActiveIETitle( ) );
@@ -1005,6 +1036,7 @@ public class Mascot
         animating = false;
         Main.getInstance( ).getProperties( ).remove( "DisabledBehaviours.mascot" + id );
         Main.getInstance( ).getProperties( ).remove( "ManualOnly.mascot" + id );
+        Main.getInstance( ).getProperties( ).remove( "FloorEnabled.mascot" + id );
         for( String key : new String[]{ "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen" } )
             Main.getInstance( ).getProperties( ).remove( key + ".mascot" + id );
         getWindow( ).dispose( );
@@ -1053,6 +1085,8 @@ public class Mascot
 
     public void setAnchor( Point anchor )
     {
+        this.lastDeltaX = anchor.x - this.anchor.x;
+        this.lastDeltaY = anchor.y - this.anchor.y;
         this.anchor = anchor;
     }
 
@@ -1125,6 +1159,36 @@ public class Mascot
      * should not be interrupted by external triggers (hotkeys, right-click menu).
      * Internal transitions from UserBehavior (natural completion, fall, etc.) bypass this.
      */
+    /**
+     * Returns true if the mascot is currently running a jump behavior
+     * (behavior name contains "jump", case-insensitive) AND a Jump action
+     * is active somewhere in the action tree.
+     * Excludes Fall/Thrown which run ManualJump internally as a stomp sub-action.
+     * Safe to call from any thread.
+     */
+    public boolean isJumping( )
+    {
+        if( !( behavior instanceof com.group_finity.mascot.behavior.UserBehavior ) ) return false;
+        String name = ( (com.group_finity.mascot.behavior.UserBehavior) behavior ).getName( );
+        if( name == null || !name.toLowerCase( ).contains( "jump" ) ) return false;
+        com.group_finity.mascot.action.Action root =
+            ( (com.group_finity.mascot.behavior.UserBehavior) behavior ).getAction( );
+        return isJumpAction( root );
+    }
+
+    private boolean isJumpAction( final com.group_finity.mascot.action.Action action )
+    {
+        if( action == null ) return false;
+        if( action instanceof com.group_finity.mascot.action.Jump ) return true;
+        if( action instanceof com.group_finity.mascot.action.ComplexAction )
+        {
+            com.group_finity.mascot.action.Action child =
+                ( (com.group_finity.mascot.action.ComplexAction) action ).getCurrentChildAction( );
+            return isJumpAction( child );
+        }
+        return false;
+    }
+
     public boolean isCurrentActionInterruptable( )
     {
         if( behavior instanceof com.group_finity.mascot.behavior.UserBehavior )
@@ -1205,6 +1269,20 @@ public class Mascot
     public void setCurrentScale( double scale ) { this.currentScale = scale; }
     public double getCurrentScale( )            { return currentScale; }
 
+    /** Store a transient value in the per-mascot script scratchpad. */
+    public void setUserData( final String key, final Object value )
+    {
+        if( value == null ) userData.remove( key );
+        else userData.put( key, value );
+    }
+    /** Retrieve a value from the per-mascot script scratchpad, or null if absent. */
+    public Object getUserData( final String key ) { return userData.get( key ); }
+
+    /** Last horizontal pixel delta applied in setAnchor. Reflects movement speed this tick. */
+    public int getLastDeltaX( ) { return lastDeltaX; }
+    /** Last vertical pixel delta applied in setAnchor. */
+    public int getLastDeltaY( ) { return lastDeltaY; }
+
     /** Consume the queued jump X nudge (returns offset and resets to 0). */
     public int consumeJumpTargetXOffset( )
     {
@@ -1216,6 +1294,7 @@ public class Mascot
     public void addJumpTargetXOffset( int dx ) { jumpTargetXOffset += dx; }
 
     public boolean isManualOnly( )          { return manualOnly; }
+    public boolean isFloorEnabled( )        { return floorEnabled; }
     public void setManualOnly( boolean v )  { manualOnly = v; }
 
     public boolean isPinnedLocation( )         { return pinnedLocation; }

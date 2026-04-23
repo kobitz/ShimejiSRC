@@ -212,7 +212,9 @@ public class Manager {
 							try {
 								com.group_finity.mascot.config.Configuration cfg =
 									Main.getInstance().getConfiguration( mascot.getImageSet() );
-								if( cfg.getBehaviorBuilders().containsKey( heldBehavior ) && mascot.isCurrentActionInterruptable( ) )
+								if( cfg.getBehaviorBuilders().containsKey( heldBehavior )
+										&& mascot.isCurrentActionInterruptable( )
+										&& !mascot.isJumping( ) )
 									mascot.setBehavior( cfg.buildBehavior( heldBehavior, mascot ) );
 							} catch( Exception ex ) {
 								log.log( java.util.logging.Level.WARNING, "Hold-loop reset failed", ex );

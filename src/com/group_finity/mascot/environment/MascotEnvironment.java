@@ -126,7 +126,7 @@ public class MascotEnvironment
         {
             return getActiveIE( ).getTopBorder( );
         }
-        if( getWorkArea( ).getBottomBorder( ).isOn( mascot.getAnchor( ) ) )
+        if( mascot.isFloorEnabled( ) && getWorkArea( ).getBottomBorder( ).isOn( mascot.getAnchor( ) ) )
         {
             if( !ignoreSeparator || isScreenTopBottom( ) )
             {
