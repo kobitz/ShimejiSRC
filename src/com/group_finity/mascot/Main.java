@@ -318,6 +318,9 @@ public class Main
 
         getManager( ).start( );
         HotkeyManager.getInstance( ).init( getManager( ) );
+        // Start the video area HTTP server so browser extensions can
+        // register live video player rects as synthetic Shimeji windows.
+        com.group_finity.mascot.VideoAreaServer.start();
     }
 
     public boolean loadConfiguration( final String imageSet )

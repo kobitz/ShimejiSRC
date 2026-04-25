@@ -110,6 +110,22 @@ public class WindowsEnvironment extends Environment
             }
         }, null );
 
+        // Inject synthetic video areas from browser extension as fake IE windows.
+        // They use a null handle (no real HWND) and are marked IEResult.IE so
+        // findNearestIEFromSnapshot treats them identically to real windows.
+        com.group_finity.mascot.VideoAreaServer vas =
+            com.group_finity.mascot.VideoAreaServer.getInstance();
+        if( vas != null )
+        {
+            for( java.awt.Rectangle sr : vas.getSyntheticAreas() )
+            {
+                handles.add( com.sun.jna.Pointer.createConstant( -1L ) ); // synthetic sentinel
+                rects.add( sr );
+                viability.add( IEResult.IE );
+                exStyles.add( 0 );
+            }
+        }
+
         // Publish — all lists written before sharedHandles (the guard)
         sharedRects     = rects;
         sharedViability = viability;
@@ -322,6 +338,8 @@ public class WindowsEnvironment extends Environment
     // ── Per-instance state ────────────────────────────────────────────────────
 
     private final Area activeIE  = new Area( );
+    /** Rect of the synthetic IE that won the last nearest-IE selection, or null. */
+    private java.awt.Rectangle synthActiveRect = null;
     private final Area workArea  = new Area( );
 
     private Pointer activeIEobject = null;
@@ -370,11 +388,18 @@ public class WindowsEnvironment extends Environment
             if( !r.intersects( mascotScreen ) ) continue;
 
             int     sampleX  = Math.max( r.x, Math.min( anchor.x, r.x + r.width - 1 ) );
+            // Synthetic rects bypass occlusion — they represent content drawn ON TOP
+            // of a browser window (e.g. a video player), so they're intentionally
+            // inside another window's bounds.
+            final boolean isSynthetic = com.sun.jna.Pointer.createConstant(-1L).equals( handles.get(i) );
             boolean occluded = false;
-            for( int j = 0; j < i; j++ )
+            if( !isSynthetic )
             {
-                if( ( exStyles.get( j ) & User32.WS_EX_LAYERED ) != 0 ) continue;
-                if( rects.get( j ).contains( sampleX, r.y ) ) { occluded = true; break; }
+                for( int j = 0; j < i; j++ )
+                {
+                    if( ( exStyles.get( j ) & User32.WS_EX_LAYERED ) != 0 ) continue;
+                    if( rects.get( j ).contains( sampleX, r.y ) ) { occluded = true; break; }
+                }
             }
             if( occluded ) continue;
 
@@ -419,6 +444,20 @@ public class WindowsEnvironment extends Environment
         while( allIEAreas.size( ) > areaIdx )
             allIEAreas.remove( allIEAreas.size( ) - 1 );
 
+        // Append synthetic video areas from browser extension
+        com.group_finity.mascot.VideoAreaServer vas =
+            com.group_finity.mascot.VideoAreaServer.getInstance();
+        if( vas != null )
+        {
+            for( java.awt.Rectangle r : vas.getSyntheticAreas() )
+            {
+                Area a = new Area();
+                a.set( r );
+                a.setVisible( true );
+                allIEAreas.add( a );
+            }
+        }
+
         return bestFloor != null ? bestFloor : bestFallback;
     }
 
@@ -433,7 +472,8 @@ public class WindowsEnvironment extends Environment
         {
             if( activeIEobject != null )
             {
-                Rectangle r = getIERect( activeIEobject );
+                final com.sun.jna.Pointer SEN = com.sun.jna.Pointer.createConstant( -1L );
+                Rectangle r = SEN.equals( activeIEobject ) ? null : getIERect( activeIEobject );
                 if( r != null )
                 {
                     activeIE.setVisible( r.intersects( getScreen( ).toRectangle( ) ) );
@@ -459,7 +499,31 @@ public class WindowsEnvironment extends Environment
         }
         else
         {
-            Rectangle r = getIERect( activeIEobject );
+            // Check if this is a synthetic sentinel handle
+            final com.sun.jna.Pointer SENTINEL = com.sun.jna.Pointer.createConstant( -1L );
+            Rectangle r;
+            if( SENTINEL.equals( activeIEobject ) )
+            {
+                // Find the matching rect from sharedRects
+                // Find the synthetic rect that matches the selected sentinel
+                // by finding the nearest one to mascotAnchor (mirrors findNearest logic)
+                r = null;
+                List<com.sun.jna.Pointer> h = sharedHandles;
+                List<Rectangle>           rr = sharedRects;
+                double bestDist = Double.MAX_VALUE;
+                for( int i = 0; i < h.size(); i++ ) {
+                    if( !SENTINEL.equals( h.get(i) ) ) continue;
+                    Rectangle sr = rr.get(i);
+                    int dx = Math.max(sr.x - mascotAnchor.x, Math.max(0, mascotAnchor.x - (sr.x+sr.width)));
+                    int dy = Math.max(sr.y - mascotAnchor.y, Math.max(0, mascotAnchor.y - (sr.y+sr.height)));
+                    double dist = Math.sqrt(dx*dx + dy*dy);
+                    if( dist < bestDist ) { bestDist = dist; r = sr; }
+                }
+            }
+            else
+            {
+                r = getIERect( activeIEobject );
+            }
             if( r == null )
             {
                 activeIE.setVisible( false );
@@ -471,6 +535,7 @@ public class WindowsEnvironment extends Environment
                 activeIE.set( r );
             }
         }
+
     }
 
     // ── Carry lock ────────────────────────────────────────────────────────────

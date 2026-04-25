@@ -180,6 +180,7 @@ public class Jump extends ActionBase
      */
     private int getTargetY( ) throws VariableException
     {
+        if( overrideTargetY != Integer.MIN_VALUE ) return overrideTargetY;
         switch( liveMode )
         {
             case CURSOR: return getEnvironment( ).getCursor( ).getY( );
@@ -198,6 +199,19 @@ public class Jump extends ActionBase
                 Number val = eval( getSchema( ).getString( PARAMETER_TARGETY ), Number.class, DEFAULT_TARGETY );
                 return val != null ? val.intValue( ) : DEFAULT_TARGETY;
         }
+    }
+
+    /** Sentinel value meaning "no override set". */
+    private int overrideTargetY = Integer.MIN_VALUE;
+
+    /**
+     * Override TargetY at runtime (used by hold-cancel for short hops).
+     * Once set, getTargetY() returns this value on every tick, cutting the
+     * jump arc short. Set to Integer.MIN_VALUE to clear the override.
+     */
+    public void setTargetY( final int y )
+    {
+        this.overrideTargetY = y;
     }
 
     /**

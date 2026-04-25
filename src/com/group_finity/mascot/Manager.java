@@ -196,30 +196,122 @@ public class Manager {
 					// ── Hotkey hold-to-loop ──────────────────────────────────────
 					// After mascot.tick(), UserBehavior may have just called
 					// buildNextBehavior() (transitioning to Fall/Idle/etc).
-					// We detect that transition: if a !hold key is held for this
-					// mascot's imageSet AND the current behavior name is no longer
-					// the held behavior name, reset it to the held behavior.
-					// apply() then renders frame 1 of the fresh loop iteration,
-					// and next tick it plays through normally to completion again.
+					//
+					// For !hold bindings on Sequence behaviors:
+					//   - First press: play the whole Sequence once (all steps).
+					//   - While held: when the Sequence ends, re-fire ONLY its last
+					//     child action as a looping single-step behavior, so the mascot
+					//     stays at full speed without replaying the ramp-up.
+					//   - On release: the last-step behavior ends naturally and fires
+					//     its own NextBehavior (e.g. Run → DashBrake).
+					//
+					// The "last step loop" behavior name is stored in _holdLastStep.
 					final String heldBehavior =
 						HotkeyManager.getInstance().getHeldBehaviorFor( mascot.getImageSet() );
 					if( heldBehavior != null )
 					{
 						final String currentName = mascot.getCurrentBehaviorName();
-						if( !heldBehavior.equals( currentName ) )
+						final String lastStepBehavior = "_holdLoop_" + heldBehavior;
+
+						// Are we on the intro, the last-step loop, or something else?
+						final boolean onIntro    = heldBehavior.equals( currentName );
+						final boolean onLastStep = lastStepBehavior.equals( currentName );
+
+						if( !onIntro && !onLastStep )
 						{
-							// Behavior just transitioned away — loop back to held behavior
+							// Behavior just transitioned away from the hold chain.
+							// Build a synthetic last-step behavior if we can.
 							try {
 								com.group_finity.mascot.config.Configuration cfg =
 									Main.getInstance().getConfiguration( mascot.getImageSet() );
-								if( cfg.getBehaviorBuilders().containsKey( heldBehavior )
-										&& mascot.isCurrentActionInterruptable( )
-										&& !mascot.isJumping( ) )
-									mascot.setBehavior( cfg.buildBehavior( heldBehavior, mascot ) );
+
+								// Only interrupt if we JUST came from the intro or loop —
+								// prevents hijacking Fall/Thrown/etc that Mario drifted into.
+								// Also skip if currently in a physics state (Fall/Thrown/Dragged) —
+								// these happen when the looped action had no valid branch (e.g.
+								// ManualJump Select mid-air) and keeps firing fireNextBehavior->Fall
+								// every tick. Let the physics state run until Mario lands.
+								final String prevName = mascot.getPreviousBehaviorName();
+								final boolean cameFromHoldChain =
+									heldBehavior.equals( prevName ) || lastStepBehavior.equals( prevName );
+								final boolean inPhysicsState =
+									com.group_finity.mascot.behavior.UserBehavior.BEHAVIOURNAME_FALL.equals( currentName )
+									|| com.group_finity.mascot.behavior.UserBehavior.BEHAVIOURNAME_THROWN.equals( currentName )
+									|| com.group_finity.mascot.behavior.UserBehavior.BEHAVIOURNAME_DRAGGED.equals( currentName );
+								// Directional nudge while falling: directly steer the running Fall
+								// action's velocityX without interrupting it. This changes Mario's
+								// horizontal trajectory every tick the key is held.
+								if( inPhysicsState
+										&& ( com.group_finity.mascot.behavior.UserBehavior.BEHAVIOURNAME_FALL.equals( currentName )
+										  || com.group_finity.mascot.behavior.UserBehavior.BEHAVIOURNAME_THROWN.equals( currentName ) )
+										&& !mascot.isJumping()
+										&& ( heldBehavior.toLowerCase().contains( "left" ) || heldBehavior.toLowerCase().contains( "right" ) ) )
+								{
+									// Find the active Fall action and steer it
+									if( mascot.getBehavior() instanceof com.group_finity.mascot.behavior.UserBehavior )
+									{
+										com.group_finity.mascot.action.Action act =
+											( (com.group_finity.mascot.behavior.UserBehavior) mascot.getBehavior() ).getAction();
+										// Walk the action tree to find the active Fall leaf
+										while( act instanceof com.group_finity.mascot.action.ComplexAction )
+											act = ( (com.group_finity.mascot.action.ComplexAction) act ).getCurrentChildAction();
+										if( act instanceof com.group_finity.mascot.action.Fall )
+										{
+											final double nudgeVX = heldBehavior.toLowerCase().contains( "left" ) ? -5.0 : 5.0;
+											( (com.group_finity.mascot.action.Fall) act ).setVelocityX( nudgeVX );
+										}
+									}
+								}
+								else if( cameFromHoldChain && !inPhysicsState
+										&& mascot.isCurrentActionInterruptable() && !mascot.isJumping()
+										&& cfg.getBehaviorBuilders().containsKey( heldBehavior ) )
+								{
+									// Try to get the last child of the held behavior's action
+									com.group_finity.mascot.config.ActionBuilder ab =
+										cfg.getActionBuilderFor( heldBehavior );
+									com.group_finity.mascot.config.IActionBuilder lastChild =
+										( ab != null ) ? ab.getLastChildBuilder() : null;
+
+									if( lastChild != null )
+									{
+										// Build a minimal Sequence wrapping just the last child action,
+										// registered ephemerally so UserBehavior can run it.
+										// We reuse the held behavior's NextBehaviorList by wrapping in
+										// a synthetic UserBehavior that delegates next-behavior to the
+										// held behavior's configured NextBehaviorList.
+										// Bake parent Affordance into the action's params so getAffordance()
+										// returns it on every next() call, not just on init().
+										// Without this, ActionBase.next() clears affordances every tick.
+										String parentAffordance = ( ab != null )
+											? ab.getParams().getOrDefault( "Affordance", "" )
+											: "";
+										java.util.Map<String,String> actionParams = new java.util.HashMap<>();
+										if( !parentAffordance.isEmpty() )
+											actionParams.put( "Affordance", parentAffordance );
+										com.group_finity.mascot.action.Action lastAction =
+											lastChild.buildAction( actionParams );
+										com.group_finity.mascot.behavior.Behavior loopBehavior =
+											new com.group_finity.mascot.behavior.HoldLastStepBehavior(
+												lastStepBehavior, lastAction, cfg, heldBehavior, parentAffordance );
+										mascot.setBehavior( loopBehavior );
+									}
+									else if( cfg.getBehaviorBuilders().containsKey( heldBehavior ) )
+									{
+										// No child actions (e.g. atomic action) — just re-fire the whole behavior
+										mascot.setUserData( "_holdIntroPlayed", null );
+										mascot.setBehavior( cfg.buildBehavior( heldBehavior, mascot ) );
+									}
+								}
 							} catch( Exception ex ) {
-								log.log( java.util.logging.Level.WARNING, "Hold-loop reset failed", ex );
+								log.log( java.util.logging.Level.WARNING, "Hold-loop last-step failed", ex );
 							}
 						}
+						// else: still on intro or last-step loop — let it keep running
+					}
+					else
+					{
+						// Key released — clear any hold state
+						mascot.setUserData( "_holdIntroPlayed", null );
 					}
 
 					mascot.apply();
@@ -361,6 +453,59 @@ public class Manager {
 	 * Called by Manager.tick() via HotkeyManager.tickHeldKeys().
 	 * Caller must already hold synchronized(getMascots()).
 	 */
+
+	/**
+	 * Called on !hold key release to immediately cancel the current move/jump action
+	 * by re-firing it with zeroed targets (TargetX=anchor.x stops a Move in place;
+	 * TargetY=anchor.y cuts a Jump short for short-hops).
+	 * Only applies to mascots whose current behavior name matches heldBehaviorName
+	 * or the synthetic "_holdLoop_" prefix variant.
+	 */
+	public void cancelHeldActions( final String imageSet, final String heldBehaviorName )
+	{
+		synchronized( getMascots() )
+		{
+			for( final Mascot mascot : getMascots() )
+			{
+				if( imageSet != null && !mascot.getImageSet().equals( imageSet ) ) continue;
+
+				final String cur = mascot.getCurrentBehaviorName();
+				final boolean relevant = heldBehaviorName.equals( cur )
+				                      || ( "_holdLoop_" + heldBehaviorName ).equals( cur );
+				if( !relevant ) continue;
+
+				try {
+					// Get the current running action
+					com.group_finity.mascot.behavior.Behavior beh = mascot.getBehavior();
+					com.group_finity.mascot.action.Action action = null;
+					if( beh instanceof com.group_finity.mascot.behavior.UserBehavior )
+						action = ( (com.group_finity.mascot.behavior.UserBehavior) beh ).getAction();
+					else if( beh instanceof com.group_finity.mascot.behavior.HoldLastStepBehavior )
+						action = ( (com.group_finity.mascot.behavior.HoldLastStepBehavior) beh ).getAction();
+
+					// Drill into Sequence/Select to find the leaf action
+					while( action instanceof com.group_finity.mascot.action.ComplexAction ) {
+						com.group_finity.mascot.action.Action child =
+							( (com.group_finity.mascot.action.ComplexAction) action ).getCurrentChildAction();
+						if( child == null ) break;
+						action = child;
+					}
+
+					// Cancel Move by zeroing TargetX; cancel Jump by zeroing TargetY
+					if( action instanceof com.group_finity.mascot.action.Move ) {
+						( (com.group_finity.mascot.action.Move) action )
+							.setTargetX( mascot.getAnchor().x );
+					} else if( action instanceof com.group_finity.mascot.action.Jump ) {
+						( (com.group_finity.mascot.action.Jump) action )
+							.setTargetY( mascot.getAnchor().y );
+					}
+				} catch( Exception ex ) {
+					log.log( java.util.logging.Level.WARNING, "cancelHeldActions failed", ex );
+				}
+			}
+		}
+	}
+
 	void reFireBehaviorIfFinished( final String imageSet, final String behaviorName )
 	{
 		for( final Mascot mascot : this.getMascots( ) )

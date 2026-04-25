@@ -86,7 +86,7 @@ public class MascotEnvironment
 
     public Border getCeiling( )
     {
-        return getCeiling( false );
+        return getCeiling( multiscreen );
     }
 
     public Border getCeiling( boolean ignoreSeparator )
@@ -117,7 +117,7 @@ public class MascotEnvironment
 
     public Border getFloor( )
     {
-        return getFloor( false );
+        return getFloor( multiscreen );
     }
 
     public Border getFloor( boolean ignoreSeparator )
@@ -143,7 +143,7 @@ public class MascotEnvironment
 
     public Border getWall( )
     {
-        return getWall( false );
+        return getWall( multiscreen );
     }
 
     public Border getWall( boolean ignoreSeparator )

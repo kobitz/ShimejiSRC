@@ -13,6 +13,7 @@ import java.util.ResourceBundle;
 
 import com.group_finity.mascot.action.Action;
 import com.group_finity.mascot.action.Animate;
+import com.group_finity.mascot.action.AnimateWithLoop;
 import com.group_finity.mascot.action.Move;
 import com.group_finity.mascot.action.Select;
 import com.group_finity.mascot.action.Sequence;
@@ -129,6 +130,8 @@ public class ActionBuilder implements IActionBuilder {
                             return new Stay( schema, animations, variables);
 			} else if( this.type.equals( schema.getString( "Animate" ) ) ) {
                             return new Animate( schema, animations, variables);
+			} else if( this.type.equals( "AnimateWithLoop" ) ) {
+                            return new AnimateWithLoop( schema, animations, variables );
 			} else if( this.type.equals( schema.getString( "Sequence" ) ) ) {
                             return new Sequence( schema, variables, actions.toArray(new Action[0]));
 			} else if( this.type.equals( schema.getString( "Select" ) ) ) {
@@ -186,11 +189,54 @@ public class ActionBuilder implements IActionBuilder {
 		return this.type;
 	}
 
+	/**
+	 * Returns the last IActionBuilder child of this action, or null if there are none.
+	 * Used by the hold-loop engine to repeat only the final step of a Sequence.
+	 */
+	public IActionBuilder getLastChildBuilder() {
+		List<IActionBuilder> refs = getActionRefs();
+		if( refs == null || refs.isEmpty() ) return null;
+		// If HoldLoopStep names a specific action ref, deep-search the tree for it.
+		// This lets the loop target a deeply nested ref (e.g. "Run" inside a Select).
+		String holdLoopStep = getParams().get( "HoldLoopStep" );
+		if( holdLoopStep != null && !holdLoopStep.isEmpty() )
+		{
+			IActionBuilder found = findNamedRef( refs, holdLoopStep );
+			if( found != null ) return found;
+		}
+		return refs.get( refs.size() - 1 );
+	}
+
+	/**
+	 * Depth-first search (last-to-first) for an ActionRef named 'name'.
+	 * Used by HoldLoopStep to locate e.g. "Run" inside a Select > Sequence tree.
+	 */
+	private IActionBuilder findNamedRef( List<IActionBuilder> refs, String name ) {
+		if( refs == null ) return null;
+		for( int i = refs.size() - 1; i >= 0; i-- ) {
+			IActionBuilder ref = refs.get(i);
+			if( ref.toString().equals( "Action(" + name + ")" ) ) return ref;
+			if( ref instanceof ActionBuilder ) {
+				IActionBuilder found = findNamedRef( ((ActionBuilder)ref).getActionRefs(), name );
+				if( found != null ) return found;
+			}
+		}
+		return null;
+	}
+
+
+	/**
+	 * Returns all child IActionBuilder refs. Used by hold-loop to inspect sequence steps.
+	 */
+	public List<IActionBuilder> getChildBuilders() {
+		return java.util.Collections.unmodifiableList( getActionRefs() );
+	}
+
 	private String getClassName() {
 		return this.className;
 	}
 
-	private Map<String, String> getParams() {
+	public Map<String, String> getParams() {
 		return this.params;
 	}
 
@@ -198,7 +244,7 @@ public class ActionBuilder implements IActionBuilder {
 		return this.animationBuilders;
 	}
 
-	private List<IActionBuilder> getActionRefs() {
+	List<IActionBuilder> getActionRefs() {
 		return this.actionRefs;
 	}
 

@@ -165,7 +165,7 @@ public class Fall extends ActionBase {
 		return this.velocityY;
 	}
 
-	private void setVelocityX(final double velocityX) {
+	public void setVelocityX(final double velocityX) {
 		this.velocityX = velocityX;
 	}
 

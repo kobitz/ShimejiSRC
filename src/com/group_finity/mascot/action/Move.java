@@ -154,6 +154,25 @@ public class Move extends BorderedAction
         return eval( getSchema( ).getString( PARAMETER_TARGETY ), Number.class, DEFAULT_TARGETY ).intValue( );
     }
 
+    /**
+     * Override TargetX at runtime (used by hold-cancel to stop the mascot in place).
+     * Injects a constant into the variable map, shadowing the original script expression.
+     */
+    public void setTargetX( final int x )
+    {
+        getVariables().put( getSchema().getString( PARAMETER_TARGETX ),
+            new com.group_finity.mascot.script.Constant( x ) );
+    }
+
+    /**
+     * Override TargetY at runtime.
+     */
+    public void setTargetY( final int y )
+    {
+        getVariables().put( getSchema().getString( PARAMETER_TARGETY ),
+            new com.group_finity.mascot.script.Constant( y ) );
+    }
+
     // Estimated total ticks to reach target based on animation velocity.
     // Returns Integer.MAX_VALUE if target or velocity cannot be determined.
     public int getEstimatedDuration( ) throws VariableException

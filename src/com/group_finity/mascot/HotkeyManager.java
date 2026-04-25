@@ -78,11 +78,13 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
 
     /** Parsed entry: behavior name + whether it is marked !hold */
     private static class Binding {
-        final String  behaviorEntry; // e.g. "Mario:MoveRight" or "MoveRight"
-        final boolean hold;          // true → loop while held; false → fire once on press
-        Binding( String entry, boolean hold ) {
+        final String  behaviorEntry;   // e.g. "Mario:MoveRight" or "MoveRight"
+        final boolean hold;            // true → loop while held; false → fire once on press
+        final String  continuation;    // optional: behavior to loop after first completion (e.g. "MoveRightRun")
+        Binding( String entry, boolean hold, String continuation ) {
             this.behaviorEntry = entry;
             this.hold          = hold;
+            this.continuation  = continuation; // null if not specified
         }
     }
 
@@ -204,6 +206,44 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
     }
 
     /**
+     * Returns the continuation behavior for the held !hold binding for this imageSet,
+     * or null if none is specified or no key is held.
+     *
+     * When a hotkey is defined as e.g. RIGHT=Mario:MoveRight!hold:MoveRightRun,
+     * MoveRight plays once on the first press, then MoveRightRun loops while held.
+     * This method returns "MoveRightRun" so Manager.tick() can loop it instead of
+     * resetting to MoveRight each time.
+     */
+    public String getHeldContinuationFor( final String imageSet )
+    {
+        if( heldCombos.isEmpty( ) ) return null;
+        for( String combo : heldCombos )
+        {
+            java.util.List<Binding> list = bindings.get( combo );
+            if( list == null ) continue;
+            for( Binding b : list )
+            {
+                if( !b.hold || b.continuation == null ) continue;
+                for( String part : b.behaviorEntry.split( "," ) )
+                {
+                    part = part.trim( );
+                    if( part.isEmpty( ) ) continue;
+                    if( part.contains( ":" ) )
+                    {
+                        String[] kv = part.split( ":", 2 );
+                        if( kv[0].trim( ).equals( imageSet ) ) return b.continuation;
+                    }
+                    else
+                    {
+                        return b.continuation;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns the held directional: -1 if a "left" behavior is held, +1 if "right", 0 if neither.
      * Used by Jump TargetX calculation to bias the jump direction.
      */
@@ -280,8 +320,38 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
         // 1. Clear the "Bouncer" clipboard so the key can be pressed again later
         toggledKeys.remove(e.getKeyCode());
 
-        // 2. Your existing logic to stop the looping
-        heldCombos.remove( buildKeyCombo( e ) );
+        // 2. Remove from held set so tick loop stops re-firing
+        final String combo = buildKeyCombo( e );
+        heldCombos.remove( combo );
+
+        // 3. Cancel the current move/jump action so it stops immediately:
+        //    Move gets TargetX zeroed to current position (stops in place),
+        //    Jump gets TargetY zeroed to current Y (short-hop / cuts arc).
+        if( manager != null )
+        {
+            java.util.List<Binding> list = bindings.get( combo );
+            if( list != null )
+            {
+                for( Binding b : list )
+                {
+                    if( !b.hold ) continue;
+                    for( String part : b.behaviorEntry.split( "," ) )
+                    {
+                        part = part.trim();
+                        if( part.isEmpty() ) continue;
+                        String imageSet  = null;
+                        String behaviorName = part;
+                        if( part.contains( ":" ) )
+                        {
+                            String[] kv = part.split( ":", 2 );
+                            imageSet     = kv[0].trim();
+                            behaviorName = kv[1].trim();
+                        }
+                        manager.cancelHeldActions( imageSet, behaviorName );
+                    }
+                }
+            }
+        }
     }
     
 
@@ -457,19 +527,27 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
 
                 String normKey = rawKey.toLowerCase( ).replaceAll( "\\s*\\+\\s*", "+" );
 
-                // Parse !hold suffix
+                // Parse !hold and optional !hold:ContinuationName suffix
                 boolean hold = false;
-                if( rawVal.endsWith( "!hold" ) )
+                String continuation = null;
+                int holdIdx = rawVal.indexOf( "!hold" );
+                if( holdIdx >= 0 )
                 {
-                    hold   = true;
-                    rawVal = rawVal.substring( 0, rawVal.length( ) - "!hold".length( ) ).trim( );
+                    hold = true;
+                    String afterHold = rawVal.substring( holdIdx + "!hold".length( ) ).trim( );
+                    rawVal = rawVal.substring( 0, holdIdx ).trim( );
+                    // Support !hold:ContinuationBehavior
+                    if( afterHold.startsWith( ":" ) )
+                        continuation = afterHold.substring( 1 ).trim( );
                 }
 
-                Binding binding = new Binding( rawVal, hold );
+                Binding binding = new Binding( rawVal, hold, continuation );
                 bindings.computeIfAbsent( normKey, k -> new java.util.ArrayList<>( ) ).add( binding );
 
-                log.log( Level.INFO, "HotkeyManager: bound [{0}] -> {1}{2}",
-                    new Object[]{ normKey, rawVal, hold ? " [hold-loop]" : "" } );
+                log.log( Level.INFO, "HotkeyManager: bound [{0}] -> {1}{2}{3}",
+                    new Object[]{ normKey, rawVal,
+                        hold ? " [hold-loop]" : "",
+                        continuation != null ? " [continuation: " + continuation + "]" : "" } );
             }
         }
         catch( IOException e )

@@ -1207,8 +1207,14 @@ public class Mascot
         return true;
     }
 
+    /** Name of the behavior that was active before the current one. */
+    private String previousBehaviorName = null;
+
+    public String getPreviousBehaviorName() { return previousBehaviorName; }
+
     public void setBehavior( final Behavior behavior ) throws CantBeAliveException
     {
+        this.previousBehaviorName = getCurrentBehaviorName();
         this.behavior = behavior;
         this.behavior.init( this );
     }
@@ -1223,7 +1229,7 @@ public class Mascot
         return manager != null ? getManager( ).getCount( ) : 0;
     }
 
-    private boolean isAnimating( )
+    public boolean isAnimating( )
     {
         return animating && !paused;
     }
@@ -1306,6 +1312,8 @@ public class Mascot
     {
         if( behavior instanceof com.group_finity.mascot.behavior.UserBehavior )
             return ( (com.group_finity.mascot.behavior.UserBehavior) behavior ).getName( );
+        if( behavior instanceof com.group_finity.mascot.behavior.HoldLastStepBehavior )
+            return ( (com.group_finity.mascot.behavior.HoldLastStepBehavior) behavior ).getName( );
         return null;
     }
 

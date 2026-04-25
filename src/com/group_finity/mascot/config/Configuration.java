@@ -171,8 +171,9 @@ public class Configuration
 
     /**
      * Returns true if the behavior is allowed to run when the mascot is in manualOnly mode.
-     * Allowed set: Fall, Dragged, Thrown, and any behavior whose name contains
-     * "Stand" or "GrabWall" (case-insensitive).
+     * Allowed set: Fall, Dragged, Thrown, behaviors containing "Stand" or "GrabWall",
+     * and transition/utility behaviors used as successors of hotkey actions
+     * (DashBrake, Move* variants, etc.).
      */
     private boolean isManualOnlyAllowed( final String behaviorName )
     {
@@ -181,7 +182,15 @@ public class Configuration
             || n.equals( schema.getString( UserBehavior.BEHAVIOURNAME_DRAGGED ).toLowerCase( ) )
             || n.equals( schema.getString( UserBehavior.BEHAVIOURNAME_THROWN  ).toLowerCase( ) )
             || n.contains( "stand" )
-            || n.contains( "grabwall" );
+            || n.contains( "grabwall" )
+            || n.contains( "wall" )
+            || n.contains( "ceiling" )
+            || n.contains( "fall" )
+            || n.contains( "slide" )
+            || n.contains( "dashbrake" )
+            || n.contains( "dash" )
+            || n.contains( "moveleft" )
+            || n.contains( "moveright" );
     }
 
     public Behavior buildNextBehavior( final String previousName, final Mascot mascot ) throws BehaviorInstantiationException
@@ -193,27 +202,39 @@ public class Configuration
 
         final List<BehaviorBuilder> candidates = new ArrayList<BehaviorBuilder>( );
         long totalFrequency = 0;
-        for( final BehaviorBuilder behaviorFactory : this.getBehaviorBuilders( ).values( ) )
+
+        // In ManualOnly mode, skip the global random pool entirely — the mascot should
+        // only follow explicitly defined NextBehaviorList entries.  The global pool is
+        // still used in normal mode.
+        if( !mascot.isManualOnly( ) )
         {
-            try
+            for( final BehaviorBuilder behaviorFactory : this.getBehaviorBuilders( ).values( ) )
             {
-                if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot )
-                    && ( !mascot.isManualOnly( ) || isManualOnlyAllowed( behaviorFactory.getName( ) ) ) )
+                try
                 {
-                    candidates.add( behaviorFactory );
-                    totalFrequency += behaviorFactory.getFrequency( );
+                    if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot ) )
+                    {
+                        candidates.add( behaviorFactory );
+                        totalFrequency += behaviorFactory.getFrequency( );
+                    }
                 }
-            }
-            catch( final VariableException e )
-            {
-                log.log( Level.WARNING, "An error occurred calculating the frequency of the action", e );
+                catch( final VariableException e )
+                {
+                    log.log( Level.WARNING, "An error occurred calculating the frequency of the action", e );
+                }
             }
         }
 
         if( previousName != null )
         {
             final BehaviorBuilder previousBehaviorFactory = this.getBehaviorBuilders( ).get( previousName );
-            if( !previousBehaviorFactory.isNextAdditive( ) )
+            if( previousBehaviorFactory == null )
+            {
+                // previousName not in this config (e.g. synthetic hold-loop behavior) —
+                // return null so the mascot disposes cleanly (e.g. after SelfDestruct).
+                return null;
+            }
+            else if( !previousBehaviorFactory.isNextAdditive( ) )
             {
                 totalFrequency = 0;
                 candidates.clear( );
@@ -222,8 +243,7 @@ public class Configuration
             {
                 try
                 {
-                    if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot )
-                        && ( !mascot.isManualOnly( ) || isManualOnlyAllowed( behaviorFactory.getName( ) ) ) )
+                    if( behaviorFactory.isEffective( context ) && isBehaviorEnabled( behaviorFactory, mascot ) )
                     {
                         candidates.add( behaviorFactory );
                         totalFrequency += behaviorFactory.getFrequency( );
@@ -234,6 +254,20 @@ public class Configuration
                     log.log( Level.WARNING, "An error occurred calculating the frequency of the behavior", e );
                 }
             }
+        }
+
+        // In ManualOnly mode with no NextBehaviorList candidates, fall back to StandUp
+        // so the mascot waits for input rather than teleporting to the top of the screen.
+        if( mascot.isManualOnly( ) && totalFrequency == 0 )
+        {
+            // Try common stand behavior names
+            for( String standName : new String[]{ "StandUp", "Stand", "Idle" } )
+            {
+                if( getBehaviorBuilders( ).containsKey( standName ) )
+                    return getBehaviorBuilders( ).get( standName ).buildBehavior( );
+            }
+            // No stand behavior found — return null and let the mascot idle in place
+            return null;
         }
 
         if( totalFrequency == 0 )
@@ -359,9 +393,15 @@ public class Configuration
         return constants;
     }
 
-    Map<String, ActionBuilder> getActionBuilders( )
+    public Map<String, ActionBuilder> getActionBuilders( )
     {
         return actionBuilders;
+    }
+
+    /** Returns the ActionBuilder for the named action, or null if not found. */
+    public ActionBuilder getActionBuilderFor( final String name )
+    {
+        return actionBuilders.get( name );
     }
 
     public Map<String, BehaviorBuilder> getBehaviorBuilders( )
