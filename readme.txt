@@ -61,7 +61,7 @@ All configuration files are located in the in the conf folders.  In general, non
 
 The logging.properties file defines how logging errors is done.
 The actions.xml file specifies the different actions Shimeji can do.  When listing images, only include the file name.  More detail on this file will hopefully be added later.
-The behaviors.xml file specifies when Shimeji performs each action.  More detail on this file will /hopefully be added later.
+The behaviors.xml file specifies when Shimeji performs each action.  More detail on this file will hopefully be added later.
 The settings.properties file details which Shimeji are active as well as the windows with which they can interact. These settings can be changed using the program itself.
 The hotkeys.properties file defines global hotkey bindings that trigger specific behaviors.  See the section on Hotkeys below for details.
 
@@ -115,6 +115,15 @@ To make a key loop the behavior for as long as it is held down, suffix the behav
 
 Without !hold, the key fires once on press.  With !hold, the behavior plays through cleanly to the end and loops until the key is released, at which point the mascot returns to normal behavior.
 
+The hold-to-loop system also supports sequence ramp-up via the HoldLoopStep attribute on an action.  When HoldLoopStep is set to the name of a child action reference, the sequence plays through once in full and then loops only that named step for as long as the key is held.  This allows behaviors such as a walk-to-run ramp-up: the mascot walks for the configured distance, then runs on a loop until the key is released, at which point the run's NextBehaviorList fires normally (e.g. DashBrake).
+
+XML usage:
+  <Action Name="MoveRight" Type="Sequence" HoldLoopStep="Run" ...>
+    <ActionReference Name="Walk" TargetX="..." />
+    <ActionReference Name="Run"  TargetX="..." />
+    ...
+  </Action>
+
 Lines starting with # are comments.  Blank lines are ignored.
 
 ==== How to Quit ==== 
@@ -135,6 +144,18 @@ Follow the zlib/libpng licenses.
 lib / jna.jar and lib / examples.jar of the JNA library.
 JNA follows the LGPL.
 lib / AbsoluteLayout.jar from Netbeans.
+
+==== Browser Extension: Video Player Window Detection ====
+
+A companion browser extension (included in the shimeji folder) allows mascots to treat video players on YouTube and Twitch as interactive windows — walking on top of the player, clinging to its sides, and interacting with its edges exactly like any other window on screen.
+
+The extension sends the video player's screen position to a local HTTP server built into Shimeji (port 41221).  Shimeji injects four thin border strips around the video player into its window detection system, bypassing the normal occlusion checks so the strips are visible even though they sit inside the browser window bounds.  The strips update automatically whenever the player moves, resizes, or the browser zoom level changes.
+
+To install permanently in LibreWolf or Firefox:
+1. In about:config, set xpinstall.signatures.required to false.
+2. In about:addons, click the gear icon and select Install Add-on From File, then pick the shimeji-video-tracker.xpi.
+
+The extension supports YouTube and Twitch out of the box.  Additional sites can be added by editing the matches list in manifest.json and updating the video element selector in content.js.
 
 ==== Trouble Shooting ====
 
@@ -169,6 +190,42 @@ Multi-monitor awareness has also been improved.  The work area is now calculated
 A new HotkeyManager class provides global hotkey support via the JNativeHook library.  Hotkeys are configured in conf/hotkeys.properties and can trigger any named behavior on all mascots or on a specific image set.  Keys support modifier combinations (ctrl, shift, alt, meta) and mouse buttons (MOUSE1-MOUSE5).
 
 A hold-to-loop mode is available by appending !hold to the behavior name.  When a key is held, the behavior plays through cleanly to completion and loops from the start, rather than restarting on every OS key-repeat event.  Releasing the key returns the mascot to its normal behavior on its next natural action completion.
+
+---- Hold-Loop Last Step (Sequence Ramp-Up) ----
+
+When a behavior is triggered with !hold, the hold-loop system normally replays the entire action sequence on each loop.  The HoldLoopStep attribute on an action tag lets you designate a specific named child action reference as the loop target.  The sequence plays through in full once, then only the designated step loops for as long as the key is held.  When the key is released, that step's NextBehaviorList fires naturally.
+
+This enables walk-to-run ramp-up: a MoveRight action can contain a Walk step followed by a Run step.  With HoldLoopStep="Run", the mascot walks once to build speed, then runs on a loop until the key is released, at which point DashBrake fires via Run's NextBehaviorList.  The loop step is located via deep tree search, so it can be nested inside Select or Sequence children.
+
+The mascot's affordances (e.g. SmallMarioHittable) are preserved correctly while the loop step runs, even though the looped action reference has no Affordance attribute of its own.
+
+---- Directional Air Control ----
+
+When a directional hotkey (!hold) is held while a mascot is falling or thrown, the mascot's horizontal fall velocity is steered directly each tick without interrupting the Fall or Thrown behavior.  This allows mid-air trajectory adjustment: holding left or right while airborne nudges the mascot's fall direction continuously for as long as the key is held.
+
+---- Manual Only Mode ----
+
+Each mascot has a per-mascot Manual Only toggle in its right-click menu.  When enabled, the mascot's autonomous behavior selection is suppressed: it only responds to hotkey-triggered behaviors and transitions between a small set of physics behaviors (Fall, Dragged, Thrown) and standing behaviors.  When no explicit behavior is triggered and no NextBehaviorList applies, the mascot falls back to a stand-in-place behavior.
+
+Manual Only state is persisted per-mascot in settings.properties and restored on next launch.
+
+---- Floor Collision Toggle ----
+
+Each mascot has a per-mascot Floor Collision toggle in its right-click menu.  When disabled, the mascot ignores the workarea bottom border as a floor surface and will fall through the bottom of the screen if no windows are present to land on.  IE window top borders (the tops of application windows) still act as floors normally.  This allows mascots to fall freely off the bottom of the screen without being blocked by the desktop floor.
+
+Floor Collision state is persisted per-mascot in settings.properties.
+
+---- Multi-Screen Border Transparency ----
+
+When the Multiscreen option is enabled, shared borders between adjacent monitors are treated as transparent by the floor, wall, and ceiling detection systems.  Mascots walk freely across monitor boundaries without being stopped or bounced at the screen edge.  Only the outermost edges of the combined virtual desktop act as real barriers.
+
+---- Movement Velocity Tracking ----
+
+Each mascot tracks its per-tick horizontal and vertical movement delta (lastDeltaX, lastDeltaY), updated every time the anchor position changes.  These values are exposed to XML scripting as mascot.lastDeltaX and mascot.lastDeltaY, allowing actions to make decisions based on current movement speed (e.g. scaling jump height or distance based on running speed).  Both values are also displayed in the debug window.
+
+---- Jump Height Scaling by Speed ----
+
+Jump target distances can be scaled based on the mascot's current movement speed at the moment of the jump.  Using mascot.lastDeltaX in the jump TargetX or TargetY expression allows short hops from a standstill, normal jumps from a walk, and longer jumps from a run.
 
 ---- Dynamic Scaling ----
 
@@ -227,6 +284,12 @@ XML usage:
 ---- Always On Top Controls ----
 
 Per-mascot and global Always On Top settings have been added.  Each mascot's right-click menu includes an Always On Top toggle that persists per image set in settings.properties.  A global Always On Top setting and a separate Always On Top for the debug window are available in the Settings dialog.
+
+---- Video Player Window Detection ----
+
+A built-in HTTP server (port 41221, localhost only) receives video player position data from a companion browser extension.  The extension tracks the video element in YouTube and Twitch tabs and sends its screen coordinates to Shimeji every 500ms.  Shimeji registers four thin border strips around the player (top, bottom, left, right edges) as synthetic interactive windows, bypassing the normal window occlusion check since the strips sit inside the browser window's bounds.  Mascots interact with the video player edges exactly as they would with any other application window.  The strips update automatically on scroll, resize, zoom change, and page navigation.  Device pixel ratio scaling is applied so the strips are accurate at any browser zoom level or system DPI setting.
+
+See the Browser Extension section above for installation instructions.
 
 ---- Performance Improvements ----
 
