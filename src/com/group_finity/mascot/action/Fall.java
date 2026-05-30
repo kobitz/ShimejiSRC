@@ -102,21 +102,23 @@ public class Fall extends ActionBase {
 
         int dev = Math.max( 1, Math.max( Math.abs( dx ), Math.abs( dy ) ) );
 
-        Point start = getMascot( ).getAnchor( );
+        // Read start coords as ints so in-place setAnchorXY calls don't clobber them
+        final int startX = getMascot( ).getAnchor( ).x;
+        final int startY = getMascot( ).getAnchor( ).y;
 
         OUTER: for( int i = 0; i <= dev; ++i )
         {
-            int x = start.x + dx * i / dev;
-            int y = start.y + dy * i / dev;
+            int x = startX + dx * i / dev;
+            int y = startY + dy * i / dev;
 
-            getMascot( ).setAnchor( new Point( x, y ) );
+            getMascot( ).setAnchorXY( x, y );
             if( dy > 0 )
             {
                 // HACK IE — snap onto window top only if within 21 scaled px above
                 int snapRange = (int)( 21 * getMascot( ).getCurrentScale( ) );
                 for( int j = -snapRange; j<=0; ++j )
                 {
-                    getMascot( ).setAnchor( new Point( x, y + j ) );
+                    getMascot( ).setAnchorXY( x, y + j );
                     if( getEnvironment( ).getFloor( true ).isOn( getMascot( ).getAnchor( ) ) )
                     {
                         break OUTER;

@@ -73,6 +73,10 @@ public class Jump extends ActionBase
     @Override
     public boolean hasNext( ) throws VariableException
     {
+        // If a screen-loop teleport just fired, tick() will handle the transition.
+        if( getMascot( ).getUserData( "screenLoopTeleportedRight" ) != null )
+            return true;
+
         final int targetX = getTargetX( );
         final int targetY = getTargetY( );
 
@@ -90,6 +94,20 @@ public class Jump extends ActionBase
     @Override
     protected void tick( ) throws LostGroundException, VariableException
     {
+        // Screen loop teleport: the mascot was just moved to the opposite wall.
+        // Rather than homing toward a stale target on the other monitor, exit
+        // the jump and let Fall carry the existing horizontal momentum forward.
+        final Object teleportFlag = getMascot( ).getUserData( "screenLoopTeleportedRight" );
+        if( teleportFlag != null )
+        {
+            getMascot( ).setUserData( "screenLoopTeleportedRight", null );
+            getMascot( ).setUserData( "jumpCurrentTargetX", null );
+            getMascot( ).setUserData( "jumpCurrentTargetY", null );
+            // jumpExitVelocityX was set last tick by the previous Jump.tick() call,
+            // so Fall will pick it up and carry the correct horizontal momentum.
+            throw new LostGroundException( );
+        }
+
         final int targetX = getTargetX( );
         final int targetY = getTargetY( );
 

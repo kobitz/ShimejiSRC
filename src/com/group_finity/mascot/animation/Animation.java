@@ -17,6 +17,7 @@ public class Animation
     private final Pose[ ] poses;
     private final Hotspot[ ] hotspots;
     private boolean turn;
+    private final int cachedDuration;
 
     public Animation( final Variable condition, final Pose[ ] poses, final Hotspot[ ] hotspots, final boolean turn )
     {
@@ -29,6 +30,10 @@ public class Animation
         this.poses = poses;
         this.hotspots = hotspots;
         this.turn = turn;
+
+        int d = 0;
+        for( final Pose p : poses ) d += p.getDuration( );
+        this.cachedDuration = d;
     }
 
     public boolean isEffective( final VariableMap variables ) throws VariableException
@@ -69,13 +74,7 @@ public class Animation
 
     public int getDuration( )
     {
-        int duration = 0;
-        for( final Pose pose : getPoses( ) )
-        {
-            duration += pose.getDuration( );
-        }
-
-        return duration;
+        return cachedDuration;
     }
 
     // Net pixels moved per tick averaged over one full animation cycle.

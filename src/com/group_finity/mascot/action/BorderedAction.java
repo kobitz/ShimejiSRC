@@ -30,6 +30,9 @@ public abstract class BorderedAction extends ActionBase {
 
 	private Border border;
 
+    /** Cached border type string set at init, used by tick() for teleport handling. */
+    private String cachedBorderType = null;
+
 	public BorderedAction( java.util.ResourceBundle schema, final List<Animation> animations, final VariableMap context )
         {
             super( schema, animations, context );
@@ -39,19 +42,31 @@ public abstract class BorderedAction extends ActionBase {
 	public void init(final Mascot mascot) throws VariableException {
 		super.init(mascot);
 
-		final String borderType = getBorderType();
+		cachedBorderType = getBorderType();
 
-		if( getSchema( ).getString( BORDERTYPE_CEILING ).equals( borderType ) ) {
+		if( getSchema( ).getString( BORDERTYPE_CEILING ).equals( cachedBorderType ) ) {
 			this.setBorder(getEnvironment().getCeiling());
-		} else if( getSchema( ).getString( BORDERTYPE_WALL ).equals( borderType ) ) {
+		} else if( getSchema( ).getString( BORDERTYPE_WALL ).equals( cachedBorderType ) ) {
 			this.setBorder(getEnvironment().getWall());
-		} else if( getSchema( ).getString( BORDERTYPE_FLOOR ).equals( borderType ) ) {
+		} else if( getSchema( ).getString( BORDERTYPE_FLOOR ).equals( cachedBorderType ) ) {
 			this.setBorder(getEnvironment().getFloor());
 		}
 	}
 
 	@Override
 	protected void tick() throws LostGroundException, VariableException {
+        // Screen loop teleport: cancel any bordered action immediately after a teleport.
+        // Wall-type actions (ClimbWall, GrabCeiling, etc.) would be targeting a workarea
+        // border that no longer exists as a real wall. Floor/ceiling actions with stale
+        // targets (Run, Dash, Walk) should also reset so the mascot picks a fresh behavior.
+        // IE-targeting actions are unaffected since the flag is only set on workarea crossings.
+        if( getMascot( ).getUserData( "screenLoopTeleportedRight" ) != null )
+        {
+            getMascot( ).setUserData( "screenLoopTeleportedRight", null );
+            getMascot( ).setUserData( "jumpExitVelocityX", 0 );
+            throw new LostGroundException( );
+        }
+
 		if (getBorder() != null) {
 			getMascot().setAnchor(getBorder().move(getMascot().getAnchor()));
 		}

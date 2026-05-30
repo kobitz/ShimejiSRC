@@ -1,66 +1,97 @@
 using System;
+using System.Reflection;
+using System.Threading;
 using LibreHardwareMonitor.Hardware;
 
-// Reads system sensor data via LibreHardwareMonitorLib.dll
-// Outputs one line per sensor: key=value
-// Must be run as administrator.
-// LibreHardwareMonitorLib.dll must be in the same folder.
+// Persistent CPU temperature reader + Cooler Boost controller.
+// Outputs "cpuTemp=XX.X" once per second to stdout.
+// Reads "fan_on" / "fan_off" commands from stdin and writes to EC register 0x98.
+// Exits when stdin closes. Must be run as administrator.
 
-var computer = new Computer
-{
-    IsCpuEnabled     = true,
-    IsGpuEnabled     = true,
-    IsMemoryEnabled  = true,
-    IsBatteryEnabled = true,
-};
+// EC I/O ports
+const uint EC_DATA = 0x62;
+const uint EC_SC   = 0x66;
+const byte EC_IBF  = 0x02; // input buffer full bit
 
-try
+var computer = new Computer { IsCpuEnabled = true };
+
+try { computer.Open(); }
+catch (Exception e)
 {
-    computer.Open();
-}
-catch (System.IO.FileNotFoundException)
-{
-    // RAMSPDToolkit not available - disable memory and retry
-    computer.IsMemoryEnabled = false;
-    computer.Open();
+    Console.Error.WriteLine("TempSensor: failed to open hardware: " + e.Message);
+    Environment.Exit(1);
 }
 
-foreach (var hw in computer.Hardware)
-{
-    hw.Update();
-    foreach (var sub in hw.SubHardware)
-        sub.Update();
-}
+// Grab Ring0 IO methods from LHM via reflection (internal class, loaded by computer.Open)
+var ring0 = typeof(Computer).Assembly.GetType("LibreHardwareMonitor.Interop.Ring0");
+var readPort  = ring0?.GetMethod("ReadIoPort",  BindingFlags.NonPublic | BindingFlags.Static,
+                    null, new[] { typeof(uint) }, null);
+var writePort = ring0?.GetMethod("WriteIoPort", BindingFlags.NonPublic | BindingFlags.Static,
+                    null, new[] { typeof(uint), typeof(byte) }, null);
 
-double cpuTemp      = -1;
-double cpuLoad      = -1;
-double gpuTemp      = -1;
-double gpuLoad      = -1;
-double ramLoad      = -1;
-double batteryLevel = -1;
+if (readPort == null || writePort == null)
+    Console.Error.WriteLine("TempSensor: Ring0 IO methods not found -- fan control disabled");
 
-foreach (var hw in computer.Hardware)
+bool WaitEC()
 {
-    foreach (var sensor in hw.Sensors)
+    for (int i = 0; i < 100; i++)
     {
-        var val  = sensor.Value ?? -1f;
-        var type = sensor.SensorType;
-        var name = sensor.Name;
-
-        if (type == SensorType.Temperature && name == "Core Average")  cpuTemp      = val;
-        if (type == SensorType.Load        && name == "CPU Total")     cpuLoad      = val;
-        if (type == SensorType.Temperature && name == "GPU Core")      gpuTemp      = val;
-        if (type == SensorType.Load        && name == "GPU Core")      gpuLoad      = val;
-        if (type == SensorType.Load        && name == "Memory")        ramLoad      = val;
-        if (type == SensorType.Level       && name == "Charge Level")  batteryLevel = val;
+        byte s = (byte)readPort!.Invoke(null, new object[] { EC_SC })!;
+        if ((s & EC_IBF) == 0) return true;
+        Thread.Sleep(1);
     }
+    return false;
 }
 
-computer.Close();
+void WriteEC(byte reg, byte value)
+{
+    if (writePort == null || readPort == null) return;
+    try
+    {
+        if (!WaitEC()) return;
+        writePort.Invoke(null, new object[] { EC_SC,   (byte)0x81 }); // WRITE cmd
+        if (!WaitEC()) return;
+        writePort.Invoke(null, new object[] { EC_DATA, reg          }); // register
+        if (!WaitEC()) return;
+        writePort.Invoke(null, new object[] { EC_DATA, value        }); // value
+    }
+    catch (Exception e) { Console.Error.WriteLine("TempSensor: EC write error: " + e.Message); }
+}
 
-Console.WriteLine($"cpuTemp={cpuTemp:F1}");
-Console.WriteLine($"cpuLoad={cpuLoad:F1}");
-Console.WriteLine($"gpuTemp={gpuTemp:F1}");
-Console.WriteLine($"gpuLoad={gpuLoad:F1}");
-Console.WriteLine($"ramLoad={ramLoad:F1}");
-Console.WriteLine($"batteryLevel={batteryLevel:F1}");
+// Stdin listener: "fan_on" -> EC 0x98=0x80, "fan_off" -> EC 0x98=0x00, EOF -> exit
+new Thread(() =>
+{
+    try
+    {
+        string? line;
+        while ((line = Console.In.ReadLine()) != null)
+        {
+            if      (line == "fan_on")  WriteEC(0x98, 0x80);
+            else if (line == "fan_off") WriteEC(0x98, 0x00);
+        }
+    }
+    catch { }
+    computer.Close();
+    Environment.Exit(0);
+}) { IsBackground = true }.Start();
+
+while (true)
+{
+    double cpuTemp = -1;
+    foreach (var hw in computer.Hardware)
+    {
+        hw.Update();
+        foreach (var sensor in hw.Sensors)
+        {
+            if (sensor.SensorType == SensorType.Temperature && sensor.Name == "Core Average")
+            {
+                cpuTemp = sensor.Value ?? -1;
+                break;
+            }
+        }
+        if (cpuTemp >= 0) break;
+    }
+    Console.WriteLine("cpuTemp=" + cpuTemp.ToString("F1"));
+    Console.Out.Flush();
+    Thread.Sleep(1000);
+}

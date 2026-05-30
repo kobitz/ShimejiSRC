@@ -36,9 +36,15 @@ public class Dragged extends ActionBase
 
     private static final String DEFAULT_OFFSETTYPE = "ImageAnchor";
 
+    public static final String PARAMETER_FACEDIRECTION = "FaceDirection";
+
+    private static final boolean DEFAULT_FACEDIRECTION = false;
+
     private double footX;
 
     private double footDx;
+
+    private int lastCursorX = Integer.MIN_VALUE;
 
     private int timeToRegist;
 
@@ -72,7 +78,17 @@ public class Dragged extends ActionBase
     @Override
     protected void tick( ) throws LostGroundException, VariableException
     {
-        getMascot( ).setLookRight( false );
+        if( isFaceDirection( ) )
+        {
+            int cursorX = getEnvironment( ).getCursor( ).getX( );
+            if( lastCursorX != Integer.MIN_VALUE && cursorX != lastCursorX )
+                getMascot( ).setLookRight( cursorX > lastCursorX );
+            lastCursorX = cursorX;
+        }
+        else
+        {
+            getMascot( ).setLookRight( false );
+        }
         getMascot( ).setDragging( true );
         getEnvironment( ).refreshWorkArea( );
 
@@ -161,5 +177,17 @@ public class Dragged extends ActionBase
     private String getOffsetType( ) throws VariableException
     {
         return eval( getSchema( ).getString( PARAMETER_OFFSETTYPE ), String.class, DEFAULT_OFFSETTYPE );
+    }
+
+    private boolean isFaceDirection( ) throws VariableException
+    {
+        try
+        {
+            return eval( getSchema( ).getString( PARAMETER_FACEDIRECTION ), Boolean.class, DEFAULT_FACEDIRECTION );
+        }
+        catch( java.util.MissingResourceException e )
+        {
+            return eval( PARAMETER_FACEDIRECTION, Boolean.class, DEFAULT_FACEDIRECTION );
+        }
     }
 }

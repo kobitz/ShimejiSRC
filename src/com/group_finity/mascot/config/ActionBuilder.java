@@ -56,7 +56,7 @@ public class ActionBuilder implements IActionBuilder {
                 getParams( ).putAll( actionNode.getAttributes( ) );
                 for( final Entry node : actionNode.selectChildren( schema.getString( "Animation" ) ) )
                 {
-                    getAnimationBuilders( ).add( new AnimationBuilder( schema, node, imageSet ) );
+                    getAnimationBuilders( ).add( new AnimationBuilder( schema, node, imageSet, configuration.getAnimationTemplates() ) );
                 }
 
                 for( final Entry node : actionNode.getChildren( ) )

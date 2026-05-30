@@ -78,6 +78,17 @@ public class SettingsWindow extends javax.swing.JDialog
     private Boolean colourWasChanged = false;
     
     private Boolean suppressTextChanged = true;
+
+    // Chat bubble settings
+    private int    bubbleWidth    = 180;
+    private int    bubbleFontSize = 14;
+    private String bubbleFontName = "";
+    private boolean bubbleBg      = false;
+    private String ollamaModel    = "llama3.2";
+    private String visionModel    = "moondream";
+    private String whisperModel   = "tiny";
+    private int    whisperThreads = 1;
+    private int    voicePollMs    = 6000;
     private Boolean imageReloadRequired = false;
     private Boolean interactiveWindowReloadRequired = false;
     private Boolean environmentReloadRequired = false;
@@ -91,7 +102,7 @@ public class SettingsWindow extends javax.swing.JDialog
         initComponents( );
     }
     
-    public void init( )
+    public boolean init( )
     {
         // initialise controls
         setLocationRelativeTo( null );
@@ -139,6 +150,19 @@ public class SettingsWindow extends javax.swing.JDialog
         sldOpacity.setValue( (int)( opacity * 100 ) );
         sldScaling.setValue( (int)( scaling * 10 ) );
         
+        bubbleWidth    = Integer.parseInt( properties.getProperty( "BubbleWidth",    "180" ) );
+        bubbleFontSize = Integer.parseInt( properties.getProperty( "BubbleFontSize", "14"  ) );
+        bubbleFontName = properties.getProperty( "BubbleFontName", "" );
+        bubbleBg       = Boolean.parseBoolean( properties.getProperty( "BubbleBackground", "false" ) );
+        ollamaModel    = properties.getProperty( "OllamaModel",   "llama3.2" );
+        visionModel    = properties.getProperty( "VisionModel",   "moondream" );
+        whisperModel   = properties.getProperty( "WhisperModel",  "tiny" );
+        try { whisperThreads = Math.max( 1, Math.min( 16,
+            Integer.parseInt( properties.getProperty( "WhisperThreads", "1" ) ) ) ); }
+        catch( NumberFormatException ignored ) { whisperThreads = 1; }
+        try { voicePollMs = Integer.parseInt( properties.getProperty( "VoicePollMs", "6000" ) ); }
+        catch( NumberFormatException ignored ) { voicePollMs = 6000; }
+
         for( String item : properties.getProperty( "InteractiveWindows", "" ).split( "/" ) )
             if( !item.isEmpty( ) )
                 listData.add( item );
@@ -245,7 +269,7 @@ public class SettingsWindow extends javax.swing.JDialog
         pnlTabs.setTitleAt( 1, language.getString( "InteractiveWindows" ) );
         pnlTabs.setTitleAt( 2, language.getString( "Theme" ) );
         pnlTabs.setTitleAt( 3, language.getString( "WindowMode" ) );
-        pnlTabs.setTitleAt( 4, language.getString( "About" ) );
+        pnlTabs.setTitleAt( pnlTabs.indexOfTab( "About" ) >= 0 ? pnlTabs.indexOfTab( "About" ) : 4, language.getString( "About" ) );
         lblShimejiEE.setText( language.getString( "ShimejiEE" ) );
         lblDevelopedBy.setText( language.getString( "DevelopedBy" ) );
         chkAlwaysShowShimejiChooser.setText( language.getString( "AlwaysShowShimejiChooser" ) );
@@ -297,6 +321,229 @@ public class SettingsWindow extends javax.swing.JDialog
                 break;
             }
         }
+        // ── Chat Bubbles Tab (built here so property values are already loaded) ──
+        javax.swing.JPanel pnlChatBubbles = new javax.swing.JPanel();
+        pnlChatBubbles.setLayout(new javax.swing.BoxLayout(pnlChatBubbles, javax.swing.BoxLayout.Y_AXIS));
+        pnlChatBubbles.setBorder(javax.swing.BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+        final javax.swing.JLabel lblWidth = new javax.swing.JLabel("Bubble Width: " + bubbleWidth + "px");
+        lblWidth.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JSlider sldBubbleWidth = new javax.swing.JSlider(100, 400, bubbleWidth);
+        sldBubbleWidth.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        sldBubbleWidth.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 40));
+        sldBubbleWidth.addChangeListener(e -> {
+            bubbleWidth = sldBubbleWidth.getValue();
+            lblWidth.setText("Bubble Width: " + bubbleWidth + "px");
+        });
+
+        final javax.swing.JLabel lblFontSize = new javax.swing.JLabel("Font Size: " + bubbleFontSize + "pt");
+        lblFontSize.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JSlider sldBubbleFontSize = new javax.swing.JSlider(8, 32, bubbleFontSize);
+        sldBubbleFontSize.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        sldBubbleFontSize.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 40));
+        sldBubbleFontSize.addChangeListener(e -> {
+            bubbleFontSize = sldBubbleFontSize.getValue();
+            lblFontSize.setText("Font Size: " + bubbleFontSize + "pt");
+        });
+
+        final javax.swing.JLabel lblFont = new javax.swing.JLabel("Font:");
+        lblFont.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final String[] availFonts = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames();
+        final String[] fontChoices = new String[availFonts.length + 1];
+        fontChoices[0] = "(Default)";
+        System.arraycopy(availFonts, 0, fontChoices, 1, availFonts.length);
+        final javax.swing.JComboBox<String> cmbFont = new javax.swing.JComboBox<>(fontChoices);
+        cmbFont.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        cmbFont.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
+        cmbFont.setSelectedItem(bubbleFontName.isEmpty() ? "(Default)" : bubbleFontName);
+        cmbFont.addActionListener(e -> {
+            String sel = (String) cmbFont.getSelectedItem();
+            bubbleFontName = "(Default)".equals(sel) ? "" : sel;
+        });
+
+        final javax.swing.JCheckBox chkBubbleBg = new javax.swing.JCheckBox("Show chat bubble background", bubbleBg);
+        chkBubbleBg.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        chkBubbleBg.addActionListener(e -> bubbleBg = chkBubbleBg.isSelected());
+
+        pnlChatBubbles.add(lblWidth);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(sldBubbleWidth);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(10));
+        pnlChatBubbles.add(lblFontSize);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(sldBubbleFontSize);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(10));
+        pnlChatBubbles.add(lblFont);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(cmbFont);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+        pnlChatBubbles.add(chkBubbleBg);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+
+        // ── Ollama model selector ─────────────────────────────────────────
+        final javax.swing.JLabel lblModel = new javax.swing.JLabel("Ollama Model:");
+        lblModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JComboBox<String> cmbModel = new javax.swing.JComboBox<>();
+        cmbModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        cmbModel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
+        cmbModel.addItem(ollamaModel); // always start with current
+
+        // ── Vision model selector ─────────────────────────────────────────
+        final javax.swing.JLabel lblVisionModel = new javax.swing.JLabel("Vision Model:");
+        lblVisionModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JComboBox<String> cmbVisionModel = new javax.swing.JComboBox<>();
+        cmbVisionModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        cmbVisionModel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
+        cmbVisionModel.addItem(visionModel);
+
+        // Fetch available models from Ollama in background — populates both dropdowns.
+        // Capture saved values now: addItem() fires the action listener and would
+        // overwrite the fields before setSelectedItem() runs otherwise.
+        final String savedModel = ollamaModel;
+        final String savedVisionModel = visionModel;
+        new Thread(() -> {
+            try {
+                final String endpoint = Main.getInstance().getProperties()
+                    .getProperty("OllamaEndpoint", "http://localhost:11434");
+                final java.net.URL url = new java.net.URL(endpoint + "/api/tags");
+                final java.net.HttpURLConnection conn =
+                    (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(3000);
+                conn.setReadTimeout(3000);
+                final java.io.BufferedReader br = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(conn.getInputStream()));
+                final StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                // Parse "name" fields from JSON
+                final java.util.List<String> models = new java.util.ArrayList<>();
+                final String json = sb.toString();
+                int idx = 0;
+                while ((idx = json.indexOf("\"name\":", idx)) >= 0) {
+                    final int q1 = json.indexOf('"', idx + 7);
+                    final int q2 = json.indexOf('"', q1 + 1);
+                    if (q1 >= 0 && q2 > q1) models.add(json.substring(q1 + 1, q2));
+                    idx = q2 + 1;
+                }
+                if (!models.isEmpty()) {
+                    javax.swing.SwingUtilities.invokeLater(() -> {
+                        cmbModel.removeAllItems();
+                        for (final String m : models) cmbModel.addItem(m);
+                        cmbModel.setSelectedItem(savedModel);
+                        if (cmbModel.getSelectedIndex() < 0) cmbModel.setSelectedIndex(0);
+
+                        cmbVisionModel.removeAllItems();
+                        for (final String m : models) cmbVisionModel.addItem(m);
+                        cmbVisionModel.setSelectedItem(savedVisionModel);
+                        if (cmbVisionModel.getSelectedIndex() < 0) cmbVisionModel.setSelectedIndex(0);
+                    });
+                }
+            } catch (final Exception ex) {
+                // Ollama not running or unreachable — keep current models in dropdowns
+            }
+        }, "ollama-model-fetch").start();
+
+        cmbModel.addActionListener(e -> {
+            final String sel = (String) cmbModel.getSelectedItem();
+            if (sel != null) ollamaModel = sel;
+        });
+
+        pnlChatBubbles.add(lblModel);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(cmbModel);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+
+        cmbVisionModel.addActionListener(e -> {
+            final String sel = (String) cmbVisionModel.getSelectedItem();
+            if (sel != null) visionModel = sel;
+        });
+
+        pnlChatBubbles.add(lblVisionModel);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(cmbVisionModel);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+
+        // ── Voice poll interval ───────────────────────────────────────────
+        // Snap to multiples of 40 ms; round loaded value to nearest multiple
+        final int pollSnapped = Math.max( 1000, Math.min( 10000,
+            (int) Math.round( voicePollMs / 40.0 ) * 40 ) );
+        voicePollMs = pollSnapped;
+        final javax.swing.JLabel lblPoll = new javax.swing.JLabel(
+            "Voice poll interval: " + voicePollMs + " ms (takes effect on restart)");
+        lblPoll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JSlider sldPoll = new javax.swing.JSlider(1000, 10000, pollSnapped);
+        sldPoll.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        sldPoll.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 40));
+        sldPoll.setMinorTickSpacing(40);
+        sldPoll.setMajorTickSpacing(2000);
+        sldPoll.setPaintTicks(true);
+        sldPoll.setSnapToTicks(true);
+        sldPoll.addChangeListener(e -> {
+            voicePollMs = sldPoll.getValue();
+            lblPoll.setText("Voice poll interval: " + voicePollMs + " ms (takes effect on restart)");
+        });
+
+        pnlChatBubbles.add(lblPoll);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(sldPoll);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+
+        // ── Whisper model selector ────────────────────────────────────────
+        final javax.swing.JLabel lblWhisper = new javax.swing.JLabel("Whisper Model (takes effect on restart):");
+        lblWhisper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JComboBox<String> cmbWhisper = new javax.swing.JComboBox<>(
+                new String[]{ "tiny", "base", "small", "medium" });
+        cmbWhisper.setSelectedItem(whisperModel);
+        cmbWhisper.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        cmbWhisper.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
+        cmbWhisper.addActionListener(e -> {
+            final String sel = (String) cmbWhisper.getSelectedItem();
+            if (sel != null) whisperModel = sel;
+        });
+
+        pnlChatBubbles.add(lblWhisper);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(cmbWhisper);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+
+        // ── Whisper thread count ──────────────────────────────────────────
+        final int maxThreads = Math.max( 1, Runtime.getRuntime().availableProcessors() );
+        final javax.swing.JLabel lblThreads = new javax.swing.JLabel(
+            "Whisper CPU Threads: " + whisperThreads + " (takes effect on restart)" );
+        lblThreads.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JSlider sldThreads = new javax.swing.JSlider( 1, maxThreads, whisperThreads );
+        sldThreads.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        sldThreads.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 40));
+        sldThreads.setMajorTickSpacing( Math.max( 1, maxThreads / 4 ) );
+        sldThreads.setMinorTickSpacing( 1 );
+        sldThreads.setPaintTicks( true );
+        sldThreads.setPaintLabels( true );
+        sldThreads.setSnapToTicks( true );
+        sldThreads.addChangeListener(e -> {
+            whisperThreads = sldThreads.getValue();
+            lblThreads.setText( "Whisper CPU Threads: " + whisperThreads + " (takes effect on restart)" );
+        });
+
+        pnlChatBubbles.add(lblThreads);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(sldThreads);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalGlue());
+
+        // Add Chat Bubbles tab, then ensure About stays last
+        pnlTabs.addTab("Chat Bubbles", pnlChatBubbles);
+        // Move About to end if it exists
+        final int aboutIdx = pnlTabs.indexOfTab("About");
+        if( aboutIdx >= 0 && aboutIdx != pnlTabs.getTabCount() - 1 )
+        {
+            final java.awt.Component aboutComp = pnlTabs.getComponentAt( aboutIdx );
+            pnlTabs.removeTabAt( aboutIdx );
+            pnlTabs.addTab( "About", aboutComp );
+        }
+
+        return true;
+
     }
     
     public boolean display( )
@@ -304,7 +551,7 @@ public class SettingsWindow extends javax.swing.JDialog
         float menuScaling = Float.parseFloat( Main.getInstance( ).getProperties( ).getProperty( "MenuDPI", "96" ) ) / 96;
         
         // scale controls to fit
-        getContentPane( ).setPreferredSize( new Dimension( (int)( 600 * menuScaling ), (int)( 497 * menuScaling ) ) );
+        getContentPane( ).setPreferredSize( new Dimension( (int)( 800 * menuScaling ), (int)( 640 * menuScaling ) ) );
         sldOpacity.setPreferredSize( new Dimension( (int)( sldOpacity.getPreferredSize( ).width * menuScaling ), (int)( sldOpacity.getPreferredSize( ).height * menuScaling ) ) );
         sldScaling.setPreferredSize( new Dimension( (int)( sldScaling.getPreferredSize( ).width * menuScaling ), (int)( sldScaling.getPreferredSize( ).height * menuScaling ) ) );
         btnAddInteractiveWindow.setPreferredSize( new Dimension( (int)( btnAddInteractiveWindow.getPreferredSize( ).width * menuScaling ), (int)( btnAddInteractiveWindow.getPreferredSize( ).height * menuScaling ) ) );
@@ -1832,6 +2079,7 @@ public class SettingsWindow extends javax.swing.JDialog
                                                                         pnlAbout.add(pnlAboutButtons);
                                                                         pnlAbout.add(glue2);
 
+
                                                                         pnlTabs.addTab("About", pnlAbout);
 
                                                                         pnlFooter.setPreferredSize(new java.awt.Dimension(380, 36));
@@ -1935,6 +2183,18 @@ public class SettingsWindow extends javax.swing.JDialog
                     properties.setProperty( "BackgroundImage", backgroundImage == null ? "" : backgroundImage );
                 }
                 
+                properties.setProperty( "BubbleWidth",    String.valueOf( bubbleWidth ) );
+                properties.setProperty( "BubbleFontSize", String.valueOf( bubbleFontSize ) );
+                properties.setProperty( "BubbleFontName", bubbleFontName );
+                properties.setProperty( "BubbleBackground", String.valueOf( bubbleBg ) );
+                properties.setProperty( "OllamaModel",  ollamaModel );
+                properties.setProperty( "VisionModel",  visionModel );
+                properties.setProperty( "WhisperModel",   whisperModel );
+                properties.setProperty( "WhisperThreads", String.valueOf( whisperThreads ) );
+                properties.setProperty( "VoicePollMs",    String.valueOf( voicePollMs ) );
+                // Apply to all live bubbles immediately
+                for( com.group_finity.mascot.Mascot m : Main.getInstance().getManager().getMascotList() )
+                    m.applyBubbleSettings();
                 properties.store( output, "Shimeji-ee Configuration Options" );
             }
             finally

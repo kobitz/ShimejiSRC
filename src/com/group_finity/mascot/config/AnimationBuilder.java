@@ -42,6 +42,12 @@ public class AnimationBuilder
 
     public AnimationBuilder( final ResourceBundle schema, final Entry animationNode, final String imageSet ) throws ConfigurationException
     {
+        this( schema, animationNode, imageSet, null );
+    }
+
+    public AnimationBuilder( final ResourceBundle schema, final Entry animationNode, final String imageSet,
+                              final java.util.Map<String, java.util.List<Entry>> templates ) throws ConfigurationException
+    {
         if( !imageSet.equals( "" ) )
             this.imageSet = imageSet;
 
@@ -51,20 +57,46 @@ public class AnimationBuilder
 
         log.log( Level.INFO, "Start Reading Animations" );
 
-        for( final Entry frameNode : animationNode.selectChildren( schema.getString( "Pose" ) ) )
+        final String templateName = animationNode.getAttribute( schema.getString( "Template" ) );
+        if( templateName != null && templates != null && templates.containsKey( templateName ) )
         {
-            try
+            final String anchorOverride   = animationNode.getAttribute( schema.getString( "ImageAnchor" ) );
+            final String velocityOverride = animationNode.getAttribute( schema.getString( "Velocity" ) );
+            final String durationOverride = animationNode.getAttribute( schema.getString( "Duration" ) );
+            for( final Entry tmplPose : templates.get( templateName ) )
             {
-                poses.add( loadPose( frameNode ) );
+                try
+                {
+                    poses.add( loadPose( tmplPose, anchorOverride, velocityOverride, durationOverride ) );
+                }
+                catch( IOException e )
+                {
+                    throw new ConfigurationException( e.getMessage( ) );
+                }
+                catch( Exception e )
+                {
+                    log.log( Level.SEVERE, "Failed to load template pose: {0}", e );
+                    throw new ConfigurationException( Main.getInstance( ).getLanguageBundle( ).getString( "FailedLoadPoseErrorMessage" ) + " " + tmplPose.getAttributes( ).toString( ) );
+                }
             }
-            catch( IOException e )
+        }
+        else
+        {
+            for( final Entry frameNode : animationNode.selectChildren( schema.getString( "Pose" ) ) )
             {
-                throw new ConfigurationException( e.getMessage( ) );
-            }
-            catch( Exception e )
-            {
-                log.log( Level.SEVERE, "Failed to load pose: {0}", e );
-                throw new ConfigurationException( Main.getInstance( ).getLanguageBundle( ).getString( "FailedLoadPoseErrorMessage" ) + " " + frameNode.getAttributes( ).toString( ) );
+                try
+                {
+                    poses.add( loadPose( frameNode, null, null, null ) );
+                }
+                catch( IOException e )
+                {
+                    throw new ConfigurationException( e.getMessage( ) );
+                }
+                catch( Exception e )
+                {
+                    log.log( Level.SEVERE, "Failed to load pose: {0}", e );
+                    throw new ConfigurationException( Main.getInstance( ).getLanguageBundle( ).getString( "FailedLoadPoseErrorMessage" ) + " " + frameNode.getAttributes( ).toString( ) );
+                }
             }
         }
 
@@ -90,11 +122,20 @@ public class AnimationBuilder
 
     private Pose loadPose( final Entry frameNode ) throws IOException
     {
+        return loadPose( frameNode, null, null, null );
+    }
+
+    private Pose loadPose( final Entry frameNode,
+                            final String anchorOverride,
+                            final String velocityOverride,
+                            final String durationOverride ) throws IOException
+    {
         final Path imageText = frameNode.getAttribute( schema.getString( "Image" ) ) != null ? Paths.get( ".", "img", imageSet, frameNode.getAttribute( schema.getString( "Image" ) ) ) : null;
         final Path imageRightText = frameNode.getAttribute( schema.getString( "ImageRight" ) ) != null ? Paths.get( ".", "img", imageSet+frameNode.getAttribute( schema.getString( "ImageRight" ) ) ) : null;
-        final String anchorText = frameNode.getAttribute( schema.getString( "ImageAnchor" ) ) != null ? frameNode.getAttribute( schema.getString( "ImageAnchor" ) ) : null;
-        final String moveText = frameNode.getAttribute( schema.getString( "Velocity" ) );
-        final String durationText = frameNode.getAttribute( schema.getString( "Duration" ) );
+        final String rawAnchor = frameNode.getAttribute( schema.getString( "ImageAnchor" ) );
+        final String anchorText = anchorOverride != null ? anchorOverride : ( rawAnchor != null ? rawAnchor : null );
+        final String moveText = velocityOverride != null ? velocityOverride : frameNode.getAttribute( schema.getString( "Velocity" ) );
+        final String durationText = durationOverride != null ? durationOverride : frameNode.getAttribute( schema.getString( "Duration" ) );
         String soundText = frameNode.getAttribute( schema.getString( "Sound" ) ) != null ? frameNode.getAttribute( schema.getString( "Sound" ) ) : null;
         final String volumeText = frameNode.getAttribute( schema.getString( "Volume" ) ) != null ? frameNode.getAttribute( schema.getString( "Volume" ) ) : "0";
 
@@ -109,10 +150,11 @@ public class AnimationBuilder
         else if( filterText.equalsIgnoreCase( "bicubic" ) )
             filter = ImagePairLoader.Filter.BICUBIC;
 
+        Point anchor = new Point( 0, 0 );
         if( imageText != null )
         {
             final String[] anchorCoordinates = anchorText.split( "," );
-            final Point anchor = new Point( Integer.parseInt( anchorCoordinates[ 0 ] ), Integer.parseInt( anchorCoordinates[ 1 ] ) );
+            anchor = new Point( Integer.parseInt( anchorCoordinates[ 0 ] ), Integer.parseInt( anchorCoordinates[ 1 ] ) );
 
             try
             {
@@ -156,7 +198,7 @@ public class AnimationBuilder
             }
         }
 
-        final Pose pose = new Pose( imageText, imageRightText, moveX, moveY, duration, soundText != null ? soundText : null );
+        final Pose pose = new Pose( imageText, imageRightText, anchor.x, anchor.y, moveX, moveY, duration, soundText != null ? soundText : null );
 
         log.log( Level.INFO, "ReadPosition({0})" , pose );
 

@@ -4,8 +4,10 @@ import com.group_finity.mascot.Main;
 import java.awt.Point;
 import java.awt.Rectangle;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 
 import com.group_finity.mascot.environment.Area;
 import com.group_finity.mascot.environment.Environment;
@@ -76,6 +78,14 @@ public class WindowsEnvironment extends Environment
     private static List<IEResult>  sharedViability = new ArrayList<>( );
     private static List<Integer>   sharedExStyles  = new ArrayList<>( );
 
+    /**
+     * Set of monitor rectangles (rcMonitor bounds) that have a fullscreen
+     * application covering them this tick. Populated in beginTick().
+     * Used by getWorkAreaRect() to return full-screen bounds instead of
+     * the work area (which excludes the taskbar) when a fullscreen app is present.
+     */
+    private static volatile Set<Rectangle> fullscreenMonitors = new HashSet<>( );
+
     // Reusable native structs — manager thread only (single-threaded tick loop).
     private static final RECT            reuseOut   = new RECT( );
     private static final RECT            reuseIn    = new RECT( );
@@ -110,7 +120,92 @@ public class WindowsEnvironment extends Environment
             }
         }, null );
 
-        // Inject synthetic video areas from browser extension as fake IE windows.
+        // Detect which monitors have a fullscreen application this tick.
+        // A window is fullscreen if it covers the full monitor bounds (rcMonitor)
+        // and is not a shell/desktop window.
+        final Set<Rectangle> fsMonitors = new HashSet<>( );
+        for( int i = 0; i < handles.size( ); i++ )
+        {
+            final Pointer hwnd = handles.get( i );
+            // Skip synthetic sentinels
+            if( com.sun.jna.Pointer.createConstant( -1L ).equals( hwnd ) ) continue;
+            // Skip minimized windows
+            if( User32.INSTANCE.IsIconic( hwnd ) != 0 ) continue;
+            // Skip shell/desktop windows that always cover the monitor
+            final char[] cls = new char[ 256 ];
+            User32.INSTANCE.GetClassNameW( hwnd, cls, 256 );
+            final String className = new String( cls ).trim( ).replaceAll( "\0.*", "" );
+            if( className.equals( "Progman" )       // desktop
+             || className.equals( "WorkerW" )        // desktop wallpaper worker
+             || className.equals( "Shell_TrayWnd" )  // taskbar
+             || className.equals( "Shell_SecondaryTrayWnd" ) // secondary taskbar
+             || className.equals( "DV2ControlHost" ) // start menu
+             || className.equals( "Windows.UI.Core.CoreWindow" ) ) // UWP shell chrome
+                continue;
+            final Rectangle wr = rects.get( i );
+            if( wr == null || wr.width <= 0 || wr.height <= 0 ) continue;
+            // Must have WS_POPUP style — real fullscreen apps (games, video players)
+            // use popup windows. Regular windows with chrome won't match.
+            final int style = User32.INSTANCE.GetWindowLongW( hwnd, User32.GWL_STYLE );
+            final int WS_POPUP = 0x80000000;
+            if( ( style & WS_POPUP ) == 0 ) continue;
+            // Find which monitor this window belongs to
+            final com.group_finity.mascot.win.jna.POINT.ByValue pt2 =
+                new com.group_finity.mascot.win.jna.POINT.ByValue( );
+            pt2.x = wr.x + wr.width / 2;
+            pt2.y = wr.y + wr.height / 2;
+            final Pointer hMon = User32.INSTANCE.MonitorFromPoint( pt2, 2 );
+            if( hMon == null || hMon.equals( com.sun.jna.Pointer.NULL ) ) continue;
+            final com.group_finity.mascot.win.jna.MONITORINFO mi =
+                new com.group_finity.mascot.win.jna.MONITORINFO( );
+            mi.cbSize = new NativeLong( mi.size( ) );
+            mi.write( );
+            if( !User32.INSTANCE.GetMonitorInfoW( hMon, mi ) ) continue;
+            mi.read( );
+            final Rectangle monRect = new Rectangle(
+                mi.rcMonitor.left, mi.rcMonitor.top,
+                mi.rcMonitor.right - mi.rcMonitor.left,
+                mi.rcMonitor.bottom - mi.rcMonitor.top );
+            // Window must cover the full monitor bounds (1px tolerance).
+            if( wr.x     <= monRect.x     + 1 &&
+                wr.y     <= monRect.y     + 1 &&
+                wr.x + wr.width  >= monRect.x + monRect.width  - 1 &&
+                wr.y + wr.height >= monRect.y + monRect.height - 1 )
+            {
+                fsMonitors.add( monRect );
+            }
+        }
+        fullscreenMonitors = fsMonitors;
+
+        // Also treat any browser-reported fullscreen tabs as fullscreen monitors.
+        // The extension POSTs the browser window's screen rect to /fullscreen;
+        // we find which monitor that rect belongs to and add it to the set.
+        com.group_finity.mascot.VideoAreaServer vas2 =
+            com.group_finity.mascot.VideoAreaServer.getInstance();
+        if( vas2 != null )
+        {
+            for( java.awt.Rectangle br : vas2.getFullscreenAreas() )
+            {
+                final com.group_finity.mascot.win.jna.POINT.ByValue bpt =
+                    new com.group_finity.mascot.win.jna.POINT.ByValue( );
+                bpt.x = br.x + br.width  / 2;
+                bpt.y = br.y + br.height / 2;
+                final Pointer bMon = User32.INSTANCE.MonitorFromPoint( bpt, 2 );
+                if( bMon == null || bMon.equals( Pointer.NULL ) ) continue;
+                final com.group_finity.mascot.win.jna.MONITORINFO bmi =
+                    new com.group_finity.mascot.win.jna.MONITORINFO( );
+                bmi.cbSize = new NativeLong( bmi.size( ) );
+                bmi.write( );
+                if( !User32.INSTANCE.GetMonitorInfoW( bMon, bmi ) ) continue;
+                bmi.read( );
+                fsMonitors.add( new Rectangle(
+                    bmi.rcMonitor.left, bmi.rcMonitor.top,
+                    bmi.rcMonitor.right  - bmi.rcMonitor.left,
+                    bmi.rcMonitor.bottom - bmi.rcMonitor.top ) );
+            }
+            // Re-publish with browser fullscreen additions
+            fullscreenMonitors = fsMonitors;
+        }
         // They use a null handle (no real HWND) and are marked IEResult.IE so
         // findNearestIEFromSnapshot treats them identically to real windows.
         com.group_finity.mascot.VideoAreaServer vas =
@@ -566,9 +661,35 @@ public class WindowsEnvironment extends Environment
     public String getActiveIETitle( )
     {
         if( activeIEobject == null ) return "";
+        final com.sun.jna.Pointer SENTINEL = com.sun.jna.Pointer.createConstant( -1L );
+        if( SENTINEL.equals( activeIEobject ) )
+        {
+            com.group_finity.mascot.VideoAreaServer vas =
+                com.group_finity.mascot.VideoAreaServer.getInstance();
+            if( vas != null )
+            {
+                String site = vas.getSiteIdForRect( activeIE.toRectangle() );
+                if( !site.isEmpty() ) return site;
+            }
+            return "Video Area";
+        }
         final char[] title = new char[ 1024 ];
         final int len = User32.INSTANCE.GetWindowTextW( activeIEobject, title, 1024 );
         return new String( title, 0, len );
+    }
+
+    @Override
+    public String getForegroundWindowTitle( )
+    {
+        try
+        {
+            final Pointer hwnd = User32.INSTANCE.GetForegroundWindow( );
+            if( hwnd == null ) return "";
+            final char[] title = new char[ 1024 ];
+            final int len = User32.INSTANCE.GetWindowTextW( hwnd, title, 1024 );
+            return new String( title, 0, len );
+        }
+        catch( final Exception e ) { return ""; }
     }
 
     private static Rectangle getWorkAreaRect( final Point mascotPos )
@@ -589,6 +710,17 @@ public class WindowsEnvironment extends Environment
                 if( User32.INSTANCE.GetMonitorInfoW( hMonitor, mi ) )
                 {
                     mi.read( );
+                    final Rectangle monRect = new Rectangle(
+                        mi.rcMonitor.left, mi.rcMonitor.top,
+                        mi.rcMonitor.right  - mi.rcMonitor.left,
+                        mi.rcMonitor.bottom - mi.rcMonitor.top );
+
+                    // If a fullscreen app is covering this monitor, treat the
+                    // full monitor bounds as the work area so the taskbar is
+                    // ignored and the floor sits at the real bottom of the screen.
+                    if( fullscreenMonitors.contains( monRect ) )
+                        return monRect;
+
                     boolean isPrimary = ( mi.dwFlags.intValue( ) & 1 ) != 0;
                     if( isPrimary )
                     {

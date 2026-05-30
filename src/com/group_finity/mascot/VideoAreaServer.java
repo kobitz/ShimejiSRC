@@ -21,6 +21,10 @@ public class VideoAreaServer
     private final ConcurrentHashMap<String, Rectangle> areas = new ConcurrentHashMap<>();
     private volatile List<Rectangle> snapshot = Collections.emptyList();
 
+    /** Browser tabs currently in fullscreen: tabId -> screen Rectangle of the browser window. */
+    private final ConcurrentHashMap<String, Rectangle> fullscreenAreas = new ConcurrentHashMap<>();
+    private volatile List<Rectangle> fullscreenSnapshot = Collections.emptyList();
+
     public static void start()
     {
         if( instance != null ) return;
@@ -33,14 +37,15 @@ public class VideoAreaServer
         try
         {
             server = HttpServer.create( new InetSocketAddress( "127.0.0.1", PORT ), 0 );
-            server.createContext( "/video", this::handle );
+            server.createContext( "/video",      this::handleVideo );
+            server.createContext( "/fullscreen", this::handleFullscreen );
             server.setExecutor( Executors.newSingleThreadExecutor( r -> {
                 Thread t = new Thread( r, "VideoAreaServer" );
                 t.setDaemon( true );
                 return t;
             }));
             server.start();
-            log.info( "VideoAreaServer listening on http://127.0.0.1:" + PORT + "/video" );
+            log.info( "VideoAreaServer listening on http://127.0.0.1:" + PORT );
             System.out.println( "[Shimeji] VideoAreaServer started on port " + PORT );
         }
         catch( Exception e )
@@ -50,12 +55,9 @@ public class VideoAreaServer
         }
     }
 
-    private void handle( HttpExchange ex ) throws IOException
+    private void handleVideo( HttpExchange ex ) throws IOException
     {
-        ex.getResponseHeaders().add( "Access-Control-Allow-Origin",  "*" );
-        ex.getResponseHeaders().add( "Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS" );
-        ex.getResponseHeaders().add( "Access-Control-Allow-Headers", "Content-Type" );
-
+        addCors( ex );
         String method = ex.getRequestMethod();
 
         if( "OPTIONS".equals( method ) )
@@ -65,7 +67,6 @@ public class VideoAreaServer
 
         if( "GET".equals( method ) )
         {
-            // Debug: return current registered areas as plain text
             StringBuilder sb = new StringBuilder( "Registered video areas:\n" );
             for( Map.Entry<String,Rectangle> e : areas.entrySet() )
                 sb.append( e.getKey() ).append( ": " ).append( e.getValue() ).append( "\n" );
@@ -113,9 +114,89 @@ public class VideoAreaServer
         ex.getResponseBody().close();
     }
 
-    private void rebuildSnapshot() { snapshot = List.copyOf( areas.values() ); }
+    /**
+     * /fullscreen endpoint — called by the browser extension when a tab enters
+     * or exits browser fullscreen (F11 / video fullscreen button).
+     *
+     * POST  id=<tabId>&x=<screenX>&y=<screenY>&w=<width>&h=<height>
+     *   Registers the browser window's screen rect as a fullscreen area.
+     *   WindowsEnvironment.beginTick() will find which monitor this covers
+     *   and treat that monitor as having a fullscreen app.
+     *
+     * DELETE ?id=<tabId>
+     *   Removes the fullscreen registration for that tab.
+     */
+    private void handleFullscreen( HttpExchange ex ) throws IOException
+    {
+        addCors( ex );
+        String method = ex.getRequestMethod();
 
-    public List<Rectangle> getSyntheticAreas() { return snapshot; }
+        if( "OPTIONS".equals( method ) )
+        {
+            ex.sendResponseHeaders( 204, -1 ); return;
+        }
+
+        if( "POST".equals( method ) )
+        {
+            String body = new String( ex.getRequestBody().readAllBytes() );
+            Map<String,String> p = parseForm( body );
+            try
+            {
+                String id = p.getOrDefault( "id", "browser" );
+                int x = Integer.parseInt( p.get( "x" ) );
+                int y = Integer.parseInt( p.get( "y" ) );
+                int w = Integer.parseInt( p.get( "w" ) );
+                int h = Integer.parseInt( p.get( "h" ) );
+                fullscreenAreas.put( id, new Rectangle( x, y, w, h ) );
+                rebuildFullscreenSnapshot();
+                System.out.println( "[Shimeji] Browser fullscreen registered: " + id + " " + x + "," + y + " " + w + "x" + h );
+                ex.sendResponseHeaders( 200, 0 );
+            }
+            catch( Exception e )
+            {
+                System.err.println( "[Shimeji] Bad fullscreen POST body: " + body );
+                ex.sendResponseHeaders( 400, 0 );
+            }
+        }
+        else if( "DELETE".equals( method ) )
+        {
+            String query = ex.getRequestURI().getQuery();
+            Map<String,String> p = parseForm( query != null ? query : "" );
+            String id = p.getOrDefault( "id", "browser" );
+            fullscreenAreas.remove( id );
+            rebuildFullscreenSnapshot();
+            System.out.println( "[Shimeji] Browser fullscreen cleared: " + id );
+            ex.sendResponseHeaders( 200, 0 );
+        }
+        else
+        {
+            ex.sendResponseHeaders( 405, 0 );
+        }
+
+        ex.getResponseBody().close();
+    }
+
+    private void addCors( HttpExchange ex )
+    {
+        ex.getResponseHeaders().add( "Access-Control-Allow-Origin",  "*" );
+        ex.getResponseHeaders().add( "Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS" );
+        ex.getResponseHeaders().add( "Access-Control-Allow-Headers", "Content-Type" );
+    }
+
+    private void rebuildSnapshot()         { snapshot           = List.copyOf( areas.values() );           }
+    private void rebuildFullscreenSnapshot(){ fullscreenSnapshot = List.copyOf( fullscreenAreas.values() ); }
+
+    public List<Rectangle> getSyntheticAreas()   { return snapshot;           }
+    public List<Rectangle> getFullscreenAreas()  { return fullscreenSnapshot; }
+
+    /** Returns the site id (e.g. "youtube") for the synthetic area matching rect r, or "". */
+    public String getSiteIdForRect( Rectangle r )
+    {
+        for( Map.Entry<String, Rectangle> e : areas.entrySet() )
+            if( r.equals( e.getValue() ) )
+                return e.getKey().replaceFirst( "_(top|bottom|left|right)$", "" );
+        return "";
+    }
 
     private static Map<String,String> parseForm( String s )
     {

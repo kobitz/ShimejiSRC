@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -73,6 +74,25 @@ import javax.swing.event.PopupMenuListener;
 public class Main
 {
     private static final Logger log = Logger.getLogger( Main.class.getName() );
+
+    /** Ubuntu Regular loaded once at class init; used for all Swing menus and the tooltip. */
+    public static final java.awt.Font UBUNTU_R = loadFont( "/Ubuntu-R.ttf" );
+    /** Ubuntu Bold loaded once at class init; default bubble font. */
+    public static final java.awt.Font UBUNTU_B = loadFont( "/Ubuntu-B.ttf" );
+
+    private static java.awt.Font loadFont( final String resource )
+    {
+        try ( InputStream is = Main.class.getResourceAsStream( resource ) )
+        {
+            if( is != null )
+                return java.awt.Font.createFont( java.awt.Font.TRUETYPE_FONT, is );
+        }
+        catch( Exception e )
+        {
+            // fall through to system fallback
+        }
+        return new java.awt.Font( java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 12 );
+    }
     // Action that matches the "Gather Around Mouse!" context menu command
     static final String BEHAVIOR_GATHER = "ChaseMouse";
 
@@ -80,7 +100,9 @@ public class Main
     {
         try
         {
-            LogManager.getLogManager( ).readConfiguration( Main.class.getResourceAsStream( "/logging.properties" ) );
+            final java.io.InputStream logCfg = Main.class.getResourceAsStream( "/logging.properties" );
+            if( logCfg != null )
+                LogManager.getLogManager( ).readConfiguration( logCfg );
         }
         catch( final SecurityException e )
         {
@@ -182,7 +204,7 @@ public class Main
         catch( IOException ex )
         {
         }
-        
+
         // load languages
         try   
         {
@@ -236,7 +258,7 @@ public class Main
                 updateConfigFile( );
             }
             float menuScaling = Float.parseFloat( properties.getProperty( "MenuDPI", "96" ) ) / 96;
-            java.awt.Font font = theme.getUserTextFont( ).deriveFont( theme.getUserTextFont( ).getSize( ) * menuScaling );
+            java.awt.Font font = UBUNTU_R.deriveFont( java.awt.Font.PLAIN, theme.getUserTextFont( ).getSize( ) * menuScaling );
             theme.setFont( font );
             
             NimRODLookAndFeel.setCurrentTheme( theme );
@@ -245,6 +267,19 @@ public class Main
             // all done
             lookAndFeel.initialize( );
             UIManager.setLookAndFeel( lookAndFeel );
+
+            // Apply Ubuntu-R to every Swing component type that renders text in menus.
+            // NimROD's theme.setFont() covers most paths; these UIManager overrides
+            // catch the tray JPopupMenu and any components that bypass the theme font.
+            final javax.swing.plaf.FontUIResource ubuntuResource =
+                new javax.swing.plaf.FontUIResource( font );
+            for( java.util.Enumeration<Object> keys = UIManager.getDefaults( ).keys( ); keys.hasMoreElements( ); )
+            {
+                final Object key = keys.nextElement( );
+                final Object val = UIManager.get( key );
+                if( val instanceof javax.swing.plaf.FontUIResource )
+                    UIManager.put( key, ubuntuResource );
+            }
         }
         catch( Exception ex )
         {
@@ -687,7 +722,31 @@ public class Main
                                         btnAllowedBehaviours.setEnabled( true );
                                     }
                                 } );
-                                
+
+                                // "Screen Loop" menu item
+                                final JCheckBoxMenuItem screenLoopMenu = new JCheckBoxMenuItem( languageBundle.getString( "ScreenLoop" ), Boolean.parseBoolean( properties.getProperty( "ScreenLoop", "false" ) ) );
+                                screenLoopMenu.addItemListener( new ItemListener( )
+                                {
+                                    public void itemStateChanged( final ItemEvent e )
+                                    {
+                                        screenLoopMenu.setState( toggleBooleanSetting( "ScreenLoop", false ) );
+                                        updateConfigFile( );
+                                        btnAllowedBehaviours.setEnabled( true );
+                                    }
+                                } );
+
+                                // "Floor Collision" menu item
+                                final JCheckBoxMenuItem floorCollisionMenu = new JCheckBoxMenuItem( "Floor Collision", Boolean.parseBoolean( properties.getProperty( "FloorCollision", "true" ) ) );
+                                floorCollisionMenu.addItemListener( new ItemListener( )
+                                {
+                                    public void itemStateChanged( final ItemEvent e )
+                                    {
+                                        floorCollisionMenu.setState( toggleBooleanSetting( "FloorCollision", true ) );
+                                        updateConfigFile( );
+                                        btnAllowedBehaviours.setEnabled( true );
+                                    }
+                                } );
+
                                 JPopupMenu behaviourPopup = new JPopupMenu( );
                                 behaviourPopup.add( breedingMenu );
                                 behaviourPopup.add( transientMenu );
@@ -695,6 +754,8 @@ public class Main
                                 behaviourPopup.add( throwingMenu );
                                 behaviourPopup.add( soundsMenu );
                                 behaviourPopup.add( multiscreenMenu );
+                                behaviourPopup.add( screenLoopMenu );
+                                behaviourPopup.add( floorCollisionMenu );
                                 behaviourPopup.addPopupMenuListener( new PopupMenuListener( )
                                 {
                                     @Override
@@ -1317,8 +1378,8 @@ public class Main
 
         try
         {
-            mascot.setBehavior( getConfiguration( imageSet ).buildNextBehavior( null, mascot ) );
             this.getManager().add( mascot );
+            mascot.setBehavior( getConfiguration( imageSet ).buildNextBehavior( null, mascot ) );
         }
         catch( final BehaviorInstantiationException e )
         {
@@ -1381,8 +1442,8 @@ public class Main
             if( behavior == null )
                 behavior = getConfiguration( imageSet ).buildNextBehavior( null, mascot );
 
-            mascot.setBehavior( behavior );
             this.getManager( ).add( mascot );
+            mascot.setBehavior( behavior );
         }
         catch( final com.group_finity.mascot.exception.BehaviorInstantiationException e )
         {
@@ -1730,6 +1791,13 @@ public class Main
     public Platform getPlatform( )
     {
         return platform;
+    }
+
+    private void setIfPresent( final String propKey, final String sysProp )
+    {
+        final String val = properties.getProperty( propKey );
+        if( val != null && !val.trim().isEmpty() )
+            System.setProperty( sysProp, val.trim() );
     }
 
     public Properties getProperties( )

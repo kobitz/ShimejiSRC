@@ -24,7 +24,9 @@ public class ImagePairLoader
      */
     public static void load( final Path path, final Path rightPath, final Point center, final double scaling, final Filter filter, final double opacity ) throws IOException
     {
-        if( ImagePairs.contains( path.toString( ) + ( rightPath == null ? "" : rightPath.toString( ) ) ) )
+        // Key is path only — anchor is tracked separately per-pose on the Mascot.
+        final String key = path.toString( ) + ( rightPath == null ? "" : rightPath.toString( ) );
+        if( ImagePairs.contains( key ) )
             return;
 
         final BufferedImage leftImage = scale( premultiply( ImageIO.read( path.toFile( ) ), opacity ), scaling, filter );
@@ -34,9 +36,11 @@ public class ImagePairLoader
         else
             rightImage = scale( premultiply( ImageIO.read( rightPath.toFile( ) ), opacity ), scaling, filter );
 
-        ImagePair ip = new ImagePair(new MascotImage( leftImage, new Point( (int)Math.round( center.x * scaling ), (int)Math.round( center.y * scaling ) ) ),
-                                     new MascotImage( rightImage, new Point( rightImage.getWidth( ) - (int)Math.round( center.x * scaling ), (int)Math.round( center.y * scaling ) ) ) );
-        ImagePairs.load( path.toString( ) + ( rightPath == null ? "" : rightPath.toString( ) ), ip );
+        // Center is no longer stored in MascotImage; rendering uses Mascot.renderAnchorX/Y instead.
+        ImagePair ip = new ImagePair(
+            new MascotImage( leftImage,  new Point( 0, 0 ) ),
+            new MascotImage( rightImage, new Point( 0, 0 ) ) );
+        ImagePairs.load( key, ip );
     }
 
 	/**

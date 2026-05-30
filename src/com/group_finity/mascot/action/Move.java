@@ -54,6 +54,7 @@ public class Move extends BorderedAction
 
         if( ( getBorder( ) != null ) && !getBorder( ).isOn( getMascot( ).getAnchor( ) ) )
         {
+            getMascot( ).setUserData( "jumpExitVelocityX", 0 );
             log.log( Level.INFO, "Lost Ground ({0},{1})", new Object[] { getMascot( ), this } );
             throw new LostGroundException( );
         }

@@ -249,6 +249,8 @@ public class UserBehavior implements Behavior
             {
                 if( getAction( ).hasNext( ) )
                 {
+                    final boolean screenLoopActive = getMascot( ).isScreenLoop( );
+
                     if( ( getMascot( ).getBounds( ).getX( ) + getMascot( ).getBounds( ).getWidth( )
                             <= getEnvironment( ).getScreen( ).getLeft() )
                             || ( getEnvironment( ).getScreen( ).getRight( ) <= getMascot( ).getBounds( ).getX( ) )
@@ -256,24 +258,36 @@ public class UserBehavior implements Behavior
                     {
                         log.log( Level.INFO, "Out of the screen bounds({0},{1})", new Object[ ] { getMascot( ), this } );
 
-                        if( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Multiscreen", "true" ) ) )
+                        // Screen Loop: teleport to opposite horizontal border, preserving Y and current behavior.
+                        final boolean wentOffRight = getEnvironment( ).getScreen( ).getRight( ) <= getMascot( ).getBounds( ).getX( );
+                        final boolean wentOffLeft  = getMascot( ).getBounds( ).getX( ) + getMascot( ).getBounds( ).getWidth( ) <= getEnvironment( ).getScreen( ).getLeft( );
+                        if( screenLoopActive && ( wentOffRight || wentOffLeft ) )
                         {
-                            getMascot( ).setAnchor( new Point( (int)( Math.random( ) * ( getEnvironment( ).getScreen( ).getRight( ) - getEnvironment( ).getScreen( ).getLeft( ) ) ) + getEnvironment( ).getScreen( ).getLeft( ),
-                                                              getEnvironment( ).getScreen( ).getTop( ) - 256 ) );
+                            final int teleportX = getEnvironment( ).getScreenLoopTeleportX( wentOffRight );
+                            getMascot( ).setAnchor( new Point( teleportX, getMascot( ).getAnchor( ).y ) );
+                            // No behavior change — mascot continues its current action seamlessly.
                         }
                         else
                         {
-                            getMascot( ).setAnchor( new Point( (int)( Math.random( ) * ( getEnvironment( ).getWorkArea( ).getRight( ) - getEnvironment( ).getWorkArea( ).getLeft( ) ) ) + getEnvironment( ).getWorkArea( ).getLeft( ),
-                                                              getEnvironment( ).getWorkArea( ).getTop( ) - 256 ) );
-                        }
+                            if( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Multiscreen", "true" ) ) )
+                            {
+                                getMascot( ).setAnchor( new Point( (int)( Math.random( ) * ( getEnvironment( ).getScreen( ).getRight( ) - getEnvironment( ).getScreen( ).getLeft( ) ) ) + getEnvironment( ).getScreen( ).getLeft( ),
+                                                                  getEnvironment( ).getScreen( ).getTop( ) - 256 ) );
+                            }
+                            else
+                            {
+                                getMascot( ).setAnchor( new Point( (int)( Math.random( ) * ( getEnvironment( ).getWorkArea( ).getRight( ) - getEnvironment( ).getWorkArea( ).getLeft( ) ) ) + getEnvironment( ).getWorkArea( ).getLeft( ),
+                                                                  getEnvironment( ).getWorkArea( ).getTop( ) - 256 ) );
+                            }
 
-                        try
-                        {
-                            getMascot( ).setBehavior( this.getConfiguration( ).buildBehavior( configuration.getSchema( ).getString( BEHAVIOURNAME_FALL ) ) );
-                        }
-                        catch( final BehaviorInstantiationException e )
-                        {
-                            throw new CantBeAliveException( Main.getInstance( ).getLanguageBundle( ).getString( "FailedFallingActionInitialiseErrorMessage" ), e );
+                            try
+                            {
+                                getMascot( ).setBehavior( this.getConfiguration( ).buildBehavior( configuration.getSchema( ).getString( BEHAVIOURNAME_FALL ) ) );
+                            }
+                            catch( final BehaviorInstantiationException e )
+                            {
+                                throw new CantBeAliveException( Main.getInstance( ).getLanguageBundle( ).getString( "FailedFallingActionInitialiseErrorMessage" ), e );
+                            }
                         }
                     }
                 }
@@ -300,6 +314,32 @@ public class UserBehavior implements Behavior
             {
                 getMascot( ).setCursorPosition( null );
                 getMascot( ).setDragging( false );
+
+                // Nudge away from wall before falling so engine resolves to correct side.
+                // mascot.isLookRight() faces AWAY from the wall it's clinging to.
+                // ie.leftBorder + lookRight=true  → outside left  → nudge left  (-x)
+                // ie.leftBorder + lookRight=false → inside window  → nudge right (+x)
+                // ie.rightBorder + lookRight=false → outside right → nudge right (+x)
+                // ie.rightBorder + lookRight=true  → inside window → nudge left  (-x)
+                // workArea.rightBorder → always outside → nudge left
+                // workArea.leftBorder  → always outside → nudge right
+                MascotEnvironment env = getMascot( ).getEnvironment( );
+                Point anchor = getMascot( ).getAnchor( );
+                int nudge = (int) Math.round( 4 * getMascot( ).getCurrentScale( ) );
+                Point newAnchor = null;
+                boolean lookRight = getMascot( ).isLookRight( );
+                if( env.getActiveIE( ).getLeftBorder( ).isOn( anchor ) ) {
+                    newAnchor = new Point( anchor.x + ( lookRight ? -nudge : nudge ), anchor.y );
+                } else if( env.getActiveIE( ).getRightBorder( ).isOn( anchor ) ) {
+                    newAnchor = new Point( anchor.x + ( lookRight ? -nudge : nudge ), anchor.y );
+                } else if( env.getWorkArea( ).getRightBorder( ).isOn( anchor ) ) {
+                    newAnchor = new Point( anchor.x - nudge, anchor.y );
+                } else if( env.getWorkArea( ).getLeftBorder( ).isOn( anchor ) ) {
+                    newAnchor = new Point( anchor.x + nudge, anchor.y );
+                }
+                if( newAnchor != null )
+                    getMascot( ).setAnchor( newAnchor );
+
                 getMascot( ).setBehavior( configuration.buildBehavior( configuration.getSchema( ).getString( BEHAVIOURNAME_FALL ) ) );
             }
             catch( final BehaviorInstantiationException ex )

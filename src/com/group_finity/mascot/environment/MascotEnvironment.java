@@ -19,22 +19,77 @@ public class MascotEnvironment
 
     private Area currentWorkArea;
 
-    private final boolean multiscreen;
 
     public MascotEnvironment( Mascot mascot )
     {
         this.mascot = mascot;
         impl = NativeFactory.getInstance( ).getEnvironment( );
         impl.init( );
-        multiscreen = Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "Multiscreen", "true" ) );
     }
 
     public void tick( )
     {
+        if( mascot.isScreenLoop( ) && !isMultiscreen( ) && !mascot.isDragging( ) && currentWorkArea != null
+                && mascot.getUserData( "screenLoopTeleportedRight" ) == null )
+        {
+            // PRE-TICK outer-edge check: fires BEFORE tickForMascot, catching outer-edge
+            // crossings one tick earlier so the mascot doesn't visually leave the taskbar.
+            // Only applies to true outer edges — the inter-screen barrier is handled by
+            // the post-tick workarea-switch detection below.
+            // Skip if a teleport already fired this tick (flag already set) to prevent ping-pong.
+            final int MARGIN = 4;
+            final java.awt.Rectangle wa = currentWorkArea.toRectangle( );
+            final java.awt.Point anchor = mascot.getAnchor( );
+
+            final boolean rightIsOuter = !hasAdjacentScreenOnRight( wa );
+            final boolean leftIsOuter  = !hasAdjacentScreenOnLeft( wa );
+
+            // Destination is MARGIN+1 px inward so landing there won't re-trigger.
+            final boolean crossedRight = rightIsOuter && anchor.x >= wa.x + wa.width - MARGIN;
+            final boolean crossedLeft  = leftIsOuter  && anchor.x <= wa.x + MARGIN;
+
+            if( crossedRight || crossedLeft )
+            {
+                final boolean wentRight = crossedRight;
+                final int teleportX = wentRight
+                    ? wa.x + MARGIN + 1
+                    : wa.x + wa.width - MARGIN - 1;
+                mascot.setAnchor( new java.awt.Point( teleportX, anchor.y ) );
+                mascot.setUserData( "screenLoopTeleportedRight", wentRight );
+            }
+        }
+
+                // Snapshot workarea BEFORE tickForMascot so we can detect a monitor switch.
+        final java.awt.Rectangle prevWorkRect =
+            ( currentWorkArea != null ) ? currentWorkArea.toRectangle( ) : null;
+
         impl.tickForMascot( mascot.getAnchor( ) );
+
         if( currentWorkArea == null || currentWorkArea == impl.getWorkArea( ) )
             currentWorkArea = new Area( );
         currentWorkArea.set( impl.getWorkArea( ).toRectangle( ) );
+
+        // POST-TICK: if tickForMascot moved the workarea to a different monitor,
+        // the mascot crossed the inter-screen barrier — teleport to opposite side.
+        if( mascot.isScreenLoop( ) && !isMultiscreen( ) && !mascot.isDragging( ) && prevWorkRect != null )
+        {
+            final java.awt.Rectangle newWorkRect = currentWorkArea.toRectangle( );
+            if( !newWorkRect.equals( prevWorkRect ) )
+            {
+                final java.awt.Point anchor = mascot.getAnchor( );
+                final boolean wentRight = anchor.x >= prevWorkRect.x + prevWorkRect.width;
+                final int MARGIN = 4;
+                // Land MARGIN+1 px inward so the pre-tick check (threshold = MARGIN)
+                // doesn't immediately re-trigger on the next frame.
+                final int teleportX = wentRight
+                    ? prevWorkRect.x + MARGIN + 1
+                    : prevWorkRect.x + prevWorkRect.width - MARGIN - 1;
+                mascot.setAnchor( new java.awt.Point( teleportX, anchor.y ) );
+                currentWorkArea.set( prevWorkRect );
+                if( mascot.getUserData( "screenLoopTeleportedRight" ) == null )
+                    mascot.setUserData( "screenLoopTeleportedRight", wentRight );
+            }
+        }
     }
 
     public void lockActiveIE( )
@@ -65,7 +120,7 @@ public class MascotEnvironment
     {
         Area activeIE = impl.getActiveIE( );
         
-        if( currentWorkArea != null && !multiscreen && !currentWorkArea.toRectangle( ).intersects( activeIE.toRectangle( ) ) )
+        if( currentWorkArea != null && !isMultiscreen( ) && !currentWorkArea.toRectangle( ).intersects( activeIE.toRectangle( ) ) )
             return new Area( );
         
         return activeIE;
@@ -86,7 +141,7 @@ public class MascotEnvironment
 
     public Border getCeiling( )
     {
-        return getCeiling( multiscreen );
+        return getCeiling( isMultiscreen( ) );
     }
 
     public Border getCeiling( boolean ignoreSeparator )
@@ -117,7 +172,7 @@ public class MascotEnvironment
 
     public Border getFloor( )
     {
-        return getFloor( multiscreen );
+        return getFloor( isMultiscreen( ) );
     }
 
     public Border getFloor( boolean ignoreSeparator )
@@ -143,11 +198,16 @@ public class MascotEnvironment
 
     public Border getWall( )
     {
-        return getWall( multiscreen );
+        return getWall( isMultiscreen( ) );
     }
 
     public Border getWall( boolean ignoreSeparator )
     {
+        // Screen loop: ALL workarea walls (outer edges and inter-screen barriers alike)
+        // are invisible — the mascot teleports to the opposite side of its current screen.
+        // Window borders always act normally.
+        final boolean screenLoop = mascot.isScreenLoop( );
+
         if( mascot.isLookRight( ) )
         {
             if( getActiveIE( ).getLeftBorder( ).isOn( mascot.getAnchor( ) ) )
@@ -157,7 +217,11 @@ public class MascotEnvironment
 
             if( getWorkArea( ).getRightBorder( ).isOn( mascot.getAnchor( ) ) )
             {
-                if( !ignoreSeparator || isScreenLeftRight( ) )
+                if( screenLoop )
+                {
+                    // Transparent — teleport fires via out-of-bounds check in UserBehavior.
+                }
+                else if( !ignoreSeparator || isScreenLeftRight( ) )
                 {
                     return getWorkArea( ).getRightBorder( );
                 }
@@ -172,7 +236,11 @@ public class MascotEnvironment
 
             if( getWorkArea( ).getLeftBorder( ).isOn( mascot.getAnchor( ) ) )
             {
-                if( !ignoreSeparator || isScreenLeftRight( ) )
+                if( screenLoop )
+                {
+                    // Transparent — teleport fires via out-of-bounds check in UserBehavior.
+                }
+                else if( !ignoreSeparator || isScreenLeftRight( ) )
                 {
                     return getWorkArea( ).getLeftBorder( );
                 }
@@ -180,6 +248,46 @@ public class MascotEnvironment
         }
 
         return NotOnBorder.INSTANCE;
+    }
+
+    /**
+     * Returns the X coordinate to teleport to when screen loop wraps the mascot.
+     * If isMultiscreen( ) is on, teleports to the far edge of the entire virtual desktop.
+     * Otherwise teleports to the opposite side of the current workarea.
+     *
+     * @param hitRight true if the mascot exited through the right border, false for left.
+     */
+    public int getScreenLoopTeleportX( boolean hitRight )
+    {
+        if( isMultiscreen( ) )
+        {
+            // Compute bounding box of all screens to get the full virtual desktop span.
+            java.util.Collection<Area> screens = impl.getScreens( );
+            int minLeft = Integer.MAX_VALUE;
+            int maxRight = Integer.MIN_VALUE;
+            for( Area s : screens )
+            {
+                if( s.getLeft( ) < minLeft )   minLeft  = s.getLeft( );
+                if( s.getRight( ) > maxRight ) maxRight = s.getRight( );
+            }
+            if( minLeft == Integer.MAX_VALUE )
+            {
+                // Fallback: use workarea
+                Area wa = getWorkArea( );
+                return hitRight ? wa.getLeft( ) : wa.getRight( );
+            }
+            return hitRight ? minLeft : maxRight;
+        }
+        else
+        {
+            // Use the workarea for the teleport destination. getWorkArea() is snapshotted
+            // at tick start from the mascot's home screen, so it still reflects the correct
+            // monitor even after the anchor has drifted across the barrier.
+            // Nudge one pixel inward from the workarea edge so the mascot doesn't land
+            // exactly on the border pixel and get claimed by the adjacent screen.
+            Area wa = getWorkArea( );
+            return hitRight ? wa.getLeft( ) + 1 : wa.getRight( ) - 1;
+        }
     }
 
     public void moveActiveIE( Point point )
@@ -198,17 +306,15 @@ public class MascotEnvironment
     }
 
     /**
-     * System sensor readings via LibreHardwareMonitor web server.
-     * LHM must be running with Remote Web Server enabled (port 8085).
-     * All values return -1 if unavailable.
+     * System sensor readings. All values return -1 if unavailable. No admin required.
      *
      * Usage in XML conditions:
-     *   mascot.environment.cpuTemp      - CPU Core Average (°C)
-     *   mascot.environment.cpuLoad      - CPU Total load (%)
-     *   mascot.environment.gpuTemp      - GPU Core temperature (°C)
-     *   mascot.environment.gpuLoad      - GPU Core load (%)
-     *   mascot.environment.ramLoad      - Total RAM usage (%)
-     *   mascot.environment.batteryLevel - Battery charge level (%)
+     *   mascot.environment.cpuTemp      - always -1 (requires kernel driver on Windows)
+     *   mascot.environment.cpuLoad      - CPU total load % via OperatingSystemMXBean
+     *   mascot.environment.gpuTemp      - GPU temperature deg C via nvidia-smi (NVIDIA only)
+     *   mascot.environment.gpuLoad      - GPU load % via nvidia-smi (NVIDIA only)
+     *   mascot.environment.ramLoad      - RAM usage % via OperatingSystemMXBean
+     *   mascot.environment.batteryLevel - Battery % via Win32 GetSystemPowerStatus
      */
     public double getCpuTemp( )      { return CpuTempMonitor.getInstance( ).getCpuTemp( );      }
     public double getCpuLoad( )      { return CpuTempMonitor.getInstance( ).getCpuLoad( );      }
@@ -232,6 +338,53 @@ public class MascotEnvironment
         {
             return -1;
         }
+    }
+
+    /**
+     * Real-time system audio RMS level (~0-32767 range).
+     * Updated every ~40ms by WasapiLoopbackCapture. Returns 0 if not running.
+     *
+     * Usage in XML conditions:
+     *   mascot.environment.audioLevel   - current speaker output energy
+     */
+    public int getAudioLevel( )
+    {
+        return com.group_finity.mascot.assistant.AudioTranscriptBuffer.currentSysRms;
+    }
+
+    /** Returns true if another screen begins exactly at the right edge of the given workarea. */
+    private boolean hasAdjacentScreenOnRight( java.awt.Rectangle wa )
+    {
+        int rightEdge = wa.x + wa.width;
+        for( Area s : impl.getScreens( ) )
+        {
+            java.awt.Rectangle r = s.toRectangle( );
+            if( r.x == rightEdge ) return true;
+        }
+        return false;
+    }
+
+    /** Returns true if another screen ends exactly at the left edge of the given workarea. */
+    private boolean hasAdjacentScreenOnLeft( java.awt.Rectangle wa )
+    {
+        int leftEdge = wa.x;
+        for( Area s : impl.getScreens( ) )
+        {
+            java.awt.Rectangle r = s.toRectangle( );
+            if( r.x + r.width == leftEdge ) return true;
+        }
+        return false;
+    }
+
+    /** Reads the per-imageset Multiscreen override, falling back to the global setting. */
+    private boolean isMultiscreen( )
+    {
+        final java.util.Properties props = Main.getInstance( ).getProperties( );
+        final String imageSet = mascot.getImageSet( );
+        final String perSet = props.getProperty( "Multiscreen.imageset." + imageSet );
+        if( perSet != null )
+            return Boolean.parseBoolean( perSet );
+        return Boolean.parseBoolean( props.getProperty( "Multiscreen", "true" ) );
     }
 
     private boolean isScreenTopBottom( )

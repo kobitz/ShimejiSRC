@@ -16,6 +16,8 @@ public class Pose
 {
     private final Path image;
     private final Path rightImage;
+    private final int anchorX;
+    private final int anchorY;
     private final int dx;
     private final int dy;
     private final int duration;
@@ -51,14 +53,21 @@ public class Pose
         this( image, rightImage, dx, dy, duration, null );
     }
 
-    public Pose( final Path image, final Path rightImage, final int dx, final int dy, final int duration, final String sound )
+    public Pose( final Path image, final Path rightImage, final int anchorX, final int anchorY, final int dx, final int dy, final int duration, final String sound )
     {
         this.image = image;
         this.rightImage = rightImage;
+        this.anchorX = anchorX;
+        this.anchorY = anchorY;
         this.dx = dx;
         this.dy = dy;
         this.duration = duration;
         this.sound = sound;
+    }
+
+    public Pose( final Path image, final Path rightImage, final int dx, final int dy, final int duration, final String sound )
+    {
+        this( image, rightImage, 0, 0, dx, dy, duration, sound );
     }
 
     @Override
@@ -69,9 +78,12 @@ public class Pose
 
     public void next( final Mascot mascot )
     {
-        double scale = mascot.getCurrentScale( );
-        mascot.setAnchor( new Point( mascot.getAnchor( ).x + (int)( ( mascot.isLookRight( ) ? -getDx( ) : getDx( ) ) * scale ),
-                          mascot.getAnchor( ).y + (int)( getDy( ) * scale ) ) );
+        final double scale = mascot.getCurrentScale( );
+        final Point a = mascot.getAnchor( );
+        mascot.setAnchorXY(
+            a.x + (int)( ( mascot.isLookRight( ) ? -getDx( ) : getDx( ) ) * scale ),
+            a.y + (int)( getDy( ) * scale ) );
+        mascot.setRenderAnchor( anchorX, anchorY );
         mascot.setImage( ImagePairs.getImage( getImageName( ), mascot.isLookRight( ) ) );
         mascot.setSound( getSoundName( ) );
     }

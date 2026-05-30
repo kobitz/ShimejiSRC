@@ -73,6 +73,15 @@ public class Manager {
 	/** Interval between ticks in milliseconds. */
 	public static final int TICK_INTERVAL = 40;
 
+	/**
+	 * Global tick counter incremented once per Manager tick.
+	 * Used by SyncedStay and AffordanceStay to keep all instances
+	 * in perfect animation phase lock — immune to wall-clock drift,
+	 * pause/resume, and action resets.
+	 */
+	public static final java.util.concurrent.atomic.AtomicLong globalSyncTick =
+		new java.util.concurrent.atomic.AtomicLong( 0L );
+
 	private final List<Mascot> mascots = new ArrayList<Mascot>();
 
 	/**
@@ -166,6 +175,8 @@ public class Manager {
 			// This is the key to the shared-scan optimisation: beginTick() populates
 			// WindowsEnvironment's static snapshot so all mascots' tickForMascot()
 			// calls read from it rather than each running their own EnumWindows.
+			// Advance global sync counter once per tick for SyncedStay/AffordanceStay phase lock
+			globalSyncTick.incrementAndGet();
 			com.group_finity.mascot.win.WindowsEnvironment.beginTick();
 
 			// ── Flush add/remove queues ───────────────────────────────────────
@@ -185,6 +196,7 @@ public class Manager {
 			if( listChanged ) {
 				mascotListSnapshot = java.util.Collections.unmodifiableList(
 					new java.util.ArrayList<>( this.getMascots() ) );
+				checkCampfireBlueState( );
 			}
 
 			// ── Tick + apply in a single pass ─────────────────────────────────
@@ -327,6 +339,19 @@ public class Manager {
 				Main.getInstance().exit();
 			}
 		}
+	}
+
+	/** Toggle fan max on/off based on whether any CampfireON_blue mascot is active. */
+	private void checkCampfireBlueState( )
+	{
+		int count = 0;
+		for( Mascot m : this.getMascots( ) )
+			if( "CampfireON_blue".equals( m.getImageSet( ) ) ) count++;
+
+		if( count > 0 )
+			com.group_finity.mascot.environment.FanController.getInstance( ).triggerFanOn( );
+		else
+			com.group_finity.mascot.environment.FanController.getInstance( ).triggerFanOff( );
 	}
 
 	public void add(final Mascot mascot) {

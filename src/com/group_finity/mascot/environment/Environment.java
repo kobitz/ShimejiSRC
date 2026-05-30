@@ -32,6 +32,9 @@ public abstract class Environment
         
     public abstract String getActiveIETitle( );
 
+    /** Returns the title of the OS foreground window, regardless of what the mascot is sitting on. */
+    public String getForegroundWindowTitle( ) { return ""; }
+
     public abstract void moveActiveIE( final Point point );
 
     public abstract void restoreIE( );

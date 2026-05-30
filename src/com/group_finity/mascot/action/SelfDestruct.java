@@ -33,7 +33,9 @@ public class SelfDestruct extends Animate
 
         if( ( getTime( ) == getAnimation( ).getDuration( ) - 1 || getAnimation( ).getDuration( ) == 1 ) )
         {
+            log.info( "SelfDestruct: disposing " + getMascot( ) );
             getMascot( ).dispose( );
+            throw new LostGroundException( );
         }
     }
 }

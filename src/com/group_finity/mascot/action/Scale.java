@@ -44,6 +44,12 @@ public class Scale extends ActionBase
             ? current + ( target - current ) * speed
             : target;
         getMascot( ).setCurrentScale( next );
+
+        final Animation anim = getAnimation( );
+        if( anim != null )
+        {
+            anim.next( getMascot( ), getTime( ) );
+        }
     }
 
     @Override

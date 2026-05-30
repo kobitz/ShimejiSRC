@@ -35,6 +35,7 @@ public class Configuration
     private final Map<String, ActionBuilder> actionBuilders = new LinkedHashMap<String, ActionBuilder>( );
     private final Map<String, BehaviorBuilder> behaviorBuilders = new LinkedHashMap<String, BehaviorBuilder>( );
     private final Map<String, String> information = new LinkedHashMap<String, String>( 8 );
+    private final Map<String, java.util.List<Entry>> animationTemplates = new LinkedHashMap<String, java.util.List<Entry>>( );
     private ResourceBundle schema;
 
     public void load( final Entry configurationNode, final String imageSet ) throws IOException, ConfigurationException
@@ -64,6 +65,17 @@ public class Configuration
         {
             getConstants( ).put( constant.getAttribute( schema.getString( "Name" ) ),
                                  constant.getAttribute( schema.getString( "Value" ) ) );
+        }
+
+        for( final Entry list : configurationNode.selectChildren( schema.getString( "ActionList" ) ) )
+        {
+            for( final Entry tmpl : list.selectChildren( schema.getString( "AnimationTemplate" ) ) )
+            {
+                final String tmplName = tmpl.getAttribute( schema.getString( "Name" ) );
+                if( tmplName != null )
+                    animationTemplates.put( tmplName,
+                        tmpl.selectChildren( schema.getString( "Pose" ) ) );
+            }
         }
 
         for( final Entry list : configurationNode.selectChildren( schema.getString( "ActionList" ) ) )
@@ -137,7 +149,10 @@ public class Configuration
         {
             if( node.getName( ).equals( schema.getString( "Name" ) ) ||
                 node.getName( ).equals( schema.getString( "PreviewImage" ) ) ||
-                node.getName( ).equals( schema.getString( "SplashImage" ) ) )
+                node.getName( ).equals( schema.getString( "SplashImage" ) ) ||
+                node.getName( ).equals( schema.getString( "Personality" ) ) ||
+                node.getName( ).equals( schema.getString( "VoiceTrigger" ) ) ||
+                node.getName( ).equals( schema.getString( "SpeechRule" ) ) )
             {
                 information.put( node.getName( ), node.getText( ) );
             }
@@ -412,6 +427,11 @@ public class Configuration
     public java.util.Set<String> getBehaviorNames( )
     {
         return behaviorBuilders.keySet( );
+    }
+
+    public Map<String, java.util.List<Entry>> getAnimationTemplates()
+    {
+        return animationTemplates;
     }
 
     public boolean containsInformationKey( String key )

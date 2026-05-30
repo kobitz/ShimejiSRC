@@ -1,0 +1,536 @@
+package com.group_finity.mascot.assistant;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+/**
+ * Thin async client for a locally-running Ollama instance.
+ *
+ * Calls POST http://localhost:11434/api/generate (non-streaming).
+ * The callback is always invoked on the calling executor thread —
+ * callers must dispatch to EDT themselves if they update Swing.
+ *
+ * If Ollama is not running, the error callback receives a friendly message
+ * rather than a stack trace.
+ */
+public class OllamaClient
+{
+    private static final Logger log = Logger.getLogger( OllamaClient.class.getName() );
+
+    /** Default endpoint — change if the user runs Ollama on a different port. */
+    public static final String DEFAULT_ENDPOINT = "http://localhost:11434/api/generate";
+
+    /** Default model. Small, fast, good instruction following. */
+    public static final String DEFAULT_MODEL = "llama3.2";
+
+    /** Connection / read timeout in milliseconds. */
+    private static final int TIMEOUT_MS = 30_000;
+
+    /** Hard cap on generated tokens - physically prevents runaway responses. */
+    private static final int MAX_TOKENS = 80;
+
+    /** Keep model loaded for 2 min after last text request; unload vision model immediately. */
+    private static final int TEXT_KEEP_ALIVE_SEC   = 0;
+    private static final int VISION_KEEP_ALIVE_SEC = 0;
+
+    /**
+     * Rate-limit: minimum ms between successive Ollama calls dispatched by the
+     * queue worker. Requests that arrive while a call is in-flight are held in the
+     * queue; only the oldest waiting request fires when the interval elapses.
+     */
+    private static final long DISPATCH_INTERVAL_MS = 2_000L;
+
+    /** Maximum number of pending requests. Oldest entries are dropped when full. */
+    private static final int MAX_QUEUE_DEPTH = 5;
+
+    public interface Callback
+    {
+        /** Called with the model's response text on success. */
+        void onResponse( String text );
+        /** Called with a human-readable error message on failure. */
+        void onError( String message );
+    }
+
+    /** Internal work item queued for dispatch. */
+    private static final class Request
+    {
+        final String   system;
+        final String   user;
+        final String   imageBase64;   // null for text-only requests
+        final String   modelOverride; // null to use client's default model
+        final int      maxTokens;
+        final Callback callback;
+
+        Request( String system, String user, int maxTokens, Callback callback )
+        {
+            this( system, user, null, null, maxTokens, callback );
+        }
+
+        Request( String system, String user, String imageBase64, String modelOverride,
+                 int maxTokens, Callback callback )
+        {
+            this.system        = system;
+            this.user          = user;
+            this.imageBase64   = imageBase64;
+            this.modelOverride = modelOverride;
+            this.maxTokens     = maxTokens;
+            this.callback      = callback;
+        }
+    }
+
+    private final String endpoint;
+    private final String model;
+
+    /**
+     * Bounded queue — holds pending requests while the worker is busy.
+     * ArrayBlockingQueue is FIFO; offer() returns false immediately if full.
+     */
+    private final BlockingQueue<Request> requestQueue =
+        new ArrayBlockingQueue<>( MAX_QUEUE_DEPTH );
+
+    /** Single worker thread that drains the queue at DISPATCH_INTERVAL_MS cadence. */
+    private final Thread queueWorker;
+
+    /** Executor used only for the worker thread itself. */
+    private final ExecutorService workerExecutor = Executors.newSingleThreadExecutor( r ->
+    {
+        Thread t = new Thread( r, "ollama-queue-worker" );
+        t.setDaemon( true );
+        return t;
+    });
+
+    /** Total transformer layer count for the loaded model; -1 = not yet fetched. */
+    private volatile int    cachedLayerCount   = -1;
+
+    /** Cached GPU available fraction and the time it was measured. */
+    private volatile double cachedGpuFraction  = -1.0;
+    private volatile long   gpuCacheTime       = 0;
+    private static final long GPU_CACHE_TTL_MS = 5_000;
+
+    public OllamaClient()
+    {
+        this( DEFAULT_ENDPOINT, DEFAULT_MODEL );
+    }
+
+    public OllamaClient( final String endpoint, final String model )
+    {
+        this.endpoint = endpoint;
+        this.model    = model;
+        // Start the queue worker immediately.
+        queueWorker = new Thread( this::runQueueWorker, "ollama-queue-worker" );
+        queueWorker.setDaemon( true );
+        queueWorker.start();
+    }
+
+    /**
+     * Queue worker: drains requests one at a time, enforcing a minimum
+     * DISPATCH_INTERVAL_MS gap between the *start* of each call.
+     * Runs on its own daemon thread for the lifetime of the client.
+     */
+    private void runQueueWorker()
+    {
+        long lastDispatchMs = 0L;
+        while( !Thread.currentThread().isInterrupted() )
+        {
+            try
+            {
+                // Block until a request is available
+                final Request req = requestQueue.take();
+
+                // Enforce minimum interval from the last dispatch start
+                final long wait = DISPATCH_INTERVAL_MS
+                    - ( System.currentTimeMillis() - lastDispatchMs );
+                if( wait > 0 )
+                    Thread.sleep( wait );
+
+                lastDispatchMs = System.currentTimeMillis();
+                log.log( Level.FINE, "[OllamaQueue] Dispatching request, queue depth={0}",
+                         requestQueue.size() );
+
+                // Execute synchronously on this worker thread
+                try
+                {
+                    final String response = sendRequest(
+                        req.system, req.user, req.imageBase64, req.modelOverride, req.maxTokens );
+                    req.callback.onResponse( response );
+                }
+                catch( IOException e )
+                {
+                    final String msg = buildFriendlyError( e );
+                    log.log( Level.WARNING, "Ollama request failed: {0}", msg );
+                    req.callback.onError( msg );
+                }
+            }
+            catch( InterruptedException e )
+            {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    /**
+     * Send a prompt asynchronously.
+     * The request is queued and dispatched at most once every DISPATCH_INTERVAL_MS.
+     * If the queue is full (MAX_QUEUE_DEPTH), the oldest pending request is dropped
+     * and this one takes its place so user-initiated requests stay fresh.
+     *
+     * @param systemPrompt Personality / context block.
+     * @param userMessage  What the user typed.
+     * @param callback     Receives the response (or error) when done.
+     */
+    public void generate( final String systemPrompt,
+                          final String userMessage,
+                          final Callback callback )
+    {
+        generate( systemPrompt, userMessage, MAX_TOKENS, callback );
+    }
+
+    /**
+     * Like {@link #generate} but with a caller-supplied token limit.
+     * Use this for tasks (e.g. summarization) that need more output than the
+     * default 80-token cap used for normal mascot responses.
+     */
+    public void generate( final String systemPrompt,
+                          final String userMessage,
+                          final int maxTokens,
+                          final Callback callback )
+    {
+        final Request req = new Request( systemPrompt, userMessage, maxTokens, callback );
+        if( !requestQueue.offer( req ) )
+        {
+            // Queue full — drop the oldest pending request and enqueue this one.
+            // This keeps user-initiated requests (most recently fired) moving through
+            // rather than stale autonomous reactions clogging the pipeline.
+            final Request dropped = requestQueue.poll();
+            if( dropped != null )
+                log.warning( "[OllamaQueue] Queue full — dropped oldest pending request." );
+            requestQueue.offer( req );
+        }
+    }
+
+    /**
+     * Like {@link #generate} but attaches a base64-encoded image and uses the
+     * specified vision model (e.g. "llava"). Bypasses the queue so the capture
+     * result isn't held behind pending text requests.
+     */
+    public void generateWithImage( final String systemPrompt,
+                                   final String userMessage,
+                                   final String imageBase64,
+                                   final String visionModel,
+                                   final Callback callback )
+    {
+        final Request req = new Request( systemPrompt, userMessage,
+                                         imageBase64, visionModel,
+                                         MAX_TOKENS * 3, callback );
+        // Vision requests go straight to the front — they're always user-initiated
+        // and carry a large payload that shouldn't wait behind queued text calls.
+        final Thread t = new Thread( () ->
+        {
+            try
+            {
+                final String response = sendRequest(
+                    req.system, req.user, req.imageBase64, req.modelOverride, req.maxTokens );
+                req.callback.onResponse( response );
+            }
+            catch( final IOException e )
+            {
+                req.callback.onError( buildFriendlyError( e ) );
+            }
+        }, "ollama-vision-worker" );
+        t.setDaemon( true );
+        t.start();
+    }
+
+    // ── Private ──────────────────────────────────────────────────────────────
+
+    private String sendRequest( final String system, final String user,
+                                 final String imageBase64, final String modelOverride,
+                                 final int maxTokens ) throws IOException
+    {
+        final int    numGpu        = computeNumGpuLayers();
+        final String effectiveModel = modelOverride != null ? modelOverride : model;
+        final int    keepAlive     = imageBase64 != null ? VISION_KEEP_ALIVE_SEC : TEXT_KEEP_ALIVE_SEC;
+        final String body          = buildJson( system, user, numGpu, maxTokens,
+                                               imageBase64, effectiveModel, keepAlive );
+        final byte[] bodyBytes = body.getBytes( StandardCharsets.UTF_8 );
+
+        final URL url = new URL( endpoint );
+        final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod( "POST" );
+        conn.setRequestProperty( "Content-Type", "application/json; charset=utf-8" );
+        conn.setConnectTimeout( TIMEOUT_MS );
+        conn.setReadTimeout( TIMEOUT_MS );
+        conn.setDoOutput( true );
+
+        try ( OutputStream os = conn.getOutputStream() )
+        {
+            os.write( bodyBytes );
+        }
+
+        final int status = conn.getResponseCode();
+        if( status != 200 )
+            throw new IOException( "HTTP " + status + " from Ollama (model=" + effectiveModel + ")" );
+
+        final StringBuilder sb = new StringBuilder();
+        try ( BufferedReader br = new BufferedReader(
+                new InputStreamReader( conn.getInputStream(), StandardCharsets.UTF_8 ) ) )
+        {
+            String line;
+            while( ( line = br.readLine() ) != null )
+                sb.append( line );
+        }
+
+        return parseResponse( sb.toString() );
+    }
+
+    /**
+     * Build the JSON body manually — avoids pulling in a JSON library.
+     * Uses non-streaming mode (stream:false) so we get one complete response.
+     * numGpu: how many transformer layers to run on GPU (rest run on CPU).
+     * imageBase64: optional base64-encoded PNG; when non-null adds "images":[...] for vision models.
+     * modelName: the model to use (may differ from this.model for vision requests).
+     */
+    private String buildJson( final String system, final String user,
+                               final int numGpu, final int maxTokens,
+                               final String imageBase64, final String modelName,
+                               final int keepAliveSeconds )
+    {
+        final StringBuilder sb = new StringBuilder();
+        sb.append( "{\"model\":" ).append( jsonStr( modelName ) ).append( ',' );
+        if( imageBase64 != null )
+            sb.append( "\"images\":[" ).append( jsonStr( imageBase64 ) ).append( "]," );
+        sb.append( "\"system\":" ).append( jsonStr( system ) ).append( ',' );
+        sb.append( "\"prompt\":" ).append( jsonStr( user ) ).append( ',' );
+        sb.append( "\"stream\":false," );
+        sb.append( "\"keep_alive\":" ).append( keepAliveSeconds ).append( ',' );
+        sb.append( "\"options\":{\"num_predict\":" ).append( maxTokens )
+          .append( ",\"num_gpu\":" ).append( numGpu )
+          .append( ",\"repeat_penalty\":1.15}}" );
+        return sb.toString();
+    }
+
+    /**
+     * Returns how many transformer layers to offload to GPU for this request.
+     * Formula: min(0.20, available_fraction * 0.20) * total_layers.
+     * Falls back to 0 (full CPU) if nvidia-smi is unavailable.
+     */
+    private int computeNumGpuLayers()
+    {
+        if( cachedLayerCount < 0 )
+        {
+            cachedLayerCount = fetchModelLayers();
+            log.log( Level.INFO, "Ollama model layer count: {0}", cachedLayerCount );
+        }
+        final double availFraction = queryGpuAvailableFraction();
+        // min(0.20, availFraction * 0.20) = availFraction * 0.20 (since availFraction <= 1.0)
+        final double allowedFraction = availFraction * 0.20;
+        final int layers = Math.max( 1, (int)( cachedLayerCount * allowedFraction ) );
+        log.log( Level.FINE, "GPU avail={0,number,#.##} allowed={1,number,#.##} num_gpu={2}",
+                 new Object[]{ availFraction, allowedFraction, layers } );
+        return layers;
+    }
+
+    /**
+     * Queries nvidia-smi for current GPU utilization and free memory.
+     * Result is cached for GPU_CACHE_TTL_MS to avoid a subprocess on every request.
+     * Returns the available fraction as min(compute_headroom, memory_headroom).
+     * Returns 1.0 on any failure (no GPU / nvidia-smi not found).
+     */
+    private double queryGpuAvailableFraction()
+    {
+        final long now = System.currentTimeMillis();
+        if( cachedGpuFraction >= 0 && ( now - gpuCacheTime ) < GPU_CACHE_TTL_MS )
+            return cachedGpuFraction;
+        try
+        {
+            final ProcessBuilder pb = new ProcessBuilder(
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,memory.free,memory.total",
+                "--format=csv,noheader,nounits"
+            );
+            pb.redirectErrorStream( true );
+            final Process p = pb.start();
+            final BufferedReader br = new BufferedReader( new InputStreamReader( p.getInputStream() ) );
+            final String line = br.readLine();
+            br.close();
+            if( !p.waitFor( 5, TimeUnit.SECONDS ) )
+                p.destroyForcibly();
+            if( line == null )
+                return 1.0;
+            final String[] parts = line.split( "," );
+            if( parts.length < 3 )
+                return 1.0;
+            final double utilPct  = Double.parseDouble( parts[0].trim() );
+            final double memFree  = Double.parseDouble( parts[1].trim() );
+            final double memTotal = Double.parseDouble( parts[2].trim() );
+            final double computeAvail = ( 100.0 - utilPct ) / 100.0;
+            final double memAvail     = memTotal > 0 ? memFree / memTotal : 1.0;
+            final double result       = Math.min( computeAvail, memAvail );
+            cachedGpuFraction = result;
+            gpuCacheTime      = System.currentTimeMillis();
+            return result;
+        }
+        catch( final Exception e )
+        {
+            return 1.0; // no NVIDIA GPU or nvidia-smi not on PATH — allow full use
+        }
+    }
+
+    /**
+     * Fetches transformer layer count from Ollama's /api/show endpoint.
+     * Looks for "block_count" in the model info JSON.
+     * Returns 32 as a safe default on failure.
+     */
+    private int fetchModelLayers()
+    {
+        try
+        {
+            final String base = endpoint.replaceFirst( "/api/generate.*", "" );
+            final URL url = new URL( base + "/api/show" );
+            final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod( "POST" );
+            conn.setRequestProperty( "Content-Type", "application/json; charset=utf-8" );
+            conn.setConnectTimeout( 5_000 );
+            conn.setReadTimeout( 5_000 );
+            conn.setDoOutput( true );
+            final byte[] body = ( "{\"name\":" + jsonStr( model ) + "}" )
+                                .getBytes( StandardCharsets.UTF_8 );
+            try( OutputStream os = conn.getOutputStream() )
+            {
+                os.write( body );
+            }
+            if( conn.getResponseCode() != 200 )
+                return 32;
+            final StringBuilder sb = new StringBuilder();
+            try( BufferedReader br = new BufferedReader(
+                    new InputStreamReader( conn.getInputStream(), StandardCharsets.UTF_8 ) ) )
+            {
+                String ln;
+                while( ( ln = br.readLine() ) != null )
+                    sb.append( ln );
+            }
+            // Find "block_count": N in the modelinfo section
+            final String json  = sb.toString();
+            int idx = json.indexOf( "block_count" );
+            if( idx < 0 )
+                return 32;
+            idx = json.indexOf( ':', idx + 11 );
+            if( idx < 0 )
+                return 32;
+            idx++;
+            while( idx < json.length() && Character.isWhitespace( json.charAt( idx ) ) )
+                idx++;
+            final StringBuilder numStr = new StringBuilder();
+            while( idx < json.length() && Character.isDigit( json.charAt( idx ) ) )
+                numStr.append( json.charAt( idx++ ) );
+            if( numStr.length() == 0 )
+                return 32;
+            final int count = Integer.parseInt( numStr.toString() );
+            return count > 0 ? count : 32;
+        }
+        catch( final Exception e )
+        {
+            return 32;
+        }
+    }
+
+    /**
+     * Parse "response" field from the Ollama JSON reply without a library.
+     * Ollama non-streaming format: {"model":"...","response":"...","done":true,...}
+     */
+    private String parseResponse( final String json )
+    {
+        final String key = "\"response\":";
+        final int start = json.indexOf( key );
+        if( start < 0 )
+            return "(no response field in Ollama reply)";
+
+        int i = start + key.length();
+        // skip whitespace
+        while( i < json.length() && json.charAt(i) == ' ' ) i++;
+        if( i >= json.length() || json.charAt(i) != '"' )
+            return "(unexpected Ollama response format)";
+
+        // read quoted string with basic escape handling
+        final StringBuilder sb = new StringBuilder();
+        i++; // skip opening "
+        while( i < json.length() )
+        {
+            final char c = json.charAt(i);
+            if( c == '\\' && i + 1 < json.length() )
+            {
+                final char next = json.charAt( i + 1 );
+                switch( next )
+                {
+                    case '"':  sb.append('"');  break;
+                    case '\\': sb.append('\\'); break;
+                    case 'n':  sb.append('\n'); break;
+                    case 't':  sb.append('\t'); break;
+                    default:   sb.append(next); break;
+                }
+                i += 2;
+            }
+            else if( c == '"' )
+            {
+                break; // end of string
+            }
+            else
+            {
+                sb.append(c);
+                i++;
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    /** Escape a Java string for inclusion in a JSON string literal. */
+    private static String jsonStr( final String s )
+    {
+        final StringBuilder sb = new StringBuilder( s.length() + 10 );
+        sb.append('"');
+        for( int i = 0; i < s.length(); i++ )
+        {
+            final char c = s.charAt(i);
+            switch(c)
+            {
+                case '"':  sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n");  break;
+                case '\r': sb.append("\\r");  break;
+                case '\t': sb.append("\\t");  break;
+                default:   sb.append(c);      break;
+            }
+        }
+        sb.append('"');
+        return sb.toString();
+    }
+
+    private static String buildFriendlyError( final IOException e )
+    {
+        final String msg = e.getMessage();
+        if( msg != null && msg.contains( "Connection refused" ) )
+            return "Ollama isn't running. Start it with: ollama serve";
+        if( msg != null && msg.contains( "HTTP 404" ) )
+        {
+            // Extract the model name from "HTTP 404 from Ollama (model=NAME)"
+            final int m = msg.indexOf( "model=" );
+            final String name = m >= 0 ? msg.substring( m + 6 ).replace( ")", "" ).trim()
+                                       : DEFAULT_MODEL;
+            return "Model not found: " + name + ". Run: ollama pull " + name;
+        }
+        return "Couldn't reach Ollama: " + ( msg != null ? msg : e.getClass().getSimpleName() );
+    }
+}
