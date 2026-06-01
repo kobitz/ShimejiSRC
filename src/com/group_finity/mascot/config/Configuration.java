@@ -152,7 +152,8 @@ public class Configuration
                 node.getName( ).equals( schema.getString( "SplashImage" ) ) ||
                 node.getName( ).equals( schema.getString( "Personality" ) ) ||
                 node.getName( ).equals( schema.getString( "VoiceTrigger" ) ) ||
-                node.getName( ).equals( schema.getString( "SpeechRule" ) ) )
+                node.getName( ).equals( schema.getString( "SpeechRule" ) ) ||
+                node.getName( ).equals( schema.getString( "ThirdPersonRewrite" ) ) )
             {
                 information.put( node.getName( ), node.getText( ) );
             }

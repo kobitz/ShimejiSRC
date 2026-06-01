@@ -109,6 +109,11 @@ public class Mascot
     private MascotImage lastScaledImage = null;
     private double lastDisplayScale = 0.0;
     private java.util.LinkedHashMap<MascotImage, com.group_finity.mascot.image.ScalableNativeImage> scalables = null;
+    // Source image dimensions (base image at globalScaling).
+    // Used by renderCX/renderCY to compute anchor pixel offsets from actual displayed image size
+    // instead of raw currentScale, avoiding a mismatch when the cache is stale.
+    private int lastBaseImageHeight = -1;
+    private int lastBaseImageWidth  = -1;
 
     // Raw (unscaled) anchor from the current pose's ImageAnchor attribute.
     // Set by Pose.next() each frame. Used by apply() and getBounds() to compute
@@ -1157,7 +1162,7 @@ public class Mascot
                 public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String display = stripActionTag( sanitizeResponse( raw ) );
+                    final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
                     if( !isEphemeralQuery( userText ) )
                         com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                             .recordUserExchange( userText, display );
@@ -1274,7 +1279,7 @@ public class Mascot
                         public void onResponse( final String raw )
                         {
                             fireActionFromResponse( raw );
-                            final String display = stripActionTag( sanitizeResponse( raw ) );
+                            final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
                             if( !isEphemeralQuery( userText ) )
                                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                                     .recordUserExchange( userText, display );
@@ -1328,6 +1333,87 @@ public class Mascot
         return text.replaceAll( "\\[ACTION:[^\\]]*\\]",   "" )
                    .replaceAll( "\\[TIMER:[^\\]]*\\]",    "" )
                    .replaceAll( "\\[REMEMBER:[^\\]]*\\]", "" ).trim();
+    }
+
+    /**
+     * Post-generation rewrite: replaces first-person pronouns with the mascot's name
+     * when the speech rule contains a third-person self-reference constraint.
+     * Gated by: assistantMode on, non-empty speech rule, mascot name in the rule.
+     */
+    private String applyPersonaRewrites( final String text )
+    {
+        if( text == null ) return text;
+        final String name = getImageSet( );
+        // Check XML flag first; fall through to per-name hardcodes as backup.
+        final com.group_finity.mascot.config.Configuration cfg =
+            Main.getInstance( ).getConfiguration( name );
+        if( cfg != null )
+        {
+            final String flag = cfg.getInformation( "ThirdPersonRewrite" );
+            if( "true".equalsIgnoreCase( flag ) )
+                return rewriteFirstPerson( text, name );
+        }
+        // Hardcoded fallback so this works even if config lookup fails.
+        if( "Paimon".equals( name ) )
+            return rewriteFirstPerson( text, name );
+        return text;
+    }
+
+    private static String rewriteFirstPerson( String s, final String name )
+    {
+        // Contractions — must come before bare-I replacements
+        s = s.replaceAll( "\\bI'm not\\b", name + " is not" );
+        s = s.replaceAll( "\\bI'm\\b",     name + " is" );
+        s = s.replaceAll( "\\bI've\\b",    name + " has" );
+        s = s.replaceAll( "\\bI'll\\b",    name + " will" );
+        s = s.replaceAll( "\\bI'd\\b",     name + " would" );
+        // be / have
+        s = s.replaceAll( "\\bI am\\b",   name + " is" );
+        s = s.replaceAll( "\\bI was\\b",  name + " was" );
+        s = s.replaceAll( "\\bI have\\b", name + " has" );
+        s = s.replaceAll( "\\bI had\\b",  name + " had" );
+        // do
+        s = s.replaceAll( "\\bI do\\b",  name + " does" );
+        s = s.replaceAll( "\\bI did\\b", name + " did" );
+        // modals (person-invariant)
+        s = s.replaceAll( "\\bI can\\b",    name + " can" );
+        s = s.replaceAll( "\\bI will\\b",   name + " will" );
+        s = s.replaceAll( "\\bI would\\b",  name + " would" );
+        s = s.replaceAll( "\\bI could\\b",  name + " could" );
+        s = s.replaceAll( "\\bI should\\b", name + " should" );
+        s = s.replaceAll( "\\bI might\\b",  name + " might" );
+        s = s.replaceAll( "\\bI must\\b",   name + " must" );
+        // common present-tense verbs
+        s = s.replaceAll( "\\bI think\\b",      name + " thinks" );
+        s = s.replaceAll( "\\bI know\\b",       name + " knows" );
+        s = s.replaceAll( "\\bI want\\b",       name + " wants" );
+        s = s.replaceAll( "\\bI need\\b",       name + " needs" );
+        s = s.replaceAll( "\\bI like\\b",       name + " likes" );
+        s = s.replaceAll( "\\bI love\\b",       name + " loves" );
+        s = s.replaceAll( "\\bI hate\\b",       name + " hates" );
+        s = s.replaceAll( "\\bI feel\\b",       name + " feels" );
+        s = s.replaceAll( "\\bI hope\\b",       name + " hopes" );
+        s = s.replaceAll( "\\bI see\\b",        name + " sees" );
+        s = s.replaceAll( "\\bI say\\b",        name + " says" );
+        s = s.replaceAll( "\\bI mean\\b",       name + " means" );
+        s = s.replaceAll( "\\bI get\\b",        name + " gets" );
+        s = s.replaceAll( "\\bI wonder\\b",     name + " wonders" );
+        s = s.replaceAll( "\\bI understand\\b", name + " understands" );
+        s = s.replaceAll( "\\bI remember\\b",   name + " remembers" );
+        s = s.replaceAll( "\\bI believe\\b",    name + " believes" );
+        s = s.replaceAll( "\\bI find\\b",       name + " finds" );
+        s = s.replaceAll( "\\bI guess\\b",      name + " guesses" );
+        s = s.replaceAll( "\\bI suggest\\b",    name + " suggests" );
+        s = s.replaceAll( "\\bI prefer\\b",     name + " prefers" );
+        s = s.replaceAll( "\\bI wish\\b",       name + " wishes" );
+        // catch-all I → name (may leave unconjugated verbs; acceptable)
+        s = s.replaceAll( "\\bI\\b", name );
+        // object / possessive pronouns
+        s = s.replaceAll( "\\b[Mm]yself\\b", name );
+        s = s.replaceAll( "\\b[Mm]ine\\b",   name + "'s" );
+        s = s.replaceAll( "\\b[Mm]y\\b",     name + "'s" );
+        s = s.replaceAll( "\\b[Mm]e\\b",     name );
+        return s;
     }
 
     // Matches [REMEMBER:kw1,kw2|content text] — pipe separates keywords from content
@@ -1709,7 +1795,7 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = stripActionTag( raw );
+                    final String text = applyPersonaRewrites( stripActionTag( raw ) );
                     // Append mascot reply to thread for next chained reply
                     if( assistantBubble != null && message != null )
                         assistantBubble.appendReplyToThread( message, text );
@@ -1826,7 +1912,7 @@ public class Mascot
             @Override public void onResponse( final String raw )
             {
                 fireActionFromResponse( raw );
-                final String text = stripActionTag( raw );
+                final String text = applyPersonaRewrites( stripActionTag( raw ) );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                     .recordPeerExchange( speakerName, speakerText, text );
                 maybeSummarizeMemory();
@@ -2026,7 +2112,7 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = stripActionTag( raw );
+                    final String text = applyPersonaRewrites( stripActionTag( raw ) );
                     if( !isEphemeralQuery( memoryContext ) )
                         com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                             .recordUserExchange( "[Called by name] " + memoryContext, text );
@@ -2175,7 +2261,7 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = stripActionTag( raw );
+                    final String text = applyPersonaRewrites( stripActionTag( raw ) );
                     final String sourcePrefix = source != null ? " from " + source : "";
                     final String userNote = userSpeech != null
                         ? " [User: " + userSpeech.substring( 0, Math.min( 120, userSpeech.length() ) ) + "]"
@@ -2250,7 +2336,7 @@ public class Mascot
             @Override public void onResponse( final String raw )
             {
                 fireActionFromResponse( raw );
-                final String text = stripActionTag( raw );
+                final String text = applyPersonaRewrites( stripActionTag( raw ) );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                     .addFact( "[Observed] Window: " + windowTitle + " | Reaction: " + text );
                 com.group_finity.mascot.assistant.MascotSpeechRegistry
@@ -2323,7 +2409,7 @@ public class Mascot
                         @Override public void onResponse( final String raw )
                         {
                             fireActionFromResponse( raw );
-                            final String text = stripActionTag( raw );
+                            final String text = applyPersonaRewrites( stripActionTag( raw ) );
                             com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                                 .addFact( "[Observed] Screen glance | Reaction: " + text );
                             com.group_finity.mascot.assistant.MascotSpeechRegistry
@@ -2569,7 +2655,8 @@ public class Mascot
         }
 
         // ── Assistant overlay repositioning + spontaneous comments ──────────────
-        if( assistantMode )
+        // Reposition runs unconditionally so Say-action bubbles follow the mascot
+        // even when assistant mode is off.
         {
             final java.awt.Rectangle ab = getBounds( );
             if( ab != null )
@@ -2579,6 +2666,9 @@ public class Mascot
                 if( activeDialog != null )
                     activeDialog.reposition( ab );
             }
+        }
+        if( assistantMode )
+        {
 
             // Spontaneous window comment — counter advances every tick regardless of bubble
             // visibility. AssistantBubble stacks messages so a visible bubble is not a blocker.
@@ -2750,6 +2840,8 @@ public class Mascot
                     if( scaled != null )
                     {
                         lastScaledImage = scaled;
+                        lastBaseImageHeight = scalable.getSource( ).getSize( ).height;
+                        lastBaseImageWidth  = scalable.getSource( ).getSize( ).width;
                         displayImage = scaled;
                         int w  = displayImage.getSize().width;
                         int h  = displayImage.getSize().height;
@@ -2768,6 +2860,8 @@ public class Mascot
                 {
                     scalables = null;
                     lastScaledImage = null;
+                    lastBaseImageHeight = -1;
+                    lastBaseImageWidth  = -1;
                     lastDisplayScale = 0.0;
                 }
 
@@ -3171,7 +3265,7 @@ public class Mascot
                         @Override
                         public void onResponse( final String raw )
                         {
-                            final String display = stripActionTag( sanitizeResponse( raw ) );
+                            final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
                             SwingUtilities.invokeLater( () ->
                             {
                                 if( assistantBubble != null )
@@ -3374,17 +3468,29 @@ unregisterVoiceCommand();
         this.renderAnchorY = y;
     }
 
-    /** Compute the screen-pixel cx for the current image and facing direction. */
+    /** Compute the screen-pixel cx for the current image and facing direction.
+     *  When a scaled image is active, derives cx from the actual displayed image width to
+     *  avoid a mismatch with the stale-cache scale. */
     private int renderCX( final int imageWidth )
     {
-        double s = getGlobalScaling( ) * currentScale;
-        int base = (int) Math.round( renderAnchorX * s );
+        int base;
+        if( lastScaledImage != null && lastBaseImageWidth > 0 )
+            base = (int) Math.round( (double) renderAnchorX * getGlobalScaling( ) * imageWidth / lastBaseImageWidth );
+        else
+            base = (int) Math.round( renderAnchorX * getGlobalScaling( ) * currentScale );
         return isLookRight( ) ? ( imageWidth - base ) : base;
     }
 
-    /** Compute the screen-pixel cy for the current render anchor. */
+    /** Compute the screen-pixel cy for the current render anchor.
+     *  When a scaled image is active, derives cy from the actual displayed image height to
+     *  avoid the mismatch between raw currentScale and ScalableNativeImage's rounded scale. */
     private int renderCY( )
     {
+        if( lastScaledImage != null && lastBaseImageHeight > 0 )
+        {
+            int h = lastScaledImage.getSize( ).height;
+            return (int) Math.round( (double) renderAnchorY * getGlobalScaling( ) * h / lastBaseImageHeight );
+        }
         return (int) Math.round( renderAnchorY * getGlobalScaling( ) * currentScale );
     }
 
