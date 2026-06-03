@@ -1,3 +1,6 @@
 target/
 SensorReader/bin/
 SensorReader/obj/
+.claude/
+*.log
+*.class
