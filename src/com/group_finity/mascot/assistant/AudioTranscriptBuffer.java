@@ -173,7 +173,7 @@ public class AudioTranscriptBuffer
     }
 
     /** Last system audio transcript — used by VoiceCommandListener to strip video bleed from mic. */
-    static volatile String lastSysTranscript = null;
+    public static volatile String lastSysTranscript = null;
 
     /** Real-time system audio RMS. Read by VoiceCommandListener and exposed via MascotEnvironment.audioLevel. */
     public static volatile int currentSysRms = 0;

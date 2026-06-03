@@ -1152,9 +1152,11 @@ public class Mascot
         {
             if( isScreenQuery( userText ) )
             {
+                com.group_finity.mascot.assistant.ChatLog.append( "User(voice)", userText );
                 handleScreenQuery( userText, system, ollamaClient );
                 return;
             }
+            com.group_finity.mascot.assistant.ChatLog.append( "User(voice)", userText );
             final String safeUserText = buildUserMessage( userText ) + weatherContext( userText );
             ollamaClient.generate( system, safeUserText, new OllamaClient.Callback( )
             {
@@ -1163,6 +1165,7 @@ public class Mascot
                 {
                     fireActionFromResponse( raw );
                     final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
+                    com.group_finity.mascot.assistant.ChatLog.append( mascotName, display );
                     if( !isEphemeralQuery( userText ) )
                         com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                             .recordUserExchange( userText, display );
@@ -1267,9 +1270,11 @@ public class Mascot
                 final String system = buildSystemPrompt( cfg, mascotName, userText );
                 if( isScreenQuery( userText ) )
                 {
+                    com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
                     handleScreenQuery( userText, system, client );
                     return;
                 }
+                com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
                 final String safeUserText = buildUserMessage( userText );
                 new Thread( () ->
                 {
@@ -1280,6 +1285,7 @@ public class Mascot
                         {
                             fireActionFromResponse( raw );
                             final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
+                            com.group_finity.mascot.assistant.ChatLog.append( mascotName, display );
                             if( !isEphemeralQuery( userText ) )
                                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                                     .recordUserExchange( userText, display );
@@ -1330,9 +1336,12 @@ public class Mascot
     private static String stripActionTag( final String text )
     {
         if( text == null ) return text;
-        return text.replaceAll( "\\[ACTION:[^\\]]*\\]",   "" )
-                   .replaceAll( "\\[TIMER:[^\\]]*\\]",    "" )
-                   .replaceAll( "\\[REMEMBER:[^\\]]*\\]", "" ).trim();
+        return text.replaceAll( "\\[ACTION:[^\\]]*\\]",      "" )
+                   .replaceAll( "\\[TIMER:[^\\]]*\\]",       "" )
+                   .replaceAll( "\\[REMEMBER:[^\\]]*\\]",    "" )
+                   .replaceAll( "\\[OBSERVATION:[^\\]]*\\]", "" )
+                   .replaceAll( "\\[[A-Z_]+:[^\\]]*\\]",     "" )
+                   .replaceAll( "\\[[a-zA-Z_]+\\]",          "" ).trim();
     }
 
     /**
@@ -1599,6 +1608,31 @@ public class Mascot
         final String[] timerParts = extractTimerTag( raw );
         if( timerParts != null )
             setMascotTimer( timerParts[0], timerParts[1] );
+
+        // Bare [word] tags — attempt behavior lookup as shorthand for [ACTION:Word].
+        // Tries the word as-is, then with the first letter capitalised. Silent on miss.
+        if( raw != null )
+        {
+            final com.group_finity.mascot.config.Configuration bareCfg =
+                Main.getInstance().getConfiguration( getImageSet() );
+            if( bareCfg != null )
+            {
+                final java.util.regex.Matcher bm =
+                    java.util.regex.Pattern.compile( "\\[([a-zA-Z_]+)\\]" ).matcher( raw );
+                while( bm.find() )
+                {
+                    final String word = bm.group( 1 );
+                    final String cap  = Character.toUpperCase( word.charAt( 0 ) )
+                                      + word.substring( 1 ).toLowerCase( java.util.Locale.ROOT );
+                    javax.swing.SwingUtilities.invokeLater( () ->
+                    {
+                        if( tryRunBehavior( word, bareCfg ) != null
+                                && tryRunBehavior( cap, bareCfg ) != null )
+                            log.warning( "[Action] No behavior found for bare tag: [" + word + "]" );
+                    } );
+                }
+            }
+        }
 
         // Parse any [REMEMBER:kw1,kw2|content] tags and persist them permanently.
         if( raw != null )
@@ -1890,6 +1924,7 @@ public class Mascot
             + "\n- Speak your response directly — do not wrap it in quotation marks."
             + "\n- To set a timer: append [TIMER:VALUE:reminder text]. VALUE = whole minutes ([TIMER:15:check laundry]) or the exact clock time the user said ([TIMER:5:30pm:alarm] for 'at 5:30pm'). For clock times: copy it exactly, do NOT convert to minutes."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
+            + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
             + "\n---", peerSpeechRule );
 
         final String prompt = speakerName + " just said: \""
@@ -1913,6 +1948,7 @@ public class Mascot
             {
                 fireActionFromResponse( raw );
                 final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + speakerName + ")", text );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                     .recordPeerExchange( speakerName, speakerText, text );
                 maybeSummarizeMemory();
@@ -2102,10 +2138,13 @@ public class Mascot
 
             if( hasUser && isScreenQuery( cleanUser ) )
             {
+                com.group_finity.mascot.assistant.ChatLog.append( "User(voice)", cleanUser );
                 handleScreenQuery( cleanUser, system, client );
                 return;
             }
 
+            com.group_finity.mascot.assistant.ChatLog.append( "User(voice)",
+                hasUser ? cleanUser : "[name trigger]" );
             final String wxCtx = weatherContext( cleanUser != null ? cleanUser : "" );
             client.generate( system, userPrompt + wxCtx, new OllamaClient.Callback()
             {
@@ -2113,6 +2152,7 @@ public class Mascot
                 {
                     fireActionFromResponse( raw );
                     final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                    com.group_finity.mascot.assistant.ChatLog.append( mascotName, text );
                     if( !isEphemeralQuery( memoryContext ) )
                         com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                             .recordUserExchange( "[Called by name] " + memoryContext, text );
@@ -2176,6 +2216,7 @@ public class Mascot
             + "\n- This is an unprompted reaction to overheard audio."
             + "\n- Be brief, natural, in-character. No greetings, no filler."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
+            + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
             + "\n---", audioSpeechRule );
 
         if( ollamaClient == null ) ollamaClient = createOllamaClient();
@@ -2262,6 +2303,10 @@ public class Mascot
                 {
                     fireActionFromResponse( raw );
                     final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                    final String audioSource = source != null ? source : "audio";
+                    com.group_finity.mascot.assistant.ChatLog.append( audioSource,
+                        "\"" + transcript.substring( 0, Math.min( 300, transcript.length() ) ) + "\"" );
+                    com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + audioSource + ")", text );
                     final String sourcePrefix = source != null ? " from " + source : "";
                     final String userNote = userSpeech != null
                         ? " [User: " + userSpeech.substring( 0, Math.min( 120, userSpeech.length() ) ) + "]"
@@ -2311,11 +2356,16 @@ public class Mascot
             + "\n- Reply in ONE sentence only. Never more."
             + "\n- This is an unprompted observation. Be brief and natural."
             + "\n- No greetings, no questions, no filler."
+            + "\n- Do not reuse or echo words directly from the window title."
+            + "\n- Do not use the phrase \"preoccupied with\" — find a more specific or varied observation."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
+            + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
             + "\n---", spontSpeechRule );
 
+        final String audioCtxSpont = audioSnapshotContext();
         final String prompt =
             "The user's active window is: \"" + windowTitle + "\"."
+            + ( audioCtxSpont.isEmpty() ? "" : " " + audioCtxSpont + "." )
             + " Make one short in-character observation, addressing the user directly as \"you\" — not in third person."
             + " Do not repeat the raw title string.";
 
@@ -2337,6 +2387,7 @@ public class Mascot
             {
                 fireActionFromResponse( raw );
                 final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + windowTitle + ")", text );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                     .addFact( "[Observed] Window: " + windowTitle + " | Reaction: " + text );
                 com.group_finity.mascot.assistant.MascotSpeechRegistry
@@ -2378,6 +2429,7 @@ public class Mascot
             + "\n- Reply in ONE sentence only. Never more."
             + "\n- This is an unprompted glance at the user's screen. Be brief, natural, in-character."
             + "\n- No greetings, no questions, no filler."
+            + "\n- Do not use the phrase \"preoccupied with\" — find a more specific or varied observation."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n---", visionSpeechRule );
 
@@ -2410,6 +2462,7 @@ public class Mascot
                         {
                             fireActionFromResponse( raw );
                             final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                            com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(screen glance)", text );
                             com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                                 .addFact( "[Observed] Screen glance | Reaction: " + text );
                             com.group_finity.mascot.assistant.MascotSpeechRegistry
@@ -3259,13 +3312,17 @@ public class Mascot
             try
             {
                 final String base64 = captureScreenBase64();
-                client.generateWithImage( system, userText, base64, visionModel,
+                final String audioCtxVision = audioSnapshotContext();
+                final String enrichedUserText = userText
+                    + ( audioCtxVision.isEmpty() ? "" : "\n" + audioCtxVision );
+                client.generateWithImage( system, enrichedUserText, base64, visionModel,
                     new OllamaClient.Callback()
                     {
                         @Override
                         public void onResponse( final String raw )
                         {
                             final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
+                            com.group_finity.mascot.assistant.ChatLog.append( getImageSet() + "(screen glance)", display );
                             SwingUtilities.invokeLater( () ->
                             {
                                 if( assistantBubble != null )
@@ -3294,6 +3351,17 @@ public class Mascot
                 });
             }
         }, "screen-capture-thread" ).start();
+    }
+
+    /**
+     * Returns a non-empty "[Audio context: ...]" label if a recent system audio
+     * transcript is available, otherwise returns an empty string.
+     * Non-blocking — reads the volatile field populated by fireAudioReaction.
+     */
+    private static String audioSnapshotContext()
+    {
+        final String t = com.group_finity.mascot.assistant.AudioTranscriptBuffer.lastSysTranscript;
+        return ( t != null && !t.isBlank() ) ? "[Audio context: " + t.trim() + "]" : "";
     }
 
     /** Create OllamaClient using the model selected in Settings. */

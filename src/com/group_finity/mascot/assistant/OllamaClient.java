@@ -35,14 +35,15 @@ public class OllamaClient
     /** Default model. Small, fast, good instruction following. */
     public static final String DEFAULT_MODEL = "llama3.2";
 
-    /** Connection / read timeout in milliseconds. */
-    private static final int TIMEOUT_MS = 30_000;
+    /** Connection / read timeout in milliseconds. Cold model load can take 60-90s. */
+    private static final int TIMEOUT_MS = 90_000;
 
     /** Hard cap on generated tokens - physically prevents runaway responses. */
-    private static final int MAX_TOKENS = 80;
+    private static final int MAX_TOKENS = 100;
 
-    /** Keep model loaded for 2 min after last text request; unload vision model immediately. */
-    private static final int TEXT_KEEP_ALIVE_SEC   = 0;
+    /** Keep text model warm for 2 min (covers the 45-90s spontaneous reaction interval). */
+    private static final int TEXT_KEEP_ALIVE_SEC   = 10;
+    /** Unload vision model immediately — it's called rarely and is large. */
     private static final int VISION_KEEP_ALIVE_SEC = 0;
 
     /**
@@ -315,6 +316,7 @@ public class OllamaClient
         sb.append( "\"system\":" ).append( jsonStr( system ) ).append( ',' );
         sb.append( "\"prompt\":" ).append( jsonStr( user ) ).append( ',' );
         sb.append( "\"stream\":false," );
+        sb.append( "\"think\":false," );
         sb.append( "\"keep_alive\":" ).append( keepAliveSeconds ).append( ',' );
         sb.append( "\"options\":{\"num_predict\":" ).append( maxTokens )
           .append( ",\"num_gpu\":" ).append( numGpu )

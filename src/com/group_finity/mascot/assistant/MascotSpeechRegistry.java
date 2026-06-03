@@ -37,6 +37,10 @@ public class MascotSpeechRegistry
     private static final Map<String, Long>
         pairCooldown = new ConcurrentHashMap<>();
 
+    // pairs with a reaction already scheduled — blocks duplicate queuing
+    private static final java.util.Set<String>
+        pendingPairs = ConcurrentHashMap.newKeySet();
+
     private static final java.util.Random rng = new java.util.Random();
 
     private static final ScheduledExecutorService scheduler =
@@ -122,6 +126,8 @@ public class MascotSpeechRegistry
             final Long lastMs = pairCooldown.get( pairKey );
             if( lastMs != null
                     && System.currentTimeMillis() - lastMs < PAIR_COOLDOWN_MS ) continue;
+            // Block duplicate scheduling — only one reaction per pair may be queued
+            if( !pendingPairs.add( pairKey ) ) continue;
             pairCooldown.put( pairKey, System.currentTimeMillis() );
 
             final int delayMs = 4_000 + rng.nextInt( 14_000 ); // 4-18 s
@@ -130,7 +136,10 @@ public class MascotSpeechRegistry
             final int depth   = chainDepth;
 
             scheduler.schedule(
-                () -> peer.onPeerSpeech( nm, imageSet, tx, depth + 1 ),
+                () -> {
+                    pendingPairs.remove( pairKey );
+                    peer.onPeerSpeech( nm, imageSet, tx, depth + 1 );
+                },
                 delayMs, TimeUnit.MILLISECONDS );
         }
     }
