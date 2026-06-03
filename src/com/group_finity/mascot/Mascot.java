@@ -2244,7 +2244,8 @@ public class Mascot
             // Attempt screen capture — enriches the reaction with visual context
             String capturedBase64 = null;
             try { capturedBase64 = captureScreenBase64(); }
-            catch( final Exception ignored ) {}
+            catch( final Exception e )
+            { log.fine( "[Audio] Screen capture failed, falling back to audio-only: " + e.getMessage() ); }
             final boolean hasScreen = capturedBase64 != null;
 
             final String screenRule = hasScreen
