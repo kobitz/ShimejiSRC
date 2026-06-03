@@ -1925,7 +1925,7 @@ public class Mascot
             + "\n- Your emotional tone toward " + speakerName + " is: " + peerTone + "."
             + "\n- Stay fully in character. No greetings, no filler."
             + "\n- Speak your response directly — do not wrap it in quotation marks."
-            + "\n- Do not use the phrase \"preoccupied with\" — find a more specific or varied reaction."
+            + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- To set a timer: append [TIMER:VALUE:reminder text]. VALUE = whole minutes ([TIMER:15:check laundry]) or the exact clock time the user said ([TIMER:5:30pm:alarm] for 'at 5:30pm'). For clock times: copy it exactly, do NOT convert to minutes."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
@@ -2219,7 +2219,7 @@ public class Mascot
             + "\n- Reply in ONE sentence only. Never more."
             + "\n- This is an unprompted reaction to overheard audio."
             + "\n- Be brief, natural, in-character. No greetings, no filler."
-            + "\n- Do not use the phrase \"preoccupied with\" — find a more specific or varied reaction."
+            + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
             + "\n---", audioSpeechRule );
@@ -2362,7 +2362,7 @@ public class Mascot
             + "\n- This is an unprompted observation. Be brief and natural."
             + "\n- No greetings, no questions, no filler."
             + "\n- Do not reuse or echo words directly from the window title."
-            + "\n- Do not use the phrase \"preoccupied with\" — find a more specific or varied observation."
+            + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
             + "\n---", spontSpeechRule );
@@ -2434,7 +2434,7 @@ public class Mascot
             + "\n- Reply in ONE sentence only. Never more."
             + "\n- This is an unprompted glance at the user's screen. Be brief, natural, in-character."
             + "\n- No greetings, no questions, no filler."
-            + "\n- Do not use the phrase \"preoccupied with\" — find a more specific or varied observation."
+            + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n---", visionSpeechRule );
 
