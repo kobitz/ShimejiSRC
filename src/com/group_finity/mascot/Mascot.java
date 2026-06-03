@@ -2211,22 +2211,10 @@ public class Mascot
         final String audioPeerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
             .buildContext( getImageSet() );
 
-        final String system = withSpeechReminder( personality
-            + ( audioPeerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + audioPeerCtx )
-            + "\n\n---"
-            + "\nRULES (override everything else):"
-            + ( audioSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + audioSpeechRule )
-            + "\n- Reply in ONE sentence only. Never more."
-            + "\n- This is an unprompted reaction to overheard audio. You heard this — you cannot see the screen."
-            + "\n- React only to what was said. Do not describe or reference what the user is doing or looking at."
-            + "\n- Be brief, natural, in-character. No greetings, no filler."
-            + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
-            + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
-            + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
-            + "\n---", audioSpeechRule );
-
         if( ollamaClient == null ) ollamaClient = createOllamaClient();
         final OllamaClient client = ollamaClient;
+        final String vModel = Main.getInstance().getProperties()
+            .getProperty( "VisionModel", "moondream" );
 
         // Snapshot window title now — focus may shift during Whisper's run
         final String windowTitleSnapshot = lastActiveWindowTitle;
@@ -2252,6 +2240,31 @@ public class Mascot
                 return;
             }
             lastAudioTranscriptText = transcript;
+
+            // Attempt screen capture — enriches the reaction with visual context
+            String capturedBase64 = null;
+            try { capturedBase64 = captureScreenBase64(); }
+            catch( final Exception ignored ) {}
+            final boolean hasScreen = capturedBase64 != null;
+
+            final String screenRule = hasScreen
+                ? "\n- You overheard this audio AND have a snapshot of the user's screen."
+                  + "\n- React to the combination — let what you heard and what you see inform each other."
+                : "\n- This is an unprompted reaction to overheard audio only. You cannot see the screen."
+                  + "\n- React only to what was said.";
+
+            final String system = withSpeechReminder( personality
+                + ( audioPeerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + audioPeerCtx )
+                + "\n\n---"
+                + "\nRULES (override everything else):"
+                + ( audioSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + audioSpeechRule )
+                + "\n- Reply in ONE sentence only. Never more."
+                + screenRule
+                + "\n- Be brief, natural, in-character. No greetings, no filler."
+                + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
+                + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
+                + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
+                + "\n---", audioSpeechRule );
 
             // Good transcript — now show thinking and send to Ollama
             javax.swing.SwingUtilities.invokeLater( () ->
@@ -2302,8 +2315,7 @@ public class Mascot
 
             // Summarization needs ~200-300 tokens: 5 facts + TONE + PEER_TONE lines.
             // The default 80-token cap cuts off the response before TONE: is reached.
-            final int SUMMARY_TOKENS = 300;
-            client.generate( system, prompt, SUMMARY_TOKENS, new OllamaClient.Callback()
+            final OllamaClient.Callback audioCb = new OllamaClient.Callback()
             {
                 @Override public void onResponse( final String raw )
                 {
@@ -2338,7 +2350,12 @@ public class Mascot
                         if( assistantBubble != null ) assistantBubble.dismiss();
                     });
                 }
-            });
+            };
+
+            if( hasScreen )
+                client.generateWithImage( system, prompt, capturedBase64, vModel, audioCb );
+            else
+                client.generate( system, prompt, audioCb );
         }, "audio-reaction" ).start();
     }
 
