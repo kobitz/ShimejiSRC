@@ -309,7 +309,7 @@ public class MascotEnvironment
      * System sensor readings. All values return -1 if unavailable. No admin required.
      *
      * Usage in XML conditions:
-     *   mascot.environment.cpuTemp      - always -1 (requires kernel driver on Windows)
+     *   mascot.environment.cpuTemp      - CPU temperature deg C via TempSensor.exe (requires admin; -1 if absent or no UAC)
      *   mascot.environment.cpuLoad      - CPU total load % via OperatingSystemMXBean
      *   mascot.environment.gpuTemp      - GPU temperature deg C via nvidia-smi (NVIDIA only)
      *   mascot.environment.gpuLoad      - GPU load % via nvidia-smi (NVIDIA only)
