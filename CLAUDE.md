@@ -16,7 +16,7 @@ All behaviors, animations, and interactions are defined via XML, not hard-coded.
 
 ## Directory Structure
 
-- **Source folder (here):** `D:\Downloads\Shimeji Workspace\Stable - Copy` — all Java source, build files, assets under development.
+- **Source folder (here):** `D:\Downloads\Shimeji Workspace\Stable` — all Java source, build files, assets under development.
 - **Install folder:** `C:\Users\ko\Desktop\Mario Install Testing` — the deployed/running instance. Built JAR and assets are copied here to test. Mascot image sets (`img/Hornet/`, `img/Holo/`), `conf/`, `memory.json` files, and runtime logs all live here, NOT in the source folder.
 
 ## Build Commands
