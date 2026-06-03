@@ -2217,7 +2217,8 @@ public class Mascot
             + "\nRULES (override everything else):"
             + ( audioSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + audioSpeechRule )
             + "\n- Reply in ONE sentence only. Never more."
-            + "\n- This is an unprompted reaction to overheard audio."
+            + "\n- This is an unprompted reaction to overheard audio. You heard this — you cannot see the screen."
+            + "\n- React only to what was said. Do not describe or reference what the user is doing or looking at."
             + "\n- Be brief, natural, in-character. No greetings, no filler."
             + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
