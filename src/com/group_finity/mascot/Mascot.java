@@ -1812,6 +1812,8 @@ public class Mascot
         }
         userMsg.append( "User reply: " ).append( userText );
 
+        com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
+
         if( ollamaClient == null ) ollamaClient = createOllamaClient();
         final OllamaClient client = ollamaClient;
 
@@ -1830,6 +1832,7 @@ public class Mascot
                 {
                     fireActionFromResponse( raw );
                     final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                    com.group_finity.mascot.assistant.ChatLog.append( mascotName, text );
                     // Append mascot reply to thread for next chained reply
                     if( assistantBubble != null && message != null )
                         assistantBubble.appendReplyToThread( message, text );
