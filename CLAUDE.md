@@ -106,6 +106,7 @@ All in `src/com/group_finity/mascot/assistant/`. Activates if `<Personality>` bl
 Persisted under `AssistantMode.<imageSet>` in `settings.properties` (keyed by name, not runtime int).
 
 - **`<SpeechRule>`** — Injected as FIRST rule + appended as `Final reminder:`. Most effective with WRONG→RIGHT examples and self-check line.
+- **`<PersonalityBrief>`** — Short (~30-word) character essence used for quick reactions (spontaneous, audio, vision). Full `<Personality>` still used for direct user replies, name triggers, and peer reactions. Cuts quick-reaction system prompt by ~60-70%. Falls back to full personality if absent. Schema key: `PersonalityBrief`.
 - **`<ThirdPersonRewrite>`** — Post-generation regex rewrites first-person pronouns to mascot name. Currently Paimon only.
 
 ### Memory System
@@ -202,9 +203,10 @@ Chat Bubbles tab built in `init()` (not `initComponents()`) so properties load f
 
 ## Current Mascots
 
-- **Hornet** (Hollow Knight) — cold not because she doesn't care, but because she does and has learned care costs things. Restraint is default, not indifference. Hard truths stated plainly then followed by a task. Skepticism framed as a question. Feelings surface reluctantly, briefly, then closed off. Personality updated from source dialog analysis (June 2026). **Hunting:** `HuntMosscreep` (Freq=5000) fires when combined Mosscreep+Mossfly pop > 9; `HuntMosscreepAggressive` (Freq=10000) when > 15. Population counted by `o.imageSet` check against all 4 moss names.
-- **Holo** (Spice and Wolf) — ancient wolf deity, formal archaic speech, no contractions. peerTone toward Hornet: "wary respect".
-- **Paimon** (Genshin Impact) — bubbly, blunt, third-person speech, NOT Emergency Food. `FaceDirection="true"` on Pinched. `<ThirdPersonRewrite>true</ThirdPersonRewrite>`. "Oh Paimon's goodness/gosh" intentional. **RaveMode:** toggleable right-click checkbox (`Frequency="0"`, `ClearTintOnDisable="true"`); HSV rainbow tint at 50% opacity using `Date.now()` in Color expression; starts/stops cleanly via `ClearTintOnDisable` mechanism.
+- **Hornet** (Hollow Knight) — cold not because she doesn't care, but because she does and has learned care costs things. Restraint is default, not indifference. Hard truths stated plainly then followed by a task. Skepticism framed as a question. Feelings surface reluctantly, briefly, then closed off. Personality updated from source dialog analysis (June 2026). **Hunting:** `HuntMosscreep` (Freq=5000) fires when combined Mosscreep+Mossfly pop > 9; `HuntMosscreepAggressive` (Freq=10000) when > 15. Population counted by `o.imageSet` check against all 4 moss names. **SpeechRule:** bans calling peers "ghost" (user-only word), and bans "lamentable lack of," "exhibit/demonstrate a [adj] lack of," "expend energy needlessly" — includes WRONG→RIGHT examples and self-check.
+- **Holo** (Spice and Wolf) — ancient wolf deity, formal archaic speech, no contractions. peerTone toward Hornet: "wary respect". **SpeechRule:** bans "possesses a certain [precision/accuracy/weight]" entirely — her dominant fallback phrase — includes WRONG→RIGHT examples and self-check.
+- **Paimon** (Genshin Impact) — bubbly, blunt, third-person speech, NOT Emergency Food. `FaceDirection="true"` on Pinched. `<ThirdPersonRewrite>true</ThirdPersonRewrite>`. "Oh Paimon's goodness/gosh" intentional. **RaveMode:** toggleable right-click checkbox (`Frequency="0"`, `ClearTintOnDisable="true"`); HSV rainbow tint at 50% opacity using `Date.now()` in Color expression; starts/stops cleanly via `ClearTintOnDisable` mechanism. **SpeechRule:** bans "Oh, please, Hornet" and "Honestly, Hornet" as openers — includes WRONG→RIGHT examples and self-check.
+- **2B** (NieR: Automata) — YoRHa No.2 Type B, combat android. Cold not from absence of feeling but from understanding what feeling costs — carries suppressed emotion under strict protocol. Military framing of mundane observations. Uses "I" not "this unit." "Emotions are prohibited" is a self-correction, not a stock phrase. VoiceTrigger: "YoRHa". **SpeechRule:** bans "this unit," "Emotions are prohibited" as opener, "Acknowledged." alone as peer opener, unprompted existential monologues.
 - **CampfireON** — CPU load monitor. Scale lerps to `cpuLoad/100 * 2 + 1` (1x–3x). Hotspot: touch fire → add branch; touch logs → transform to CampfireOFF. Can transform to CampfireON_blue.
 - **CampfireON_blue** — Blue flame variant; same scale behavior. Transforms back to CampfireON.
 - **CampfireOFF** — Unlit; scales to CPU load (Frequency=200, 21-tick one-shots). Transforms to CampfireON when `cpuTemp >= 75`.
@@ -217,7 +219,7 @@ Chat Bubbles tab built in `init()` (not `initComponents()`) so properties load f
 - **Timer LLM math** — Model sometimes miscalculates wall-clock minutes. Integers > 1440 min rejected.
 - **Paimon third-person (backburner)** — Gaps: uncovered conjugations, "you" → "Traveler" not rewritten. "Oh Paimon's goodness" intentional.
 - **Memory poisoning** — peerExchanges reinforce model patterns quickly. Wipe when personality degrades.
-- **Peer reaction formula repetition** — 4B model ceiling. Prompt-level bans + memory hygiene reduce frequency.
+- **Peer reaction formula repetition** — 4B model ceiling. SpeechRules added for all three mascots (June 2026) with WRONG→RIGHT examples + self-check. Memory hygiene still needed when peerExchanges reinforce bad patterns.
 
 ## Development Rules
 - After any significant change, update CLAUDE.md to reflect the new state.

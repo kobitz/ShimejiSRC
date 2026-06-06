@@ -1381,6 +1381,8 @@ public class Mascot
     {
         if( text == null ) return text;
         final String name = getImageSet( );
+        // Strip "Name: " self-prefix the model occasionally echoes
+        String s = text.startsWith( name + ": " ) ? text.substring( name.length() + 2 ) : text;
         // Check XML flag first; fall through to per-name hardcodes as backup.
         final com.group_finity.mascot.config.Configuration cfg =
             Main.getInstance( ).getConfiguration( name );
@@ -1388,12 +1390,12 @@ public class Mascot
         {
             final String flag = cfg.getInformation( "ThirdPersonRewrite" );
             if( "true".equalsIgnoreCase( flag ) )
-                return rewriteFirstPerson( text, name );
+                return rewriteFirstPerson( s, name );
         }
         // Hardcoded fallback so this works even if config lookup fails.
         if( "Paimon".equals( name ) )
-            return rewriteFirstPerson( text, name );
-        return text;
+            return rewriteFirstPerson( s, name );
+        return s;
     }
 
     private static String rewriteFirstPerson( String s, final String name )
@@ -1948,14 +1950,13 @@ public class Mascot
             + "\n\n---"
             + "\nRULES (override everything else):"
             + ( peerSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + peerSpeechRule )
-            + "\n- Reply in ONE sentence only. Never more."
+            + "\n- Reply in ONE sentence. 15 words maximum."
             + "\n- You are reacting to something another mascot just said to you."
             + "\n- Address " + speakerName + " directly by name."
             + "\n- Your emotional tone toward " + speakerName + " is: " + peerTone + "."
             + "\n- Stay fully in character. No greetings, no filler."
             + "\n- Speak your response directly — do not wrap it in quotation marks."
             + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
-            + "\n- To set a timer: append [TIMER:VALUE:reminder text]. VALUE = whole minutes ([TIMER:15:check laundry]) or the exact clock time the user said ([TIMER:5:30pm:alarm] for 'at 5:30pm'). For clock times: copy it exactly, do NOT convert to minutes."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
             + "\n---", peerSpeechRule );
@@ -1980,7 +1981,7 @@ public class Mascot
             @Override public void onResponse( final String raw )
             {
                 fireActionFromResponse( raw );
-                final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
                 com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + speakerName + ")", text );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                     .recordPeerExchange( speakerName, speakerText, text );
@@ -2234,7 +2235,7 @@ public class Mascot
             Main.getInstance().getConfiguration( getImageSet() );
         final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
             ? cfg.getInformation( "Name" ) : getImageSet();
-        final String personality = getPersonality( cfg, mascotName );
+        final String personality = getPersonalityQuick( cfg, mascotName );
         final String audioSpeechRule = getSpeechRule( cfg );
 
         final String audioPeerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
@@ -2288,7 +2289,7 @@ public class Mascot
                 + "\n\n---"
                 + "\nRULES (override everything else):"
                 + ( audioSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + audioSpeechRule )
-                + "\n- Reply in ONE sentence only. Never more."
+                + "\n- Reply in ONE sentence. 15 words maximum."
                 + screenRule
                 + "\n- Be brief, natural, in-character. No greetings, no filler."
                 + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
@@ -2350,7 +2351,7 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                    final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
                     final String audioSource = source != null ? source : "audio";
                     com.group_finity.mascot.assistant.ChatLog.append( audioSource,
                         "\"" + transcript.substring( 0, Math.min( 300, transcript.length() ) ) + "\"" );
@@ -2401,12 +2402,12 @@ public class Mascot
         final String peerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
             .buildContext( getImageSet() );
 
-        final String system = withSpeechReminder( personality
+        final String system = withSpeechReminder( getPersonalityQuick( cfg, mascotName )
             + ( peerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + peerCtx )
             + "\n\n---"
             + "\nRULES (override everything else):"
             + ( spontSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + spontSpeechRule )
-            + "\n- Reply in ONE sentence only. Never more."
+            + "\n- Reply in ONE sentence. 15 words maximum."
             + "\n- This is an unprompted observation. Be brief and natural."
             + "\n- No greetings, no questions, no filler."
             + "\n- Do not reuse or echo words directly from the window title."
@@ -2439,7 +2440,7 @@ public class Mascot
             @Override public void onResponse( final String raw )
             {
                 fireActionFromResponse( raw );
-                final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
                 com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + windowTitle + ")", text );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                     .addFact( "[Observed] Window: " + windowTitle + " | Reaction: " + text );
@@ -2468,7 +2469,7 @@ public class Mascot
             Main.getInstance().getConfiguration( getImageSet() );
         final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
             ? cfg.getInformation( "Name" ) : getImageSet();
-        final String personality = getPersonality( cfg, mascotName );
+        final String personality = getPersonalityQuick( cfg, mascotName );
         final String visionSpeechRule = getSpeechRule( cfg );
 
         final String peerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
@@ -2479,7 +2480,7 @@ public class Mascot
             + "\n\n---"
             + "\nRULES (override everything else):"
             + ( visionSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + visionSpeechRule )
-            + "\n- Reply in ONE sentence only. Never more."
+            + "\n- Reply in ONE sentence. 15 words maximum."
             + "\n- This is an unprompted glance at the user's screen. Be brief, natural, in-character."
             + "\n- No greetings, no questions, no filler."
             + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
@@ -2514,7 +2515,7 @@ public class Mascot
                         @Override public void onResponse( final String raw )
                         {
                             fireActionFromResponse( raw );
-                            final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                            final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
                             com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(screen glance)", text );
                             com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                                 .addFact( "[Observed] Screen glance | Reaction: " + text );
@@ -2594,6 +2595,31 @@ public class Mascot
         return "You are " + mascotName + ", a small desktop mascot assistant living on the user's screen. "
              + "You are helpful, cheerful, and a little quirky. "
              + "You are aware that you are a tiny animated character on their desktop.";
+    }
+
+    private String getPersonalityQuick( final com.group_finity.mascot.config.Configuration cfg,
+                                        final String mascotName )
+    {
+        if( cfg != null )
+        {
+            final String brief = cfg.getInformation( "PersonalityBrief" );
+            if( brief != null && !brief.trim().isEmpty() )
+                return brief.trim();
+        }
+        return getPersonality( cfg, mascotName );
+    }
+
+    private static String trimToFirstSentence( final String text )
+    {
+        if( text == null || text.length() < 10 ) return text;
+        final java.util.regex.Matcher m =
+            java.util.regex.Pattern.compile( "[.!?](?:\\s|$)" ).matcher( text );
+        while( m.find() )
+        {
+            if( m.start() >= 5 )
+                return text.substring( 0, m.end() ).trim();
+        }
+        return text;
     }
 
     void tick( )
