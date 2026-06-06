@@ -1297,6 +1297,12 @@ public class AssistantBubble
 
     public boolean isTimerActive() { return timerActive; }
 
+    /** Safe to call from any thread — reads only volatile fields. */
+    public boolean isFullyDespawned()
+    {
+        return !window.isVisible() && !thinking && !timerActive;
+    }
+
     private static String formatCountdown( final long endMs, final String reminder )
     {
         final long remaining = Math.max( 0L, endMs - System.currentTimeMillis() );

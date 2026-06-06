@@ -121,6 +121,25 @@ public class Mascot
     private int renderAnchorX = 0;
     private int renderAnchorY = 0;
 
+    // Tint overlay — color/current opacity rendered every frame. Persists until snap-cleared.
+    private java.awt.Color tintColor = null;
+    private float tintCurrentOpacity = 0f;
+    // Target opacity and lerp speed — updated by Tint action or by dynamic expression each tick.
+    private float tintTargetOpacity = 0f;
+    private float tintLerpFactor    = 0.1f;
+    // Dynamic expressions: re-evaluated every tick in Mascot.tick() independent of active behavior.
+    // Set by Tint.init() when Target/Color are script expressions; persist after the action ends.
+    private com.group_finity.mascot.script.Variable  tintTargetVar = null;
+    private com.group_finity.mascot.script.Variable  tintColorVar  = null;
+    private com.group_finity.mascot.script.VariableMap tintVarMap  = null;
+    // Lerped color channels for dynamic color expressions — current lerps toward target each tick.
+    private float tintCurrentR = 255f; private float tintTargetR = 255f;
+    private float tintCurrentG = 0f;   private float tintTargetG = 0f;
+    private float tintCurrentB = 0f;   private float tintTargetB = 0f;
+    // Scratch buffers for per-frame tint compositing — reused, reallocated only on image size change.
+    private java.awt.image.BufferedImage tintScratchBuf = null;
+    private com.group_finity.mascot.image.NativeImage tintScratchNative = null;
+
     // Cached global Scaling setting — mirrors ActionBase.scalingConstant but as a double.
     private static double cachedGlobalScaling = Double.NaN;
 
@@ -1336,12 +1355,8 @@ public class Mascot
     private static String stripActionTag( final String text )
     {
         if( text == null ) return text;
-        return text.replaceAll( "\\[ACTION:[^\\]]*\\]",      "" )
-                   .replaceAll( "\\[TIMER:[^\\]]*\\]",       "" )
-                   .replaceAll( "\\[REMEMBER:[^\\]]*\\]",    "" )
-                   .replaceAll( "\\[OBSERVATION:[^\\]]*\\]", "" )
-                   .replaceAll( "\\[[A-Z_]+:[^\\]]*\\]",     "" )
-                   .replaceAll( "\\[[a-zA-Z_]+\\]",          "" ).trim();
+        // Case-insensitive: catches [ACTION:...], [Action:...], [blink], [Gasping: Startled], etc.
+        return text.replaceAll( "(?i)\\[[a-zA-Z][^\\]]*\\]", "" ).trim();
     }
 
     /**
@@ -1371,6 +1386,7 @@ public class Mascot
     private static String rewriteFirstPerson( String s, final String name )
     {
         // Contractions — must come before bare-I replacements
+        s = s.replaceAll( "\\b" + name + "'m\\b", name + " is" ); // model sometimes generates e.g. "Paimon'm"
         s = s.replaceAll( "\\bI'm not\\b", name + " is not" );
         s = s.replaceAll( "\\bI'm\\b",     name + " is" );
         s = s.replaceAll( "\\bI've\\b",    name + " has" );
@@ -2584,6 +2600,48 @@ public class Mascot
                     dispose( );
                 }
 
+                // Dynamic tint: re-evaluate expressions each tick so tint tracks sensors
+                // even when the Tint action is no longer the active action.
+                if( tintVarMap != null && ( tintTargetVar != null || tintColorVar != null ) )
+                {
+                    if( tintTargetVar != null )
+                    {
+                        try
+                        {
+                            tintTargetVar.initFrame( );
+                            double t = ( (Number) tintTargetVar.get( tintVarMap ) ).doubleValue( );
+                            tintTargetOpacity = (float) Math.max( 0.0, Math.min( 1.0, t ) );
+                        }
+                        catch( Exception e ) { /* ignore */ }
+                    }
+                    if( tintColorVar != null )
+                    {
+                        try
+                        {
+                            tintColorVar.initFrame( );
+                            String hex = tintColorVar.get( tintVarMap ).toString( );
+                            if( hex.startsWith( "#" ) ) hex = hex.substring( 1 );
+                            if( hex.length( ) >= 6 )
+                            {
+                                tintTargetR = Math.max( 0, Math.min( 255, Integer.parseInt( hex.substring( 0, 2 ), 16 ) ) );
+                                tintTargetG = Math.max( 0, Math.min( 255, Integer.parseInt( hex.substring( 2, 4 ), 16 ) ) );
+                                tintTargetB = Math.max( 0, Math.min( 255, Integer.parseInt( hex.substring( 4, 6 ), 16 ) ) );
+                            }
+                        }
+                        catch( Exception e ) { /* ignore */ }
+                        // Lerp current channels toward target, then rebuild tintColor
+                        tintCurrentR += ( tintTargetR - tintCurrentR ) * tintLerpFactor;
+                        tintCurrentG += ( tintTargetG - tintCurrentG ) * tintLerpFactor;
+                        tintCurrentB += ( tintTargetB - tintCurrentB ) * tintLerpFactor;
+                        tintColor = new java.awt.Color( (int) tintCurrentR, (int) tintCurrentG, (int) tintCurrentB );
+                    }
+                }
+                // Lerp current opacity toward target
+                if( Math.abs( tintCurrentOpacity - tintTargetOpacity ) > 0.001f )
+                    tintCurrentOpacity += ( tintTargetOpacity - tintCurrentOpacity ) * tintLerpFactor;
+                else
+                    tintCurrentOpacity = tintTargetOpacity;
+
                 // Track last known good on-screen position for recovery.
                 final java.awt.Rectangle b = getBounds( );
                 if( b != null && environment.getScreen( ).toRectangle( ).intersects( b ) )
@@ -2738,8 +2796,27 @@ public class Mascot
             final java.awt.Rectangle ab = getBounds( );
             if( ab != null )
             {
-                for( final com.group_finity.mascot.assistant.AssistantBubble ab2 : activeBubbles )
-                    ab2.reposition( ab );
+                // Prune fully despawned bubbles; reposition the live ones — single pass.
+                java.util.List<com.group_finity.mascot.assistant.AssistantBubble> dead = null;
+                for( final com.group_finity.mascot.assistant.AssistantBubble b : activeBubbles )
+                {
+                    if( b.isFullyDespawned() )
+                    {
+                        if( dead == null ) dead = new java.util.ArrayList<>();
+                        dead.add( b );
+                    }
+                    else
+                        b.reposition( ab );
+                }
+                if( dead != null )
+                {
+                    activeBubbles.removeAll( dead );
+                    if( dead.contains( assistantBubble ) ) assistantBubble = null;
+                    if( dead.contains( timerBubble ) )     timerBubble     = null;
+                    final java.util.List<com.group_finity.mascot.assistant.AssistantBubble> toDispose = dead;
+                    javax.swing.SwingUtilities.invokeLater( () -> toDispose.forEach(
+                        com.group_finity.mascot.assistant.AssistantBubble::dispose ) );
+                }
                 if( activeDialog != null )
                     activeDialog.reposition( ab );
             }
@@ -2875,6 +2952,27 @@ public class Mascot
         }
     }
 
+    private void applyTintToScratch( java.awt.image.BufferedImage src )
+    {
+        int w = src.getWidth( );
+        int h = src.getHeight( );
+        if( tintScratchBuf == null || tintScratchBuf.getWidth( ) != w || tintScratchBuf.getHeight( ) != h )
+        {
+            tintScratchBuf    = new java.awt.image.BufferedImage( w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB_PRE );
+            tintScratchNative = NativeFactory.getInstance( ).newNativeImage( tintScratchBuf );
+        }
+        java.awt.Graphics2D g = tintScratchBuf.createGraphics( );
+        g.setComposite( java.awt.AlphaComposite.Src );
+        g.drawImage( src, 0, 0, null );
+        g.setComposite( java.awt.AlphaComposite.SrcAtop );
+        g.setColor( new java.awt.Color(
+            tintColor.getRed( ), tintColor.getGreen( ), tintColor.getBlue( ),
+            Math.max( 0, Math.min( 255, (int)( tintCurrentOpacity * 255 ) ) ) ) );
+        g.fillRect( 0, 0, w, h );
+        g.dispose( );
+        tintScratchNative.updatePixels( tintScratchBuf );
+    }
+
     public void apply( )
     {
         if (isAnimating())
@@ -2942,8 +3040,24 @@ public class Mascot
                     lastDisplayScale = 0.0;
                 }
 
-                // Set Images
-                getWindow().setImage(displayImage.getImage());
+                // Set Images — apply tint overlay if active
+                if( tintColor != null && tintCurrentOpacity > 0.001f )
+                {
+                    java.awt.image.BufferedImage src = displayImage.getBufferedImage( );
+                    if( src != null )
+                    {
+                        applyTintToScratch( src );
+                        getWindow( ).setImage( tintScratchNative );
+                    }
+                    else
+                    {
+                        getWindow( ).setImage( displayImage.getImage( ) );
+                    }
+                }
+                else
+                {
+                    getWindow( ).setImage( displayImage.getImage( ) );
+                }
 
                 // Display
                 if (!getWindow().asComponent().isVisible())
@@ -3006,6 +3120,7 @@ public class Mascot
         final String peerName = payload.substring( 0, colon ).trim();
         final String peerTone = payload.substring( colon + 1 ).trim().toLowerCase();
         if( peerName.isEmpty() ) return;
+        if( peerName.equalsIgnoreCase( getImageSet() ) ) return;
         if( isValidTone( peerTone ) )
         {
             memory.setPeerTone( peerName, peerTone );
@@ -3764,6 +3879,50 @@ unregisterVoiceCommand();
 
     public void setCurrentScale( double scale ) { this.currentScale = scale; }
     public double getCurrentScale( )            { return currentScale; }
+
+    /** Called by Tint.tick() each tick to update the color and drive the target opacity.
+     *  Lerp toward target is handled in Mascot.tick(), not here. */
+    public void setTintTarget( java.awt.Color color, float target, float lerpFactor )
+    {
+        this.tintColor        = color;
+        this.tintTargetOpacity = Math.max( 0f, Math.min( 1f, target ) );
+        this.tintLerpFactor   = Math.max( 0.001f, Math.min( 1f, lerpFactor ) );
+    }
+
+    /** Called by Tint.init() when Target and/or Color are script expressions.
+     *  Either var may be null (static). Stores them so Mascot.tick() re-evaluates every tick. */
+    public void setTintExpr( com.group_finity.mascot.script.Variable opacityVar,
+                             com.group_finity.mascot.script.Variable colorVar,
+                             com.group_finity.mascot.script.VariableMap varMap,
+                             java.awt.Color initialColor, float lerpFactor )
+    {
+        this.tintTargetVar  = opacityVar;
+        this.tintColorVar   = colorVar;
+        this.tintVarMap     = varMap;
+        this.tintColor      = initialColor;
+        this.tintLerpFactor = Math.max( 0.001f, Math.min( 1f, lerpFactor ) );
+        // Seed lerp channels to initial color so the first render has no jump
+        this.tintCurrentR = this.tintTargetR = initialColor.getRed( );
+        this.tintCurrentG = this.tintTargetG = initialColor.getGreen( );
+        this.tintCurrentB = this.tintTargetB = initialColor.getBlue( );
+    }
+
+    public void snapClearTint( )
+    {
+        tintColor          = null;
+        tintCurrentOpacity = 0f;
+        tintTargetOpacity  = 0f;
+        tintTargetVar      = null;
+        tintColorVar       = null;
+        tintVarMap         = null;
+        tintCurrentR = 255f; tintTargetR = 255f;
+        tintCurrentG = 0f;   tintTargetG = 0f;
+        tintCurrentB = 0f;   tintTargetB = 0f;
+        tintScratchBuf     = null;
+        tintScratchNative  = null;
+    }
+
+    public float getTintCurrentOpacity( ) { return tintCurrentOpacity; }
 
     /** Store a transient value in the per-mascot script scratchpad. */
     public void setUserData( final String key, final Object value )
