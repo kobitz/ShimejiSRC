@@ -1952,7 +1952,7 @@ public class Mascot
             + ( peerSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + peerSpeechRule )
             + "\n- Reply in ONE sentence. 15 words maximum."
             + "\n- You are reacting to something another mascot just said to you."
-            + "\n- Address " + speakerName + " directly by name."
+            + "\n- Address " + speakerName + " only as \"" + speakerName + "\" — no other names or nicknames for them."
             + "\n- Your emotional tone toward " + speakerName + " is: " + peerTone + "."
             + "\n- Stay fully in character. No greetings, no filler."
             + "\n- Speak your response directly — do not wrap it in quotation marks."
@@ -1982,6 +1982,14 @@ public class Mascot
             {
                 fireActionFromResponse( raw );
                 final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
+                if( isTrivialAcknowledgement( text ) )
+                {
+                    javax.swing.SwingUtilities.invokeLater( () ->
+                    {
+                        if( assistantBubble != null ) assistantBubble.dismiss();
+                    });
+                    return;
+                }
                 com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + speakerName + ")", text );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                     .recordPeerExchange( speakerName, speakerText, text );
@@ -2620,6 +2628,21 @@ public class Mascot
                 return text.substring( 0, m.end() ).trim();
         }
         return text;
+    }
+
+    /** True if the text is a bare non-answer (Noted. / Acknowledged. / etc.) that adds nothing. */
+    private static boolean isTrivialAcknowledgement( final String text )
+    {
+        if( text == null ) return false;
+        final String norm = text.trim().replaceAll( "[.!?,\"']", "" ).toLowerCase();
+        return norm.equals( "noted" )
+            || norm.equals( "acknowledged" )
+            || norm.equals( "understood" )
+            || norm.equals( "affirmative" )
+            || norm.equals( "confirmed" )
+            || norm.equals( "copy that" )
+            || norm.equals( "roger" )
+            || norm.equals( "indeed" );
     }
 
     void tick( )
