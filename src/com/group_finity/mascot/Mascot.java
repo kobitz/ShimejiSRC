@@ -756,7 +756,7 @@ public class Mascot
                 if( !config.isBehaviorHidden( command ) )
                 {
                     String caption = behaviorName.replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " );
-                    if( config.isBehaviorEnabled( command, Mascot.this ) && !command.contains( "/" ) )
+                    if( config.isBehaviorEnabled( command, Mascot.this ) && !command.contains( "/" ) && !config.isBehaviorToggleable( command ) )
                     {
                         item = new JMenuItem( languageBundle.containsKey( behaviorName ) ? 
                                               languageBundle.getString( behaviorName ) : 
