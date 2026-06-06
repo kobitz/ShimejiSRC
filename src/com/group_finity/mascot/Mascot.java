@@ -788,7 +788,20 @@ public class Mascot
                         {
                             public void itemStateChanged( final ItemEvent e )
                             {
-                                Main.getInstance( ).setMascotBehaviorEnabled( command, Mascot.this, !config.isBehaviorEnabled( command, Mascot.this ) );
+                                final boolean nowEnabled = !config.isBehaviorEnabled( command, Mascot.this );
+                                Main.getInstance( ).setMascotBehaviorEnabled( command, Mascot.this, nowEnabled );
+                                if( config.isBehaviorClearTintOnDisable( command ) )
+                                {
+                                    if( nowEnabled )
+                                    {
+                                        try { setBehavior( config.buildBehavior( command ) ); }
+                                        catch( Exception ignored ) {}
+                                    }
+                                    else
+                                    {
+                                        snapClearTint( );
+                                    }
+                                }
                             }
                         } );
                         allowedSubmenu.add( toggleItem );

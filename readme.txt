@@ -320,6 +320,46 @@ animations.
 Example behavior condition:
   Condition="${mascot.environment.audioLevel > 5000}"
 
+---- Tint Action ----
+
+The Tint action applies a color overlay to a mascot blended with its sprite using alpha
+compositing.  Both color and opacity can be driven by JavaScript expressions evaluated
+every tick, so the tint updates live without restarting any behavior.  Color channels are
+independently lerped toward their targets each tick, producing smooth gradual shifts.
+
+Schema attributes:
+  Color        -- Hex color string ("FF0000") or a JS expression returning one
+  Opacity      -- Fixed opacity 0.0-1.0; use Target for a scriptable value instead
+  Target       -- Scriptable opacity expression (0.0 to 1.0)
+  LerpFactor   -- Smoothing per tick (0.0 = no movement, 1.0 = instant; default 0.1)
+  Duration     -- How long the action runs in ticks; the tint expression persists after
+  ClearOnExpiry -- true to snap-clear the tint when Duration expires
+
+A Tint registered once (e.g. prepended to a StandUp sequence) persists and re-evaluates
+its expressions every tick for the lifetime of the mascot, regardless of what behavior
+is currently running.
+
+XML usage:
+  <!-- Sensor-driven: color and opacity track GPU/RAM load live -->
+  <Action Name="TintWithLoad" Type="Embedded"
+          Class="com.group_finity.mascot.action.Tint"
+          Color="#{(function(){
+              var g = Math.max(0, Math.min(255, Math.round(mascot.environment.gpuLoad / 100 * 255)));
+              var h = ('0' + g.toString(16)).slice(-2);
+              return 'FF' + h + h;
+          })()}"
+          Target="#{(mascot.environment.ramLoad + mascot.environment.gpuLoad - 50) / 150}"
+          LerpFactor="0.08" />
+
+  <!-- Flash: static color for a set duration, then auto-clear -->
+  <Action Name="FlashRed" Type="Embedded"
+          Class="com.group_finity.mascot.action.Tint"
+          Color="FF0000" Opacity="0.4" Duration="25" ClearOnExpiry="true" />
+
+Toggleable behaviors that drive a Tint can use ClearTintOnDisable="true" on the
+<Behavior> tag.  When the behavior is unchecked from the right-click menu, the tint
+clears immediately; when checked, the behavior starts even if its Frequency is 0.
+
 ==== Browser Extension ====
 
 A browser extension is available that allows Shimeji to treat video players on YouTube and Twitch as interactive windows, so mascots can walk along the edges of the video just as they do with normal application windows.
@@ -450,9 +490,9 @@ via VisionModel in settings.properties).
 ---- Settings ----
 
 The Chat Bubbles tab in the Settings dialog exposes:
-  OllamaModel      -- which Ollama chat model to use (default: llama3.2)
+  OllamaModel      -- which Ollama chat model to use (default: gemma3:4b)
   OllamaEndpoint   -- Ollama server URL (default: http://localhost:11434/api/generate)
-  VisionModel      -- Ollama model for screen queries (default: moondream)
+  VisionModel      -- Ollama model for screen queries (default: gemma3:4b)
   BubbleWidth      -- Width of speech bubbles in pixels (default: 180)
   BubbleFontSize   -- Font size in speech bubbles (default: 14)
   WhisperThreads   -- CPU threads for voice recognition (default: half of available)

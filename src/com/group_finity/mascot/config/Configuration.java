@@ -403,6 +403,14 @@ public class Configuration
         else
             return false;
     }
+
+    public boolean isBehaviorClearTintOnDisable( final String name )
+    {
+        if( behaviorBuilders.containsKey( name ) )
+            return getBehaviorBuilders( ).get( name ).isClearTintOnDisable( );
+        else
+            return false;
+    }
     
     private Map<String, String> getConstants( )
     {

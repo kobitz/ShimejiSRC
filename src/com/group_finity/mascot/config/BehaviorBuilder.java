@@ -39,6 +39,7 @@ public class BehaviorBuilder {
 	private final boolean hidden;
         
         private final boolean toggleable;
+        private final boolean clearTintOnDisable;
 
 	private final boolean nextAdditive;
 
@@ -66,7 +67,8 @@ public class BehaviorBuilder {
                 {
                     toggleable = Boolean.parseBoolean( behaviorNode.getAttribute( configuration.getSchema( ).getString( "Toggleable" ) ) );
                 }
-                
+                this.clearTintOnDisable = Boolean.parseBoolean( behaviorNode.getAttribute( configuration.getSchema( ).getString( "ClearTintOnDisable" ) ) );
+
 		log.log(Level.INFO, "Start Reading({0})", this);
 
 		this.getParams( ).putAll( behaviorNode.getAttributes( ) );
@@ -176,6 +178,11 @@ public class BehaviorBuilder {
     public boolean isToggleable( )
     {
         return toggleable;
+    }
+
+    public boolean isClearTintOnDisable( )
+    {
+        return clearTintOnDisable;
     }
 
 	private String getActionName() {
