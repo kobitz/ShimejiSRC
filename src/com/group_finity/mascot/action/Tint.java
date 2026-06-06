@@ -107,17 +107,11 @@ public class Tint extends ActionBase
         // If Target is a dynamic expression the mascot owns the lerp — just keep color current.
         // If static (Opacity only), push the target to the mascot and let it lerp.
         Variable targetVar = getVariables( ).getRawMap( ).get( getSchema( ).getString( PARAMETER_TARGET ) );
-        if( targetVar == null || targetVar instanceof Constant )
-        {
-            // Static mode: set target opacity; Mascot.tick() lerps toward it
-            float target = getStaticOpacity( );
-            getMascot( ).setTintTarget( color, target, lerp );
-        }
-        else
-        {
-            // Dynamic mode: expression already registered in init(); just refresh color + lerp
-            getMascot( ).setTintTarget( color, getMascot( ).getTintCurrentOpacity( ), lerp );
-        }
+        boolean dynamicOpacity = targetVar != null && !( targetVar instanceof Constant );
+        // When opacity is static (no Target expression), push the static value so Mascot.tick() lerps toward it.
+        // When opacity is dynamic, Mascot.tick() owns the lerp — pass current so setTintTarget only refreshes color+lerp.
+        float opacityTarget = dynamicOpacity ? getMascot( ).getTintCurrentOpacity( ) : getStaticOpacity( );
+        getMascot( ).setTintTarget( color, opacityTarget, lerp );
 
         final Animation anim = getAnimation( );
         if( anim != null )

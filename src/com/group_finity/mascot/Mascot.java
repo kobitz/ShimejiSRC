@@ -2619,7 +2619,9 @@ public class Mascot
                         try
                         {
                             tintColorVar.initFrame( );
-                            String hex = tintColorVar.get( tintVarMap ).toString( );
+                            Object hexObj = tintColorVar.get( tintVarMap );
+                            if( hexObj == null ) throw new Exception( "null color" );
+                            String hex = hexObj.toString( );
                             if( hex.startsWith( "#" ) ) hex = hex.substring( 1 );
                             if( hex.length( ) >= 6 )
                             {
@@ -2962,14 +2964,20 @@ public class Mascot
             tintScratchNative = NativeFactory.getInstance( ).newNativeImage( tintScratchBuf );
         }
         java.awt.Graphics2D g = tintScratchBuf.createGraphics( );
-        g.setComposite( java.awt.AlphaComposite.Src );
-        g.drawImage( src, 0, 0, null );
-        g.setComposite( java.awt.AlphaComposite.SrcAtop );
-        g.setColor( new java.awt.Color(
-            tintColor.getRed( ), tintColor.getGreen( ), tintColor.getBlue( ),
-            Math.max( 0, Math.min( 255, (int)( tintCurrentOpacity * 255 ) ) ) ) );
-        g.fillRect( 0, 0, w, h );
-        g.dispose( );
+        try
+        {
+            g.setComposite( java.awt.AlphaComposite.Src );
+            g.drawImage( src, 0, 0, null );
+            g.setComposite( java.awt.AlphaComposite.SrcAtop );
+            g.setColor( new java.awt.Color(
+                tintColor.getRed( ), tintColor.getGreen( ), tintColor.getBlue( ),
+                Math.max( 0, Math.min( 255, (int)( tintCurrentOpacity * 255 ) ) ) ) );
+            g.fillRect( 0, 0, w, h );
+        }
+        finally
+        {
+            g.dispose( );
+        }
         tintScratchNative.updatePixels( tintScratchBuf );
     }
 
