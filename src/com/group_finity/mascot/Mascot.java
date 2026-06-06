@@ -800,6 +800,13 @@ public class Mascot
                                     else
                                     {
                                         snapClearTint( );
+                                        // Break out of the running Loop=true behavior so it cannot
+                                        // re-call Tint.init() and re-register the color expression.
+                                        try
+                                        {
+                                            setBehavior( config.buildNextBehavior( command, Mascot.this ) );
+                                        }
+                                        catch( Exception ignored ) {}
                                     }
                                 }
                             }
