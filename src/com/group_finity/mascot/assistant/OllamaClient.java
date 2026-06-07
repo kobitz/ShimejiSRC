@@ -25,7 +25,7 @@ import java.util.logging.Logger;
  * If Ollama is not running, the error callback receives a friendly message
  * rather than a stack trace.
  */
-public class OllamaClient
+public class OllamaClient implements AIClient
 {
     private static final Logger log = Logger.getLogger( OllamaClient.class.getName() );
 
@@ -56,31 +56,28 @@ public class OllamaClient
     /** Maximum number of pending requests. Oldest entries are dropped when full. */
     private static final int MAX_QUEUE_DEPTH = 5;
 
-    public interface Callback
+    public interface Callback extends AIClient.Callback
     {
-        /** Called with the model's response text on success. */
-        void onResponse( String text );
-        /** Called with a human-readable error message on failure. */
-        void onError( String message );
+        // extends AIClient.Callback for backward compatibility — no new methods
     }
 
     /** Internal work item queued for dispatch. */
     private static final class Request
     {
-        final String   system;
-        final String   user;
-        final String   imageBase64;   // null for text-only requests
-        final String   modelOverride; // null to use client's default model
-        final int      maxTokens;
-        final Callback callback;
+        final String            system;
+        final String            user;
+        final String            imageBase64;   // null for text-only requests
+        final String            modelOverride; // null to use client's default model
+        final int               maxTokens;
+        final AIClient.Callback callback;
 
-        Request( String system, String user, int maxTokens, Callback callback )
+        Request( String system, String user, int maxTokens, AIClient.Callback callback )
         {
             this( system, user, null, null, maxTokens, callback );
         }
 
         Request( String system, String user, String imageBase64, String modelOverride,
-                 int maxTokens, Callback callback )
+                 int maxTokens, AIClient.Callback callback )
         {
             this.system        = system;
             this.user          = user;
@@ -192,9 +189,10 @@ public class OllamaClient
      * @param userMessage  What the user typed.
      * @param callback     Receives the response (or error) when done.
      */
+    @Override
     public void generate( final String systemPrompt,
                           final String userMessage,
-                          final Callback callback )
+                          final AIClient.Callback callback )
     {
         generate( systemPrompt, userMessage, MAX_TOKENS, callback );
     }
@@ -204,10 +202,11 @@ public class OllamaClient
      * Use this for tasks (e.g. summarization) that need more output than the
      * default 80-token cap used for normal mascot responses.
      */
+    @Override
     public void generate( final String systemPrompt,
                           final String userMessage,
                           final int maxTokens,
-                          final Callback callback )
+                          final AIClient.Callback callback )
     {
         final Request req = new Request( systemPrompt, userMessage, maxTokens, callback );
         if( !requestQueue.offer( req ) )
@@ -227,11 +226,12 @@ public class OllamaClient
      * specified vision model (e.g. "llava"). Bypasses the queue so the capture
      * result isn't held behind pending text requests.
      */
+    @Override
     public void generateWithImage( final String systemPrompt,
                                    final String userMessage,
                                    final String imageBase64,
                                    final String visionModel,
-                                   final Callback callback )
+                                   final AIClient.Callback callback )
     {
         final Request req = new Request( systemPrompt, userMessage,
                                          imageBase64, visionModel,

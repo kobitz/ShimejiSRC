@@ -206,8 +206,9 @@ public class Mascot
     private com.group_finity.mascot.assistant.AssistantInputDialog activeDialog = null;
     // Strong reference — the registry only holds a WeakReference, so without this the listener gets GC'd
     private com.group_finity.mascot.assistant.MascotSpeechRegistry.PeerListener peerListener = null;
-    private static com.group_finity.mascot.assistant.OllamaClient ollamaClient = null; // shared across all mascots
-    // Ollama request rate-limiting is handled inside OllamaClient (queue-based).
+    private static com.group_finity.mascot.assistant.AIClient sharedAiClient = null; // shared Ollama client across non-Claude mascots
+    private com.group_finity.mascot.assistant.AIClient localAiClient = null; // non-null only for Claude mascot
+    // Request rate-limiting is handled inside AIClient implementations (queue-based).
 
     // Click-vs-hold detection: a press shorter than CLICK_MAX_MS with movement
     // under CLICK_MAX_MOVE_PX is treated as a click (opens chat); longer = drag.
@@ -1187,17 +1188,17 @@ public class Mascot
             });
         }
 
-        if( ollamaClient != null )
         {
+            final com.group_finity.mascot.assistant.AIClient aiClient0 = getAiClient();
             if( isScreenQuery( userText ) )
             {
                 com.group_finity.mascot.assistant.ChatLog.append( "User(voice)", userText );
-                handleScreenQuery( userText, system, ollamaClient );
+                handleScreenQuery( userText, system, aiClient0 );
                 return;
             }
             com.group_finity.mascot.assistant.ChatLog.append( "User(voice)", userText );
             final String safeUserText = buildUserMessage( userText ) + weatherContext( userText );
-            ollamaClient.generate( system, safeUserText, new OllamaClient.Callback( )
+            aiClient0.generate( system, safeUserText, new com.group_finity.mascot.assistant.AIClient.Callback( )
             {
                 @Override
                 public void onResponse( final String raw )
@@ -1232,26 +1233,6 @@ public class Mascot
                 }
             });
         }
-        else
-        {
-            // No LLM — keyword action only
-            SwingUtilities.invokeLater( ( ) ->
-            {
-                if( assistantBubble != null )
-                {
-                    if( keywordMatch != null && cfg != null )
-                    {
-                        final String fail = tryRunBehavior( keywordMatch, cfg );
-                        assistantBubble.showResponse(
-                            fail == null ? "On it!" : fail, getBounds( ) );
-                    }
-                    else
-                    {
-                        assistantBubble.showError( "Ollama isn't running.", getBounds( ) );
-                    }
-                }
-            });
-        }
     }
 
     private void openAssistantInput( )
@@ -1266,9 +1247,8 @@ public class Mascot
             activeDialog = null;
         }
 
-        // Lazily create the shared Ollama client
-        if( ollamaClient == null )
-            ollamaClient = new OllamaClient( );
+        // Lazily create the AI client for this mascot
+        getAiClient();
 
         // Ensure a bubble exists so the dialog has something to attach to
         if( assistantBubble == null )
@@ -1297,8 +1277,7 @@ public class Mascot
                 if( keywordMatch != null && cfg != null )
                     tryRunBehavior( keywordMatch, cfg ); // on EDT — dialog callback is on EDT
 
-                if( ollamaClient == null ) ollamaClient = createOllamaClient();
-                final OllamaClient client = ollamaClient;
+                final com.group_finity.mascot.assistant.AIClient inputClient = getAiClient();
 
                 SwingUtilities.invokeLater( ( ) ->
                 {
@@ -1310,14 +1289,14 @@ public class Mascot
                 if( isScreenQuery( userText ) )
                 {
                     com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
-                    handleScreenQuery( userText, system, client );
+                    handleScreenQuery( userText, system, inputClient );
                     return;
                 }
                 com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
                 final String safeUserText = buildUserMessage( userText );
                 new Thread( () ->
                 {
-                    client.generate( system, safeUserText + weatherContext( userText ), new OllamaClient.Callback( )
+                    inputClient.generate( system, safeUserText + weatherContext( userText ), new com.group_finity.mascot.assistant.AIClient.Callback( )
                     {
                         @Override
                         public void onResponse( final String raw )
@@ -1852,8 +1831,7 @@ public class Mascot
 
         com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
 
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
+        final com.group_finity.mascot.assistant.AIClient handleReplyClient = getAiClient();
 
         javax.swing.SwingUtilities.invokeLater( () ->
         {
@@ -1864,7 +1842,7 @@ public class Mascot
 
         new Thread( () ->
         {
-            client.generate( system, userMsg.toString(), new OllamaClient.Callback()
+            handleReplyClient.generate( system, userMsg.toString(), new com.group_finity.mascot.assistant.AIClient.Callback()
             {
                 @Override public void onResponse( final String raw )
                 {
@@ -1973,8 +1951,7 @@ public class Mascot
         final String prompt = speakerName + " just said: \""
             + speakerText + "\". Reply to them in one sentence, in a tone that is " + peerTone + ".";
 
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
+        final com.group_finity.mascot.assistant.AIClient peerClient = getAiClient();
 
         javax.swing.SwingUtilities.invokeLater( () ->
         {
@@ -1985,7 +1962,7 @@ public class Mascot
 
         final String ctx = "[Reacting to " + speakerName + "] " + speakerText;
 
-        client.generate( system, prompt, new OllamaClient.Callback()
+        peerClient.generate( system, prompt, new com.group_finity.mascot.assistant.AIClient.Callback()
         {
             @Override public void onResponse( final String raw )
             {
@@ -2103,8 +2080,7 @@ public class Mascot
             + "\n- When asked about time or weather: you MUST state the actual values from context (e.g. the real temperature, the real time). Express them in your character voice, but the real numbers must appear in your answer. Do not replace them with metaphor or fictional equivalents."
             + "\n---", ntSpeechRule );
 
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
+        final com.group_finity.mascot.assistant.AIClient client = getAiClient();
 
         new Thread( () ->
         {
@@ -2175,10 +2151,9 @@ public class Mascot
                 memoryContext = "[name trigger, no system audio]";
             }
 
-            // ── Step 4: Guard against concurrent Ollama inference ─────────────────
-            // ollamaClient is shared. If another request (fireAudioReaction, etc.)
-            // is already running, skip the Ollama call — the behavior already fired.
-            // Request is queued via OllamaClient — no manual claiming needed.
+            // ── Step 4: Queue the AI request ──────────────────────────────────────
+            // Requests are queued inside the AIClient implementation — concurrent calls
+            // from different reaction types are serialized automatically.
 
             javax.swing.SwingUtilities.invokeLater( () ->
             {
@@ -2197,7 +2172,7 @@ public class Mascot
             com.group_finity.mascot.assistant.ChatLog.append( "User(voice)",
                 hasUser ? cleanUser : "[name trigger]" );
             final String wxCtx = weatherContext( cleanUser != null ? cleanUser : "" );
-            client.generate( system, userPrompt + wxCtx, new OllamaClient.Callback()
+            client.generate( system, userPrompt + wxCtx, new com.group_finity.mascot.assistant.AIClient.Callback()
             {
                 @Override public void onResponse( final String raw )
                 {
@@ -2258,8 +2233,7 @@ public class Mascot
         final String audioPeerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
             .buildContext( getImageSet() );
 
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
+        final com.group_finity.mascot.assistant.AIClient audioClient = getAiClient();
         final String vModel = Main.getInstance().getProperties()
             .getProperty( "VisionModel", "moondream" );
 
@@ -2363,7 +2337,7 @@ public class Mascot
 
             // Summarization needs ~200-300 tokens: 5 facts + TONE + PEER_TONE lines.
             // The default 80-token cap cuts off the response before TONE: is reached.
-            final OllamaClient.Callback audioCb = new OllamaClient.Callback()
+            final com.group_finity.mascot.assistant.AIClient.Callback audioCb =new com.group_finity.mascot.assistant.AIClient.Callback()
             {
                 @Override public void onResponse( final String raw )
                 {
@@ -2401,9 +2375,9 @@ public class Mascot
             };
 
             if( hasScreen )
-                client.generateWithImage( system, prompt, capturedBase64, vModel, audioCb );
+                audioClient.generateWithImage( system, prompt, capturedBase64, vModel, audioCb );
             else
-                client.generate( system, prompt, audioCb );
+                audioClient.generate( system, prompt, audioCb );
         }, "audio-reaction" ).start();
     }
 
@@ -2442,8 +2416,7 @@ public class Mascot
 
         // All Swing calls must be on the EDT. fireSpontaneousComment runs on the
         // manager thread, so dispatch bubble creation and showThinking via invokeLater.
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
+        final com.group_finity.mascot.assistant.AIClient spontClient = getAiClient();
 
         javax.swing.SwingUtilities.invokeLater( ( ) ->
         {
@@ -2452,7 +2425,7 @@ public class Mascot
             if( b != null ) assistantBubble.showThinking( b );
         } );
 
-        client.generate( system, prompt, new OllamaClient.Callback( )
+        spontClient.generate( system, prompt, new com.group_finity.mascot.assistant.AIClient.Callback( )
         {
             @Override public void onResponse( final String raw )
             {
@@ -2504,8 +2477,7 @@ public class Mascot
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n---", visionSpeechRule );
 
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
+        final com.group_finity.mascot.assistant.AIClient visionClient = getAiClient();
         final String vModel = Main.getInstance().getProperties()
             .getProperty( "VisionModel", "moondream" );
 
@@ -2528,8 +2500,8 @@ public class Mascot
                     if( b != null ) assistantBubble.showThinking( b );
                 });
 
-                client.generateWithImage( system, prompt, base64, vModel,
-                    new OllamaClient.Callback()
+                visionClient.generateWithImage( system, prompt, base64, vModel,
+                    new com.group_finity.mascot.assistant.AIClient.Callback()
                     {
                         @Override public void onResponse( final String raw )
                         {
@@ -2919,7 +2891,7 @@ public class Mascot
                                 spontaneousRng.nextInt( range ) );
                 // Lazily init client so spontaneous comments work even if
                 // the user has never manually opened the input dialog.
-                if( ollamaClient == null ) ollamaClient = createOllamaClient();
+                getAiClient();
 
                 // GetWindowTextW sends WM_GETTEXT cross-process via SendMessage and can
                 // block if the foreground app is momentarily busy. Move off the tick thread
@@ -3255,8 +3227,7 @@ public class Mascot
         final String personalitySnip = personality.isEmpty() ? ""
             : personality.substring( 0, Math.min( 300, personality.length() ) );
 
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
+        final com.group_finity.mascot.assistant.AIClient memClient = getAiClient();
 
         new Thread( () ->
         {
@@ -3306,7 +3277,7 @@ public class Mascot
 
             // Summary needs 300 tokens: 5 facts + TONE + PEER_TONE lines.
             // Default 80-token cap cuts off before TONE: is reached.
-            client.generate( system, prompt, 300, new OllamaClient.Callback()
+            memClient.generate( system, prompt, 300, new com.group_finity.mascot.assistant.AIClient.Callback()
             {
                 @Override public void onResponse( final String text )
                 {
@@ -3400,8 +3371,9 @@ public class Mascot
     {
         for( final com.group_finity.mascot.assistant.AssistantBubble b : activeBubbles )
             b.applySettings();
-        // Reset client so next request uses the newly selected model
-        ollamaClient = null;
+        // Reset clients so next request uses the newly selected model/key
+        sharedAiClient = null;
+        localAiClient  = null;
     }
 
     /**
@@ -3523,7 +3495,7 @@ public class Mascot
      */
     private void handleScreenQuery( final String userText,
                                     final String system,
-                                    final OllamaClient client )
+                                    final com.group_finity.mascot.assistant.AIClient client )
     {
         final String visionModel = Main.getInstance().getProperties()
             .getProperty( "VisionModel", "moondream" );
@@ -3536,7 +3508,7 @@ public class Mascot
                 final String enrichedUserText = userText
                     + ( audioCtxVision.isEmpty() ? "" : "\n" + audioCtxVision );
                 client.generateWithImage( system, enrichedUserText, base64, visionModel,
-                    new OllamaClient.Callback()
+                    new com.group_finity.mascot.assistant.AIClient.Callback()
                     {
                         @Override
                         public void onResponse( final String raw )
@@ -3582,6 +3554,36 @@ public class Mascot
     {
         final String t = com.group_finity.mascot.assistant.AudioTranscriptBuffer.lastSysTranscript;
         return ( t != null && !t.isBlank() ) ? "[Audio context: " + t.trim() + "]" : "";
+    }
+
+    /**
+     * Returns the AI client for this mascot.
+     * Claude mascots get a per-instance ClaudeApiClient (requires AnthropicApiKey in settings).
+     * All others share a single OllamaClient instance.
+     */
+    private com.group_finity.mascot.assistant.AIClient getAiClient()
+    {
+        if( localAiClient != null )
+            return localAiClient;
+
+        if( "Claude".equalsIgnoreCase( getImageSet() ) )
+        {
+            final String key = Main.getInstance().getProperties()
+                .getProperty( "AnthropicApiKey", "" ).trim();
+            if( !key.isEmpty() )
+            {
+                final String model = Main.getInstance().getProperties()
+                    .getProperty( "ClaudeModel",
+                        com.group_finity.mascot.assistant.ClaudeApiClient.DEFAULT_MODEL );
+                localAiClient = new com.group_finity.mascot.assistant.ClaudeApiClient( key, model );
+                return localAiClient;
+            }
+            // No API key — fall through to shared Ollama client
+        }
+
+        if( sharedAiClient == null )
+            sharedAiClient = createOllamaClient();
+        return sharedAiClient;
     }
 
     /** Create OllamaClient using the model selected in Settings. */
