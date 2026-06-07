@@ -1963,6 +1963,8 @@ public class Mascot
             + "\n- Your emotional tone toward " + speakerName + " is: " + peerTone + "."
             + "\n- Stay fully in character. No greetings, no filler."
             + "\n- Speak your response directly — do not wrap it in quotation marks."
+            + "\n- Output ONLY your own words. Never prefix with another character's name or a dialogue tag (e.g. never write \"2B: ...\" or \"Holo says: ...\")."
+            + "\n- End with a complete sentence. Never trail off with an ellipsis or open fragment."
             + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
