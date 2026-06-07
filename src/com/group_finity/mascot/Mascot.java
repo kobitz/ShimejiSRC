@@ -2514,8 +2514,10 @@ public class Mascot
             try
             {
                 final String base64 = captureScreenBase64();
+                final String audioCtxVision = audioSnapshotContext();
                 final String prompt =
                     "You just glanced at the user's screen."
+                    + ( audioCtxVision.isEmpty() ? "" : " " + audioCtxVision + "." )
                     + " Make one brief, in-character observation about what you see."
                     + " Address the user directly as \"you\". One sentence only.";
 
