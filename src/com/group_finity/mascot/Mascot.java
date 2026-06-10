@@ -377,6 +377,9 @@ public class Mascot
         // Register as a peer listener so this mascot hears what other mascots say
         if( assistantMode ) registerPeerListener();
 
+        // Start the background drive indexer (idempotent across mascots)
+        if( assistantMode ) com.group_finity.mascot.assistant.DriveIndexTool.ensureStarted();
+
         // Always on top — global setting AND per-imageset override, both default true
         applyAlwaysOnTop( );
 
@@ -1203,7 +1206,7 @@ public class Mascot
                 public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
+                    final String display = applyPersonaRewrites( polishUtterance( stripActionTag( sanitizeResponse( raw ) ) ) );
                     com.group_finity.mascot.assistant.ChatLog.append( mascotName, display );
                     if( !isEphemeralQuery( userText ) )
                         com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
@@ -1323,7 +1326,7 @@ public class Mascot
                         public void onResponse( final String raw )
                         {
                             fireActionFromResponse( raw );
-                            final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
+                            final String display = applyPersonaRewrites( polishUtterance( stripActionTag( sanitizeResponse( raw ) ) ) );
                             com.group_finity.mascot.assistant.ChatLog.append( mascotName, display );
                             if( !isEphemeralQuery( userText ) )
                                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
@@ -1408,7 +1411,11 @@ public class Mascot
     private static String rewriteFirstPerson( String s, final String name )
     {
         // Contractions — must come before bare-I replacements
-        s = s.replaceAll( "\\b" + name + "'m\\b", name + " is" ); // model sometimes generates e.g. "Paimon'm"
+        // Model sometimes contracts onto the name directly: "Paimon'm", "Paimon'll", "Paimon've"
+        s = s.replaceAll( "\\b" + name + "'m\\b",  name + " is" );
+        s = s.replaceAll( "\\b" + name + "'ll\\b", name + " will" );
+        s = s.replaceAll( "\\b" + name + "'ve\\b", name + " has" );
+        s = s.replaceAll( "\\b" + name + "'d\\b",  name + " would" );
         s = s.replaceAll( "\\bI'm not\\b", name + " is not" );
         s = s.replaceAll( "\\bI'm\\b",     name + " is" );
         s = s.replaceAll( "\\bI've\\b",    name + " has" );
@@ -1453,6 +1460,14 @@ public class Mascot
         s = s.replaceAll( "\\bI suggest\\b",    name + " suggests" );
         s = s.replaceAll( "\\bI prefer\\b",     name + " prefers" );
         s = s.replaceAll( "\\bI wish\\b",       name + " wishes" );
+        s = s.replaceAll( "\\bI acknowledge\\b", name + " acknowledges" );
+        s = s.replaceAll( "\\bI agree\\b",      name + " agrees" );
+        s = s.replaceAll( "\\bI notice\\b",     name + " notices" );
+        s = s.replaceAll( "\\bI suppose\\b",    name + " supposes" );
+        s = s.replaceAll( "\\bI doubt\\b",      name + " doubts" );
+        s = s.replaceAll( "\\bI admit\\b",      name + " admits" );
+        s = s.replaceAll( "\\bI expect\\b",     name + " expects" );
+        s = s.replaceAll( "\\bI detect\\b",     name + " detects" );
         // catch-all I → name (may leave unconjugated verbs; acceptable)
         s = s.replaceAll( "\\bI\\b", name );
         // object / possessive pronouns
@@ -1795,10 +1810,16 @@ public class Mascot
         final String permBlock = userText != null
             ? memory.buildPermanentMemoryBlock( userText ) : "";
 
+        // Keyword-gated like permanentMemories: only injects when the user's words
+        // match indexed paths, so unrelated chats cost no extra prompt tokens.
+        final String driveBlock = userText != null
+            ? com.group_finity.mascot.assistant.DriveIndexTool.buildContextBlock( userText ) : "";
+
         final String speechRule = getSpeechRule( cfg );
         final String result = personalityBase
             + memory.buildMemoryBlock()
             + permBlock
+            + driveBlock
             + ( peerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + peerCtx )
             + envCtx
             + "\n\n---"
@@ -1869,7 +1890,7 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                    final String text = applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) );
                     com.group_finity.mascot.assistant.ChatLog.append( mascotName, text );
                     // Append mascot reply to thread for next chained reply
                     if( assistantBubble != null && message != null )
@@ -1941,24 +1962,25 @@ public class Mascot
             ? cfg.getInformation( "Name" ) : getImageSet();
         final String personality = getPersonality( cfg, mascotName );
 
-        final String peerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
-            .buildContext( getImageSet() );
-
         final com.group_finity.mascot.assistant.MascotMemory memory =
             com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() );
         final String peerTone = memory.getPeerTone( speakerName );
 
         // Peer reactions use a lightweight memory block (facts + tone only, no full
         // exchange history) to keep the system prompt short and reduce prefill cost.
+        // No peerCtx here: quoted peer lines act as style examples the 4B model
+        // imitates, dragging every character into the same register. The speaker's
+        // line (in the user prompt) is the only context a reply needs.
         final String peerSpeechRule = getSpeechRule( cfg );
         final String system = withSpeechReminder( personality
             + memory.buildLightMemoryBlock( speakerName )
-            + ( peerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + peerCtx )
             + "\n\n---"
             + "\nRULES (override everything else):"
             + ( peerSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + peerSpeechRule )
             + "\n- Reply in ONE sentence. 15 words maximum."
+            + QUICK_REACTION_STYLE_RULES
             + "\n- You are reacting to something another mascot just said to you."
+            + "\n- Reply in YOUR OWN voice. Do not borrow " + speakerName + "'s vocabulary, phrasing, or sentence shape — if they speak formally, you still answer the way YOU speak."
             + "\n- Address " + speakerName + " only as \"" + speakerName + "\" — no other names or nicknames for them."
             + "\n- Your emotional tone toward " + speakerName + " is: " + peerTone + "."
             + "\n- Stay fully in character. No greetings, no filler."
@@ -1990,8 +2012,8 @@ public class Mascot
             @Override public void onResponse( final String raw )
             {
                 fireActionFromResponse( raw );
-                final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
-                if( isTrivialAcknowledgement( text ) )
+                final String text = trimToFirstSentence( applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
+                if( isTrivialAcknowledgement( text ) || isIncompleteUtterance( text ) )
                 {
                     javax.swing.SwingUtilities.invokeLater( () ->
                     {
@@ -2202,7 +2224,7 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = applyPersonaRewrites( stripActionTag( raw ) );
+                    final String text = applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) );
                     com.group_finity.mascot.assistant.ChatLog.append( mascotName, text );
                     if( !isEphemeralQuery( memoryContext ) )
                         com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
@@ -2255,9 +2277,6 @@ public class Mascot
         final String personality = getPersonalityQuick( cfg, mascotName );
         final String audioSpeechRule = getSpeechRule( cfg );
 
-        final String audioPeerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
-            .buildContext( getImageSet() );
-
         if( ollamaClient == null ) ollamaClient = createOllamaClient();
         final OllamaClient client = ollamaClient;
         final String vModel = Main.getInstance().getProperties()
@@ -2296,17 +2315,19 @@ public class Mascot
             final boolean hasScreen = capturedBase64 != null;
 
             final String screenRule = hasScreen
-                ? "\n- You overheard this audio AND have a snapshot of the user's screen."
-                  + "\n- React to the combination — let what you heard and what you see inform each other."
+                ? "\n- You overheard this audio; a screen snapshot is attached ONLY so you understand what the audio belongs to."
+                  + "\n- React to the single most interesting detail. Do NOT describe the screen and the audio together in one sentence."
                 : "\n- This is an unprompted reaction to overheard audio only. You cannot see the screen."
                   + "\n- React only to what was said.";
 
+            // No peerCtx: quoted peer lines leak into user-directed reactions as
+            // non-sequitur mentions and style contamination.
             final String system = withSpeechReminder( personality
-                + ( audioPeerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + audioPeerCtx )
                 + "\n\n---"
                 + "\nRULES (override everything else):"
                 + ( audioSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + audioSpeechRule )
                 + "\n- Reply in ONE sentence. 15 words maximum."
+                + QUICK_REACTION_STYLE_RULES
                 + screenRule
                 + "\n- Be brief, natural, in-character. No greetings, no filler."
                 + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
@@ -2368,7 +2389,15 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
+                    final String text = trimToFirstSentence( applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
+                    if( isIncompleteUtterance( text ) )
+                    {
+                        javax.swing.SwingUtilities.invokeLater( () ->
+                        {
+                            if( assistantBubble != null ) assistantBubble.dismiss();
+                        });
+                        return;
+                    }
                     final String audioSource = source != null ? source : "audio";
                     com.group_finity.mascot.assistant.ChatLog.append( audioSource,
                         "\"" + transcript.substring( 0, Math.min( 300, transcript.length() ) ) + "\"" );
@@ -2377,11 +2406,12 @@ public class Mascot
                     final String userNote = userSpeech != null
                         ? " [User: " + userSpeech.substring( 0, Math.min( 120, userSpeech.length() ) ) + "]"
                         : "";
+                    // Store only the observation — feeding the mascot's own reaction back
+                    // into memory entrenches whatever phrasing template it used.
                     com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                         .addFact( "[Observed] Heard" + sourcePrefix + ": "
                             + transcript.substring( 0, Math.min( 150, transcript.length() ) )
-                            + userNote
-                            + " | Reaction: " + text );
+                            + userNote );
                     com.group_finity.mascot.assistant.MascotSpeechRegistry
                         .record( getImageSet(), mascotName, text, 0 );
                     javax.swing.SwingUtilities.invokeLater( () ->
@@ -2416,15 +2446,15 @@ public class Mascot
         final String personality = getPersonality( cfg, mascotName );
 
         final String spontSpeechRule = getSpeechRule( cfg );
-        final String peerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
-            .buildContext( getImageSet() );
 
+        // No peerCtx: this comment is addressed to the user; quoted peer lines
+        // leak in as non-sequitur mentions ("...while 2B mentions Unreal Engine").
         final String system = withSpeechReminder( getPersonalityQuick( cfg, mascotName )
-            + ( peerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + peerCtx )
             + "\n\n---"
             + "\nRULES (override everything else):"
             + ( spontSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + spontSpeechRule )
             + "\n- Reply in ONE sentence. 15 words maximum."
+            + QUICK_REACTION_STYLE_RULES
             + "\n- This is an unprompted observation. Be brief and natural."
             + "\n- No greetings, no questions, no filler."
             + "\n- Do not reuse or echo words directly from the window title."
@@ -2457,10 +2487,18 @@ public class Mascot
             @Override public void onResponse( final String raw )
             {
                 fireActionFromResponse( raw );
-                final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
+                final String text = trimToFirstSentence( applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
+                if( isIncompleteUtterance( text ) )
+                {
+                    javax.swing.SwingUtilities.invokeLater( ( ) ->
+                    {
+                        if( assistantBubble != null ) assistantBubble.dismiss( );
+                    } );
+                    return;
+                }
                 com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + windowTitle + ")", text );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
-                    .addFact( "[Observed] Window: " + windowTitle + " | Reaction: " + text );
+                    .addFact( "[Observed] Window: " + windowTitle );
                 com.group_finity.mascot.assistant.MascotSpeechRegistry
                     .record( getImageSet(), mascotName, text, 0 );
                 final String wCtx = "[Active window] " + windowTitle;
@@ -2489,15 +2527,13 @@ public class Mascot
         final String personality = getPersonalityQuick( cfg, mascotName );
         final String visionSpeechRule = getSpeechRule( cfg );
 
-        final String peerCtx = com.group_finity.mascot.assistant.MascotSpeechRegistry
-            .buildContext( getImageSet() );
-
+        // No peerCtx: screen-glance comments address the user; peer quotes bleed in.
         final String system = withSpeechReminder( personality
-            + ( peerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + peerCtx )
             + "\n\n---"
             + "\nRULES (override everything else):"
             + ( visionSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + visionSpeechRule )
             + "\n- Reply in ONE sentence. 15 words maximum."
+            + QUICK_REACTION_STYLE_RULES
             + "\n- This is an unprompted glance at the user's screen. Be brief, natural, in-character."
             + "\n- No greetings, no questions, no filler."
             + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
@@ -2534,10 +2570,18 @@ public class Mascot
                         @Override public void onResponse( final String raw )
                         {
                             fireActionFromResponse( raw );
-                            final String text = trimToFirstSentence( applyPersonaRewrites( stripActionTag( raw ) ) );
+                            final String text = trimToFirstSentence( applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
+                            if( isIncompleteUtterance( text ) )
+                            {
+                                javax.swing.SwingUtilities.invokeLater( () ->
+                                {
+                                    if( assistantBubble != null ) assistantBubble.dismiss();
+                                });
+                                return;
+                            }
                             com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(screen glance)", text );
-                            com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
-                                .addFact( "[Observed] Screen glance | Reaction: " + text );
+                            // No fact stored: "Screen glance" alone carries no information, and
+                            // storing the reaction text self-reinforces phrasing templates.
                             com.group_finity.mascot.assistant.MascotSpeechRegistry
                                 .record( getImageSet(), mascotName, text, 0 );
                             javax.swing.SwingUtilities.invokeLater( () ->
@@ -2594,6 +2638,22 @@ public class Mascot
         final String r = cfg.getInformation( "SpeechRule" );
         return ( r != null && !r.isBlank() ) ? r.trim() : "";
     }
+
+    /**
+     * Style rules shared by all unprompted reactions (peer, spontaneous, audio, vision).
+     * Targets the failure modes every mascot converged on: grading the quality of
+     * statements instead of reacting to their content, and hedging with appears/seems.
+     */
+    private static final String QUICK_REACTION_STYLE_RULES =
+          "\n- REACT — do not report. Never merely describe what is on screen or what was said; the user already knows. Your sentence must carry YOUR take: an opinion, feeling, judgment, quip, or pointed question about ONE specific thing."
+        + "\nWRONG: \"You are viewing a Nintendo Direct featuring Kingdom Hearts right now.\" (a caption, not a reaction)"
+        + "\nWRONG: \"They mention Unreal Engine while the screen shows a Treehouse broadcast.\" (stitches context pieces together)"
+        + "\nWRONG: \"Your focus appears misaligned with operational parameters.\" (grades the speaker instead of reacting)"
+        + "\nRIGHT: pick the single most interesting detail and say what YOU think or feel about it, in your own voice."
+        + "\n- Never join two facts with \"while\" or \"as\". One thing, one opinion."
+        + "\n- NEVER comment on the quality of anyone's statement or attention (\"your assessment/analysis/focus [is/lacks/appears]...\")."
+        + "\n- State things directly. Do not hedge with \"appears\", \"seems\", \"perhaps\", or \"remarkably\"."
+        + "\n- Memory entries and quoted mascot lines are background only — never mention them unless directly relevant to the thing you are reacting to, and never imitate their style.";
 
     /** Appends a speech rule reminder after the closing --- for recency reinforcement. */
     private static String withSpeechReminder( final String system, final String speechRule )
@@ -2654,6 +2714,51 @@ public class Mascot
             || norm.equals( "copy that" )
             || norm.equals( "roger" )
             || norm.equals( "indeed" );
+    }
+
+    /**
+     * Deterministic cleanup of model output: strips a leading "Name:" dialogue tag,
+     * wrapping quotation marks (straight or curly), and whitespace before punctuation.
+     * Prompt rules ask for all three but the 4B model still violates them regularly.
+     */
+    private static String polishUtterance( String s )
+    {
+        if( s == null ) return s;
+        s = s.trim();
+        // Leading fiction-style dialogue tag, e.g. "2B: \"Your efforts...\"" or "Holo says: ..."
+        s = s.replaceFirst( "^[A-Z0-9][\\w'-]{0,15}(?: [A-Z][\\w'-]{0,15})?(?: says)?:\\s+", "" );
+        if( s.length() > 2 )
+        {
+            final char first = s.charAt( 0 );
+            final char last  = s.charAt( s.length() - 1 );
+            final boolean openQ  = first == '"' || first == '“';
+            final boolean closeQ = last  == '"' || last  == '”';
+            if( openQ && closeQ )
+                s = s.substring( 1, s.length() - 1 ).trim();
+            else if( openQ && s.indexOf( '"', 1 ) < 0 && s.indexOf( '”', 1 ) < 0 )
+                s = s.substring( 1 ).trim(); // unbalanced opening quote
+        }
+        // "fascinating indeed !" -> "fascinating indeed!"
+        s = s.replaceAll( "\\s+([.,!?;:])", "$1" );
+        return s;
+    }
+
+    /**
+     * True if the utterance trails off - ends in an ellipsis or a dangling copula
+     * ("Your confidence seems...", "Your analysis of system resources is."). Used to
+     * silently drop unprompted reactions the model failed to finish.
+     */
+    private static boolean isIncompleteUtterance( final String text )
+    {
+        if( text == null || text.trim().isEmpty() ) return true;
+        final String t = text.trim();
+        if( t.endsWith( "..." ) || t.endsWith( "…" ) ) return true;
+        final String noPunct = t.replaceAll( "[.!?,…\"”\\s]+$", "" ).toLowerCase();
+        return noPunct.endsWith( " is" )      || noPunct.endsWith( " are" )
+            || noPunct.endsWith( " was" )     || noPunct.endsWith( " were" )
+            || noPunct.endsWith( " seems" )   || noPunct.endsWith( " appears" )
+            || noPunct.endsWith( " and" )     || noPunct.endsWith( " but" )
+            || noPunct.endsWith( " the" )     || noPunct.endsWith( " a" );
     }
 
     void tick( )
@@ -3541,7 +3646,7 @@ public class Mascot
                         @Override
                         public void onResponse( final String raw )
                         {
-                            final String display = applyPersonaRewrites( stripActionTag( sanitizeResponse( raw ) ) );
+                            final String display = applyPersonaRewrites( polishUtterance( stripActionTag( sanitizeResponse( raw ) ) ) );
                             com.group_finity.mascot.assistant.ChatLog.append( getImageSet() + "(screen glance)", display );
                             SwingUtilities.invokeLater( () ->
                             {

@@ -146,12 +146,22 @@ public class MascotMemory
      */
     public synchronized String buildLightMemoryBlock( final String peerName )
     {
-        if( facts.isEmpty() ) return "";
+        // Peer replies exclude [Observed] media facts: they bleed stale topics into
+        // unrelated conversations (a transcript mentioning a game resurfaces minutes
+        // later in a reply to a different mascot about something else).
+        final List<String> relevant = new ArrayList<>();
+        for( final String fact : facts )
+            if( peerName == null || !fact.startsWith( "[Observed]" ) )
+                relevant.add( fact );
+        if( relevant.isEmpty() && peerName == null ) return "";
         final StringBuilder sb = new StringBuilder();
         sb.append( "\n\n--- MEMORY ---" );
-        sb.append( "\nWhat you know about this user:" );
-        for( final String fact : facts )
-            sb.append( "\n- " ).append( fact );
+        if( !relevant.isEmpty() )
+        {
+            sb.append( "\nWhat you know about this user:" );
+            for( final String fact : relevant )
+                sb.append( "\n- " ).append( fact );
+        }
         if( peerName != null )
         {
             final String tone = peerTones.getOrDefault( peerName, emotionalTone );

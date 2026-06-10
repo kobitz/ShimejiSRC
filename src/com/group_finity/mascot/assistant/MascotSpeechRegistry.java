@@ -21,9 +21,12 @@ public class MascotSpeechRegistry
     private static final Logger log = Logger.getLogger( MascotSpeechRegistry.class.getName() );
 
     private static final long   STALE_MS         = 120_000L; // 2 min before entry expires
-    private static final int    MAX_CHAIN_DEPTH   = 4;        // max peer-reaction hops
+    // Capped at 2 hops: original -> reaction -> counter-reaction, then stop. Longer
+    // chains turn into content-free meta-commentary spirals (mascots grading each
+    // other's previous line instead of reacting to anything real).
+    private static final int    MAX_CHAIN_DEPTH   = 2;        // max peer-reaction hops
     private static final long   PAIR_COOLDOWN_MS  = 10_000L;  // min gap between same pair
-    private static final double[] REACTION_PROB   = { 0.35, 0.25, 0.15, 0.05 }; // per chain depth
+    private static final double[] REACTION_PROB   = { 0.35, 0.2 }; // per chain depth
 
     // ── State ─────────────────────────────────────────────────────────────────
 
