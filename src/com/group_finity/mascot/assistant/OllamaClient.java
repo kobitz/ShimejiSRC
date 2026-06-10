@@ -41,8 +41,10 @@ public class OllamaClient
     /** Hard cap on generated tokens - physically prevents runaway responses. */
     private static final int MAX_TOKENS = 100;
 
-    /** Keep text model warm for 2 min (covers the 45-90s spontaneous reaction interval). */
-    private static final int TEXT_KEEP_ALIVE_SEC   = 10;
+    /** Text model linger after a call. 120s covers the 45-90s reaction cadence, so
+     *  the model stays warm between reactions (each call re-arms the timer). Cost:
+     *  the model's memory (VRAM + any CPU-overflow RAM share) is held while warm. */
+    private static final int TEXT_KEEP_ALIVE_SEC   = 20;
     /** Unload vision model immediately — it's called rarely and is large. */
     private static final int VISION_KEEP_ALIVE_SEC = 0;
 
@@ -263,7 +265,12 @@ public class OllamaClient
     {
         final int    numGpu        = computeNumGpuLayers();
         final String effectiveModel = modelOverride != null ? modelOverride : model;
-        final int    keepAlive     = imageBase64 != null ? VISION_KEEP_ALIVE_SEC : TEXT_KEEP_ALIVE_SEC;
+        // Vision requests normally unload immediately (rare + large), but when the
+        // vision model IS the text model (shared multimodal setup), keep_alive:0
+        // would evict the model the text path is paying TEXT_KEEP_ALIVE_SEC to
+        // keep warm — so shared models always use the text linger.
+        final boolean isVision     = imageBase64 != null && !effectiveModel.equals( model );
+        final int    keepAlive     = isVision ? VISION_KEEP_ALIVE_SEC : TEXT_KEEP_ALIVE_SEC;
         final String body          = buildJson( system, user, numGpu, maxTokens,
                                                imageBase64, effectiveModel, keepAlive );
         final byte[] bodyBytes = body.getBytes( StandardCharsets.UTF_8 );
@@ -317,7 +324,9 @@ public class OllamaClient
         sb.append( "\"prompt\":" ).append( jsonStr( user ) ).append( ',' );
         sb.append( "\"stream\":false," );
         sb.append( "\"think\":false," );
-        sb.append( "\"keep_alive\":" ).append( keepAliveSeconds ).append( ',' );
+        // Duration string ("10s"), NOT a bare number: Go's time.Duration parses bare
+        // JSON numbers as NANOSECONDS, so keep_alive:10 meant 10ns = unload instantly.
+        sb.append( "\"keep_alive\":\"" ).append( keepAliveSeconds ).append( "s\"," );
         sb.append( "\"options\":{\"num_predict\":" ).append( maxTokens )
           .append( ",\"num_gpu\":" ).append( numGpu )
           .append( ",\"repeat_penalty\":1.15}}" );
@@ -326,22 +335,23 @@ public class OllamaClient
 
     /**
      * Returns how many transformer layers to offload to GPU for this request.
-     * Formula: min(0.20, available_fraction * 0.20) * total_layers.
-     * Falls back to 0 (full CPU) if nvidia-smi is unavailable.
+     * -1 lets Ollama auto-fit as many layers as free VRAM holds (measured June 2026:
+     * gemma3:4b lands 100% GPU at 82 tok/s; the old 0.20 layer cap forced ~80% of
+     * every model into system RAM and cut generation to ~15 tok/s). When the GPU is
+     * busy (gaming, heavy compute), layers scale down by the available fraction.
      */
     private int computeNumGpuLayers()
     {
+        final double availFraction = queryGpuAvailableFraction();
+        if( availFraction >= 0.5 ) return -1; // GPU mostly idle: let Ollama auto-fit
         if( cachedLayerCount < 0 )
         {
             cachedLayerCount = fetchModelLayers();
             log.log( Level.INFO, "Ollama model layer count: {0}", cachedLayerCount );
         }
-        final double availFraction = queryGpuAvailableFraction();
-        // min(0.20, availFraction * 0.20) = availFraction * 0.20 (since availFraction <= 1.0)
-        final double allowedFraction = availFraction * 0.20;
-        final int layers = Math.max( 1, (int)( cachedLayerCount * allowedFraction ) );
-        log.log( Level.FINE, "GPU avail={0,number,#.##} allowed={1,number,#.##} num_gpu={2}",
-                 new Object[]{ availFraction, allowedFraction, layers } );
+        final int layers = Math.max( 1, (int)( cachedLayerCount * availFraction ) );
+        log.log( Level.FINE, "GPU avail={0,number,#.##} num_gpu={1}",
+                 new Object[]{ availFraction, layers } );
         return layers;
     }
 
