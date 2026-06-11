@@ -2693,7 +2693,7 @@ public class Mascot
         + "\nRIGHT: pick the single most interesting detail and say what YOU think or feel about it, in your own voice."
         + "\n- Never join two facts with \"while\" or \"as\". One thing, one opinion."
         + "\n- NEVER comment on the quality of anyone's statement or attention (\"your assessment/analysis/focus [is/lacks/appears]...\")."
-        + "\n- State things directly. Do not hedge with \"appears\", \"seems\", \"perhaps\", or \"remarkably\"."
+        + "\n- State things directly. Do not hedge with \"appears\", \"seems\", \"suggests\", \"indicates\", \"implies\", \"perhaps\", or \"remarkably\" — say what something IS, not what it hints at."
         + "\n- Memory entries and quoted mascot lines are background only — never mention them unless directly relevant to the thing you are reacting to, and never imitate their style.";
 
     /** Appends a speech rule reminder after the closing --- for recency reinforcement. */
@@ -3413,6 +3413,9 @@ public class Mascot
                 + "Given a memory block and conversation history, extract EXACTLY 5 concise "
                 + "factual observations about the user. No more than 5. One per line, no bullet points, "
                 + "no numbering. Keep each fact under 12 words. "
+                + "Facts must come from the user's OWN words and actions only. Never attribute "
+                + "opinions or statements from podcasts, videos, or other media transcripts to the "
+                + "user — something merely playing on their screen or speakers is NOT a fact about them. "
                 + "Also output a 2-4 word adjective phrase describing the emotional tone of the relationship "
                 + "toward the human user. The tone must be an adjective phrase, for example: "
                 + "\"cautiously warm\", \"coldly respectful\", \"openly hostile\", \"warmly amused\", "
@@ -3469,7 +3472,11 @@ public class Mascot
                         final String line = rawLine.trim();
                         if( line.isEmpty() ) continue;
 
-                        if( line.equalsIgnoreCase( "FACTS:" ) || line.startsWith( "FACTS:" ) )
+                        // All prefix checks are case-insensitive — the model emits
+                        // "Tone:" / "Facts:" in mixed case often enough that the old
+                        // case-sensitive checks let "Tone: X" fall through into the
+                        // facts branch and get stored as a fact.
+                        if( line.regionMatches( true, 0, "FACTS:", 0, 6 ) )
                         {
                             inFacts = true;
                             // Handle facts on the same line as "FACTS:" keyword
@@ -3478,7 +3485,8 @@ public class Mascot
                             continue;
                         }
                         // TONE: must be an exact prefix, not inside PEER_TONE:
-                        if( !line.startsWith( "PEER_TONE:" ) && line.startsWith( "TONE:" ) )
+                        if( !line.regionMatches( true, 0, "PEER_TONE:", 0, 10 )
+                                && line.regionMatches( true, 0, "TONE:", 0, 5 ) )
                         {
                             inFacts = false;
                             foundTone = true;
@@ -3489,7 +3497,7 @@ public class Mascot
                                 log.warning( "[Memory] Rejected invalid user tone: \"" + tone + "\"" );
                             continue;
                         }
-                        if( line.startsWith( "PEER_TONE:" ) )
+                        if( line.regionMatches( true, 0, "PEER_TONE:", 0, 10 ) )
                         {
                             inFacts = false;
                             final String payload = line.substring( 10 ).trim();
@@ -3527,6 +3535,9 @@ public class Mascot
                         if( inFacts )
                         {
                             final String fact = line.replaceFirst( "^[-*\\d.]+\\s*", "" ).trim();
+                            // Safety net: never store tone lines as facts even if the
+                            // model wraps them in bullets or other prefixes.
+                            if( fact.matches( "(?i)^(peer_)?tone\\s*:.*" ) ) continue;
                             if( !fact.isEmpty() ) memory.addFact( fact );
                         }
                     }
