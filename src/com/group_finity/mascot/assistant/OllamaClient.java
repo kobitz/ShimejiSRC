@@ -255,6 +255,7 @@ public class OllamaClient
                                  final int maxTokens ) throws IOException
     {
         final int    numGpu        = computeNumGpuLayers();
+        final int    numThread     = computeNumThreads();
         final String effectiveModel = modelOverride != null ? modelOverride : model;
         // Vision requests normally unload immediately (rare + large), but when the
         // vision model IS the text model (shared multimodal setup), keep_alive:0
@@ -262,7 +263,7 @@ public class OllamaClient
         // keep warm — so shared models always use the text linger.
         final boolean isVision     = imageBase64 != null && !effectiveModel.equals( model );
         final int    keepAlive     = isVision ? VISION_KEEP_ALIVE_SEC : TEXT_KEEP_ALIVE_SEC;
-        final String body          = buildJson( system, user, numGpu, maxTokens,
+        final String body          = buildJson( system, user, numGpu, numThread, maxTokens,
                                                imageBase64, effectiveModel, keepAlive );
         final byte[] bodyBytes = body.getBytes( StandardCharsets.UTF_8 );
 
@@ -315,7 +316,7 @@ public class OllamaClient
      * modelName: the model to use (may differ from this.model for vision requests).
      */
     private String buildJson( final String system, final String user,
-                               final int numGpu, final int maxTokens,
+                               final int numGpu, final int numThread, final int maxTokens,
                                final String imageBase64, final String modelName,
                                final int keepAliveSeconds )
     {
@@ -331,31 +332,95 @@ public class OllamaClient
         // JSON numbers as NANOSECONDS, so keep_alive:10 meant 10ns = unload instantly.
         sb.append( "\"keep_alive\":\"" ).append( keepAliveSeconds ).append( "s\"," );
         sb.append( "\"options\":{\"num_predict\":" ).append( maxTokens )
-          .append( ",\"num_gpu\":" ).append( numGpu )
-          .append( ",\"repeat_penalty\":1.15}}" );
+          .append( ",\"num_gpu\":" ).append( numGpu );
+        // <= 0: omit and let Ollama use its default (physical core count).
+        if( numThread > 0 )
+            sb.append( ",\"num_thread\":" ).append( numThread );
+        sb.append( ",\"repeat_penalty\":1.15}}" );
         return sb.toString();
     }
 
     /**
-     * Returns how many transformer layers to offload to GPU for this request.
-     * -1 lets Ollama auto-fit as many layers as free VRAM holds (measured June 2026:
-     * gemma3:4b lands 100% GPU at 82 tok/s; the old 0.20 layer cap forced ~80% of
-     * every model into system RAM and cut generation to ~15 tok/s). When the GPU is
-     * busy (gaming, heavy compute), layers scale down by the available fraction.
+     * Fraction of the machine's *available* CPU and GPU the model is allowed to use.
+     * Read from settings "OllamaResourceCap" (clamped 0.1-1.0, default 0.5).
+     * 1.0 disables capping entirely (legacy behavior: GPU auto-fit when mostly idle,
+     * Ollama's own thread default). "Available" is measured at dispatch time — the
+     * request queue is serial, so the model is idle when measured and its own usage
+     * never counts against itself.
+     */
+    private double resourceCap()
+    {
+        try
+        {
+            final String v = com.group_finity.mascot.Main.getInstance()
+                .getProperties().getProperty( "OllamaResourceCap", "0.5" );
+            final double d = Double.parseDouble( v.trim() );
+            return Math.max( 0.1, Math.min( 1.0, d ) );
+        }
+        catch( final Exception e )
+        {
+            return 0.5;
+        }
+    }
+
+    /**
+     * Rounds an availability fraction to quarter steps (floor 0.25). num_gpu and
+     * num_thread are model-LOAD options in Ollama — a value that wobbles with every
+     * load sample would force a full model reload on each request. Quarter buckets
+     * keep the options identical across small load fluctuations.
+     */
+    private static double bucketQuarter( final double f )
+    {
+        final double b = Math.round( f * 4.0 ) / 4.0;
+        return Math.max( 0.25, Math.min( 1.0, b ) );
+    }
+
+    /**
+     * Returns how many transformer layers to offload to GPU for this request:
+     * layerCount x available-GPU-fraction x resource cap. With the default 0.5 cap
+     * the model only ever claims half of whatever GPU compute/VRAM is currently
+     * free — the rest of the layers run on the (separately capped) CPU.
+     * With cap=1.0 the legacy behavior applies: -1 lets Ollama auto-fit when the
+     * GPU is mostly idle (measured June 2026: gemma3:4b lands 100% GPU at 82 tok/s;
+     * the old unconditional 0.20 layer cap cut generation to ~15 tok/s).
      */
     private int computeNumGpuLayers()
     {
-        final double availFraction = queryGpuAvailableFraction();
-        if( availFraction >= 0.5 ) return -1; // GPU mostly idle: let Ollama auto-fit
+        final double cap           = resourceCap();
+        final double availFraction = bucketQuarter( queryGpuAvailableFraction() );
+        if( cap >= 0.99 && availFraction >= 0.5 ) return -1; // uncapped + mostly idle
         if( cachedLayerCount < 0 )
         {
             cachedLayerCount = fetchModelLayers();
             log.log( Level.INFO, "Ollama model layer count: {0}", cachedLayerCount );
         }
-        final int layers = Math.max( 1, (int)( cachedLayerCount * availFraction ) );
-        log.log( Level.FINE, "GPU avail={0,number,#.##} num_gpu={1}",
-                 new Object[]{ availFraction, layers } );
+        final int layers = Math.max( 1, (int) Math.round( cachedLayerCount * availFraction * cap ) );
+        log.log( Level.FINE, "GPU avail={0,number,#.##} cap={1,number,#.##} num_gpu={2}",
+                 new Object[]{ availFraction, cap, layers } );
         return layers;
+    }
+
+    /**
+     * Threads for the CPU side of inference: logical cores x idle-CPU-fraction x
+     * resource cap, quarter-bucketed for option stability. On a 16-thread CPU at
+     * the default 0.5 cap this is 8 threads when idle, 4 at 50% system load.
+     * Returns 0 (= omit the option) when uncapped, so Ollama keeps its own
+     * physical-core default.
+     */
+    private int computeNumThreads()
+    {
+        final double cap = resourceCap();
+        if( cap >= 0.99 ) return 0;
+        double idle = 1.0;
+        try
+        {
+            final double load = com.group_finity.mascot.environment.CpuTempMonitor
+                .getInstance().getCpuLoad();
+            if( load >= 0 ) idle = ( 100.0 - load ) / 100.0;
+        }
+        catch( final Exception ignored ) {}
+        final int cores = Runtime.getRuntime().availableProcessors();
+        return Math.max( 1, (int) Math.round( cores * bucketQuarter( idle ) * cap ) );
     }
 
     /**

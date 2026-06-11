@@ -70,6 +70,13 @@ public class VoiceCommandListener
     /** name (lowercase) -> trigger (receives the full mic transcript that fired it) */
     private final Map<String, java.util.function.Consumer<String>> callbacks = new ConcurrentHashMap<>();
 
+    /** name (lowercase) -> overheard-speech reaction (receives the echo-stripped mic
+     *  transcript). Fired when the user is heard talking but no mascot name matched —
+     *  e.g. speaking on a voice call or reacting aloud to media. One random listener
+     *  is picked per utterance; the mascot side applies its own cooldown. */
+    private final Map<String, java.util.function.Consumer<String>> speechListeners = new ConcurrentHashMap<>();
+    private final Random speechPickRng = new Random();
+
     /** Debounce: ignore commands within COOLDOWN_MS of the last one per name */
     private final Map<String, Long> lastCommandTime = new ConcurrentHashMap<>();
     private static final long COOLDOWN_MS = 4_000;
@@ -149,6 +156,19 @@ public class VoiceCommandListener
         callbacks.remove( mascotName.toLowerCase() );
         log.info( "[Voice] Unregistered: " + mascotName );
         if( callbacks.isEmpty() ) stop();
+    }
+
+    /** Register an overheard-speech reaction for a mascot. Capture lifecycle is
+     *  driven by the name-trigger callbacks, not this map. */
+    public void registerSpeechListener( final String mascotName,
+                                        final java.util.function.Consumer<String> callback )
+    {
+        speechListeners.put( mascotName.toLowerCase(), callback );
+    }
+
+    public void unregisterSpeechListener( final String mascotName )
+    {
+        speechListeners.remove( mascotName.toLowerCase() );
     }
 
     public boolean isRunning() { return running.get(); }
@@ -400,7 +420,7 @@ public class VoiceCommandListener
                 + snapMax + "/" + snapMin + ") — sending to Whisper." );
         }
 
-        log.warning( "[Voice] Endpoint flush: " + segment.length + " bytes, ambient="
+        log.fine( "[Voice] Endpoint flush: " + segment.length + " bytes, ambient="
             + (int)ambientRms + " threshold=" + Math.max( MIN_THRESHOLD, (int)( ambientRms * SPEECH_MULT ) ) );
 
         final ScheduledExecutorService exec = pollExecutor;
@@ -419,7 +439,7 @@ public class VoiceCommandListener
         final String transcript = transcribe( segment );
         if( transcript == null || transcript.isBlank() ) return;
 
-        log.warning( "[Voice] Endpoint heard: " + transcript );
+        log.fine( "[Voice] Endpoint heard: " + transcript );
 
         final String sysHint  = AudioTranscriptBuffer.lastSysTranscript;
         final String stripped = ( sysHint != null )
@@ -427,7 +447,14 @@ public class VoiceCommandListener
         final String toCheck  = ( stripped != null && !stripped.isBlank() )
             ? stripped : transcript;
 
-        checkForCommands( toCheck, sysHint );
+        final boolean nameSeen = checkForCommands( toCheck, sysHint );
+        // No name anywhere in the utterance: this is the user talking to something
+        // or someone else. Offer it as an overheard-speech reaction. Only the
+        // echo-stripped text qualifies — if stripping blanked it, the mic heard
+        // nothing but speaker bleed.
+        final String cleanMic = ( sysHint != null ) ? stripped : transcript;
+        if( !nameSeen && cleanMic != null && !cleanMic.isBlank() )
+            fireSpeechReaction( cleanMic );
     }
 
     private static int rms16( final byte[] pcm, final int len )
@@ -482,7 +509,7 @@ public class VoiceCommandListener
         final byte[] snapshot = snapshot();
         if( snapshot == null || snapshot.length < SAMPLE_RATE * 2 )
         {
-            log.warning( "[Voice] Buffer too short to transcribe: "
+            log.fine( "[Voice] Buffer too short to transcribe: "
                 + ( snapshot == null ? "null" : snapshot.length + " bytes" ) );
             return;
         }
@@ -492,7 +519,7 @@ public class VoiceCommandListener
         if( transcript.equals( lastTranscript ) ) return;
         lastTranscript = transcript;
 
-        log.warning( "[Voice] Heard: " + transcript );
+        log.fine( "[Voice] Heard: " + transcript );
 
         // Strip system audio words from mic transcript before name checking.
         // Prevents video/speaker bleed from drowning out or polluting the name trigger.
@@ -505,19 +532,29 @@ public class VoiceCommandListener
         final String toCheck  = ( stripped != null && !stripped.isBlank() )
             ? stripped : transcript;
 
-        log.warning( "[Voice] After strip: " + toCheck );
-        checkForCommands( toCheck, sysHint );
+        log.fine( "[Voice] After strip: " + toCheck );
+        final boolean nameSeen = checkForCommands( toCheck, sysHint );
+        if( !nameSeen && stripped != null && !stripped.isBlank() )
+            fireSpeechReaction( stripped );
     }
 
-    private void checkForCommands( final String transcript, final String sysHint )
+    /**
+     * Scans the transcript for registered mascot names and fires the first
+     * eligible trigger. Returns true if ANY registered name appeared in the
+     * transcript — even when suppressed by echo or cooldown — so callers don't
+     * route name-trigger territory to the overheard-speech reaction.
+     */
+    private boolean checkForCommands( final String transcript, final String sysHint )
     {
         final String lower    = transcript.toLowerCase();
         final String sysLower = ( sysHint != null ) ? sysHint.toLowerCase() : "";
+        boolean nameSeen = false;
 
         for( final Map.Entry<String, java.util.function.Consumer<String>> entry : callbacks.entrySet() )
         {
             final String name = entry.getKey(); // already lowercase
             if( !lower.contains( name ) ) continue;
+            nameSeen = true;
 
             // Name also appears in system audio — almost certainly echo, not a user call.
             if( !sysLower.isEmpty() && sysLower.contains( name ) ) continue;
@@ -532,6 +569,29 @@ public class VoiceCommandListener
             entry.getValue().accept( transcript );
             // Only dispatch to the first matching name per transcript
             break;
+        }
+        return nameSeen;
+    }
+
+    /**
+     * Picks one random registered speech listener and hands it the overheard
+     * mic transcript. Runs on the voice-poll thread — the mascot side gates
+     * with its own global cooldown and does the heavy work off-thread.
+     */
+    private void fireSpeechReaction( final String micText )
+    {
+        if( speechListeners.isEmpty() ) return;
+        final java.util.List<java.util.function.Consumer<String>> listeners =
+            new ArrayList<>( speechListeners.values() );
+        final java.util.function.Consumer<String> pick =
+            listeners.get( speechPickRng.nextInt( listeners.size() ) );
+        try
+        {
+            pick.accept( micText );
+        }
+        catch( final Exception e )
+        {
+            log.log( Level.WARNING, "[Voice] Overheard-speech reaction failed", e );
         }
     }
 

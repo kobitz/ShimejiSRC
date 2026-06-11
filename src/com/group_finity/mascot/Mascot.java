@@ -251,11 +251,14 @@ public class Mascot
     private static final long GLOBAL_SPONTANEOUS_COOLDOWN_MS = 120_000L; // 2 min
     private static final long GLOBAL_AUDIO_COOLDOWN_MS       =  90_000L; // 90 s
     private static final long GLOBAL_VISION_COOLDOWN_MS      = 180_000L; // 3 min
+    private static final long GLOBAL_USER_SPEECH_COOLDOWN_MS = 120_000L; // 2 min
     private static final java.util.concurrent.atomic.AtomicLong globalSpontaneousLastFiredMs =
         new java.util.concurrent.atomic.AtomicLong( 0L );
     private static final java.util.concurrent.atomic.AtomicLong globalAudioLastFiredMs =
         new java.util.concurrent.atomic.AtomicLong( 0L );
     private static final java.util.concurrent.atomic.AtomicLong globalVisionLastFiredMs =
+        new java.util.concurrent.atomic.AtomicLong( 0L );
+    private static final java.util.concurrent.atomic.AtomicLong globalUserSpeechLastFiredMs =
         new java.util.concurrent.atomic.AtomicLong( 0L );
 
     /** Fallback when the VisionModel property is absent — matches the documented
@@ -2092,6 +2095,7 @@ public class Mascot
         vcl.register( getPersonalityName(), this::handleNameTrigger );
         final String alias = getVoiceTrigger();
         if( alias != null ) vcl.register( alias, this::handleNameTrigger );
+        vcl.registerSpeechListener( getPersonalityName(), this::fireUserSpeechReaction );
     }
 
     private void unregisterVoiceCommand()
@@ -2101,6 +2105,7 @@ public class Mascot
         vcl.unregister( getPersonalityName() );
         final String alias = getVoiceTrigger();
         if( alias != null ) vcl.unregister( alias );
+        vcl.unregisterSpeechListener( getPersonalityName() );
     }
 
     private String getVoiceTrigger()
@@ -2476,6 +2481,131 @@ public class Mascot
             else
                 client.generate( system, prompt, audioCb );
         }, "audio-reaction" ).start();
+    }
+
+    /**
+     * Reacts to the user being overheard talking to something or someone else —
+     * a voice call, a stream chat, swearing at a game — without calling any
+     * mascot's name. Fired by VoiceCommandListener with the echo-stripped mic
+     * transcript. Transcribes the system-audio buffer first so the reaction
+     * understands what the user was responding to (the other side of the call,
+     * the video they're reacting to), then reacts to the exchange as a whole.
+     * Called on the voice-poll thread; cheap gates run here, heavy work
+     * (Whisper + Ollama) on a dedicated daemon thread.
+     */
+    private void fireUserSpeechReaction( final String micText )
+    {
+        // Substance gate: short fragments are mostly Whisper noise or half-words.
+        if( micText == null || micText.trim().split( "\\s+" ).length < 4 ) return;
+
+        final long nowU = System.currentTimeMillis();
+        final long lastU = globalUserSpeechLastFiredMs.get();
+        if( nowU - lastU < GLOBAL_USER_SPEECH_COOLDOWN_MS
+                || !globalUserSpeechLastFiredMs.compareAndSet( lastU, nowU ) )
+            return;
+
+        synchronized( AUDIO_LOCK )
+        {
+            if( audioBuffer == null )
+            {
+                audioBuffer = new com.group_finity.mascot.assistant.AudioTranscriptBuffer();
+                if( !audioBuffer.start() )
+                {
+                    audioBuffer = null; // react to the mic transcript alone
+                }
+            }
+        }
+
+        final com.group_finity.mascot.assistant.AudioTranscriptBuffer buf = audioBuffer;
+        final com.group_finity.mascot.config.Configuration cfg =
+            Main.getInstance().getConfiguration( getImageSet() );
+        final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
+            ? cfg.getInformation( "Name" ) : getImageSet();
+        final String personality = getPersonalityQuick( cfg, mascotName );
+        final String speechRule  = getSpeechRule( cfg );
+
+        if( ollamaClient == null ) ollamaClient = createOllamaClient();
+        final OllamaClient client = ollamaClient;
+
+        new Thread( () ->
+        {
+            // System audio = what the user is responding to. blocks on Whisper.
+            final String sysTranscript = buf != null ? buf.transcribe() : null;
+            final boolean hasSys = sysTranscript != null && !sysTranscript.isBlank();
+
+            final String system = withSpeechReminder( personality
+                + "\n\n---"
+                + "\nRULES (override everything else):"
+                + ( speechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + speechRule )
+                + "\n- Reply in ONE sentence. 15 words maximum."
+                + QUICK_REACTION_STYLE_RULES
+                + "\n- You overheard the user speaking — they were NOT talking to you. Do not answer as if addressed."
+                + "\n- Address the user as \"you\". Refer to anyone else in the conversation as \"they\"."
+                + "\n- Be brief, natural, in-character. No greetings, no filler."
+                + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
+                + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
+                + "\n---", speechRule );
+
+            final String sysCtx = hasSys
+                ? " At the same time this audio was playing (likely the other side of their conversation,"
+                  + " or whatever they are reacting to): \"" + sysTranscript + "\"."
+                  + " Use it ONLY to understand what the user is responding to."
+                : "";
+            final String prompt =
+                "You overheard the user say: \"" + micText + "\"." + sysCtx
+                + " Make one short, in-character remark about the user's side of the exchange."
+                + " Do not repeat what was said verbatim.";
+
+            javax.swing.SwingUtilities.invokeLater( () ->
+            {
+                ensureFreshBubble();
+                final java.awt.Rectangle b = getBounds();
+                if( b != null ) assistantBubble.showThinking( b );
+            });
+
+            final String overheardContext = "[Overheard user] " + micText;
+
+            client.generate( system, prompt, new OllamaClient.Callback()
+            {
+                @Override public void onResponse( final String raw )
+                {
+                    fireActionFromResponse( raw );
+                    final String text = trimToFirstSentence( applyPersonaRewrites(
+                        polishUtterance( stripActionTag( raw ) ) ) );
+                    if( isIncompleteUtterance( text ) )
+                    {
+                        javax.swing.SwingUtilities.invokeLater( () ->
+                        {
+                            if( assistantBubble != null ) assistantBubble.dismiss();
+                        });
+                        return;
+                    }
+                    com.group_finity.mascot.assistant.ChatLog.append( "User(overheard)",
+                        "\"" + micText.substring( 0, Math.min( 300, micText.length() ) ) + "\"" );
+                    com.group_finity.mascot.assistant.ChatLog.append(
+                        mascotName + "(to: overheard user)", text );
+                    // Store only the observation — never the mascot's own reaction text.
+                    com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
+                        .addFact( "[Observed] User said (not to me): "
+                            + micText.substring( 0, Math.min( 150, micText.length() ) ) );
+                    com.group_finity.mascot.assistant.MascotSpeechRegistry
+                        .record( getImageSet(), mascotName, text, 0 );
+                    javax.swing.SwingUtilities.invokeLater( () ->
+                    {
+                        final java.awt.Rectangle b = getBounds();
+                        if( b != null && assistantBubble != null )
+                            assistantBubble.showResponse( text, overheardContext, b );
+                    });
+                }
+                @Override public void onError( final String error )
+                {
+                    javax.swing.SwingUtilities.invokeLater( () ->
+                    {
+                        if( assistantBubble != null ) assistantBubble.dismiss();
+                    });
+                }
+            });
+        }, "user-speech-reaction" ).start();
     }
 
     private void fireSpontaneousComment( final String windowTitle )
