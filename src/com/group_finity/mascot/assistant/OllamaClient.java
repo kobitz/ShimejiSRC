@@ -104,9 +104,6 @@ public class OllamaClient
     /** Single worker thread that drains the queue at DISPATCH_INTERVAL_MS cadence. */
     private final Thread queueWorker;
 
-    /** Total transformer layer count for the loaded model; -1 = not yet fetched. */
-    private volatile int    cachedLayerCount   = -1;
-
     public OllamaClient()
     {
         this( DEFAULT_ENDPOINT, DEFAULT_MODEL );
@@ -283,17 +280,26 @@ public class OllamaClient
         final int status = conn.getResponseCode();
         if( status != 200 )
         {
-            // Drain and close the error stream so the keep-alive connection can be reused.
+            // Read the error body (also drains the stream so the keep-alive
+            // connection can be reused) — Ollama's message names the real cause,
+            // e.g. a crashed llama-server, which "HTTP 500" alone hides.
+            String detail = "";
             try( final java.io.InputStream es = conn.getErrorStream() )
             {
                 if( es != null )
                 {
-                    final byte[] buf = new byte[ 1024 ];
-                    while( es.read( buf ) > 0 ) { /* discard */ }
+                    final byte[] buf = new byte[ 2048 ];
+                    final StringBuilder eb = new StringBuilder();
+                    int n;
+                    while( ( n = es.read( buf ) ) > 0 && eb.length() < 600 )
+                        eb.append( new String( buf, 0, n, StandardCharsets.UTF_8 ) );
+                    detail = eb.toString().trim();
+                    if( detail.length() > 300 ) detail = detail.substring( 0, 300 ) + "...";
                 }
             }
             catch( final IOException ignored ) {}
-            throw new IOException( "HTTP " + status + " from Ollama (model=" + effectiveModel + ")" );
+            throw new IOException( "HTTP " + status + " from Ollama (model=" + effectiveModel + ")"
+                + ( detail.isEmpty() ? "" : ": " + detail ) );
         }
 
         final StringBuilder sb = new StringBuilder();
@@ -341,12 +347,15 @@ public class OllamaClient
     }
 
     /**
-     * Fraction of the machine's *available* CPU and GPU the model is allowed to use.
+     * Fraction of the machine's *available* CPU the model is allowed to use.
      * Read from settings "OllamaResourceCap" (clamped 0.1-1.0, default 0.5).
-     * 1.0 disables capping entirely (legacy behavior: GPU auto-fit when mostly idle,
-     * Ollama's own thread default). "Available" is measured at dispatch time — the
-     * request queue is serial, so the model is idle when measured and its own usage
-     * never counts against itself.
+     * 1.0 disables capping (num_thread omitted; Ollama's own thread default).
+     * CPU-compute only: GPU layer placement is NOT capped — an explicit num_gpu
+     * split both shifted weights into system RAM (vetoed by Ko: throttle compute,
+     * never RAM/VRAM) and crashed llama-server on gemma4 with
+     * GGML_ASSERT(n_inputs < GGML_SCHED_MAX_SPLIT_INPUTS) (June 2026).
+     * "Available" is measured at dispatch time — the request queue is serial, so
+     * the model is idle when measured and its own usage never counts against itself.
      */
     private double resourceCap()
     {
@@ -364,10 +373,10 @@ public class OllamaClient
     }
 
     /**
-     * Rounds an availability fraction to quarter steps (floor 0.25). num_gpu and
-     * num_thread are model-LOAD options in Ollama — a value that wobbles with every
-     * load sample would force a full model reload on each request. Quarter buckets
-     * keep the options identical across small load fluctuations.
+     * Rounds an availability fraction to quarter steps (floor 0.25). num_thread is
+     * a model-LOAD option in Ollama — a value that wobbles with every load sample
+     * would force a full model reload on each request. Quarter buckets keep the
+     * option identical across small load fluctuations.
      */
     private static double bucketQuarter( final double f )
     {
@@ -376,28 +385,18 @@ public class OllamaClient
     }
 
     /**
-     * Returns how many transformer layers to offload to GPU for this request:
-     * layerCount x available-GPU-fraction x resource cap. With the default 0.5 cap
-     * the model only ever claims half of whatever GPU compute/VRAM is currently
-     * free — the rest of the layers run on the (separately capped) CPU.
-     * With cap=1.0 the legacy behavior applies: -1 lets Ollama auto-fit when the
-     * GPU is mostly idle (measured June 2026: gemma3:4b lands 100% GPU at 82 tok/s;
-     * the old unconditional 0.20 layer cap cut generation to ~15 tok/s).
+     * GPU layer offload is always left to Ollama's byte-accurate auto-fit (-1):
+     * it measures free VRAM at load, so a running game already shrinks what the
+     * model claims. Explicit num_gpu values are never sent — every fraction-based
+     * split tried here either moved weights into system RAM (the old 0.20 cap cut
+     * gemma3:4b from 82 to 15 tok/s and caused system-wide CPU spikes) or crashed
+     * llama-server outright (gemma4 + partial offload hit
+     * GGML_ASSERT(n_inputs < GGML_SCHED_MAX_SPLIT_INPUTS), June 2026 — every
+     * request 500'd until the cap was removed).
      */
     private int computeNumGpuLayers()
     {
-        final double cap           = resourceCap();
-        final double availFraction = bucketQuarter( queryGpuAvailableFraction() );
-        if( cap >= 0.99 && availFraction >= 0.5 ) return -1; // uncapped + mostly idle
-        if( cachedLayerCount < 0 )
-        {
-            cachedLayerCount = fetchModelLayers();
-            log.log( Level.INFO, "Ollama model layer count: {0}", cachedLayerCount );
-        }
-        final int layers = Math.max( 1, (int) Math.round( cachedLayerCount * availFraction * cap ) );
-        log.log( Level.FINE, "GPU avail={0,number,#.##} cap={1,number,#.##} num_gpu={2}",
-                 new Object[]{ availFraction, cap, layers } );
-        return layers;
+        return -1;
     }
 
     /**
@@ -421,91 +420,6 @@ public class OllamaClient
         catch( final Exception ignored ) {}
         final int cores = Runtime.getRuntime().availableProcessors();
         return Math.max( 1, (int) Math.round( cores * bucketQuarter( idle ) * cap ) );
-    }
-
-    /**
-     * Returns the GPU available fraction as min(compute_headroom, memory_headroom),
-     * read from CpuTempMonitor's persistent nvidia-smi stream — no subprocess spawn
-     * per request. Returns 1.0 when no NVIDIA GPU data is available (allow full use;
-     * Ollama itself falls back to CPU when there is genuinely no GPU).
-     */
-    private double queryGpuAvailableFraction()
-    {
-        try
-        {
-            final com.group_finity.mascot.environment.CpuTempMonitor mon =
-                com.group_finity.mascot.environment.CpuTempMonitor.getInstance();
-            final double load     = mon.getGpuLoad();
-            final double memFree  = mon.getGpuMemFree();
-            final double memTotal = mon.getGpuMemTotal();
-            if( load < 0 )
-                return 1.0; // no NVIDIA GPU / nvidia-smi unavailable
-            final double computeAvail = ( 100.0 - load ) / 100.0;
-            final double memAvail     = memTotal > 0 ? memFree / memTotal : 1.0;
-            return Math.min( computeAvail, memAvail );
-        }
-        catch( final Exception e )
-        {
-            return 1.0;
-        }
-    }
-
-    /**
-     * Fetches transformer layer count from Ollama's /api/show endpoint.
-     * Looks for "block_count" in the model info JSON.
-     * Returns 32 as a safe default on failure.
-     */
-    private int fetchModelLayers()
-    {
-        try
-        {
-            final String base = endpoint.replaceFirst( "/api/generate.*", "" );
-            final URL url = new URL( base + "/api/show" );
-            final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod( "POST" );
-            conn.setRequestProperty( "Content-Type", "application/json; charset=utf-8" );
-            conn.setConnectTimeout( 5_000 );
-            conn.setReadTimeout( 5_000 );
-            conn.setDoOutput( true );
-            final byte[] body = ( "{\"name\":" + jsonStr( model ) + "}" )
-                                .getBytes( StandardCharsets.UTF_8 );
-            try( OutputStream os = conn.getOutputStream() )
-            {
-                os.write( body );
-            }
-            if( conn.getResponseCode() != 200 )
-                return 32;
-            final StringBuilder sb = new StringBuilder();
-            try( BufferedReader br = new BufferedReader(
-                    new InputStreamReader( conn.getInputStream(), StandardCharsets.UTF_8 ) ) )
-            {
-                String ln;
-                while( ( ln = br.readLine() ) != null )
-                    sb.append( ln );
-            }
-            // Find "block_count": N in the modelinfo section
-            final String json  = sb.toString();
-            int idx = json.indexOf( "block_count" );
-            if( idx < 0 )
-                return 32;
-            idx = json.indexOf( ':', idx + 11 );
-            if( idx < 0 )
-                return 32;
-            idx++;
-            while( idx < json.length() && Character.isWhitespace( json.charAt( idx ) ) )
-                idx++;
-            final StringBuilder numStr = new StringBuilder();
-            while( idx < json.length() && Character.isDigit( json.charAt( idx ) ) )
-                numStr.append( json.charAt( idx++ ) );
-            if( numStr.length() == 0 )
-                return 32;
-            final int count = Integer.parseInt( numStr.toString() );
-            return count > 0 ? count : 32;
-        }
-        catch( final Exception e )
-        {
-            return 32;
-        }
     }
 
     /**
@@ -609,10 +523,16 @@ public class OllamaClient
             return "Ollama isn't running. Start it with: ollama serve";
         if( msg != null && msg.contains( "HTTP 404" ) )
         {
-            // Extract the model name from "HTTP 404 from Ollama (model=NAME)"
+            // Extract the model name from "HTTP 404 from Ollama (model=NAME)..."
+            // — an error-body detail may follow the closing parenthesis.
+            String name = DEFAULT_MODEL;
             final int m = msg.indexOf( "model=" );
-            final String name = m >= 0 ? msg.substring( m + 6 ).replace( ")", "" ).trim()
-                                       : DEFAULT_MODEL;
+            if( m >= 0 )
+            {
+                final int close = msg.indexOf( ')', m );
+                name = ( close > m ? msg.substring( m + 6, close )
+                                   : msg.substring( m + 6 ) ).trim();
+            }
             return "Model not found: " + name + ". Run: ollama pull " + name;
         }
         return "Couldn't reach Ollama: " + ( msg != null ? msg : e.getClass().getSimpleName() );
