@@ -17,10 +17,10 @@ A heavily modified fork of Shimeji-ee (Java/Windows desktop mascot app) with an 
 
 ## Build Commands
 
-1. Run `C:\Users\ko\Desktop\Mario Install Testing\Build.bat` → [1] Release, [2] Test, [3] Ant only
+1. Run `Build.bat` (repo root; the install folder has a `Build.lnk` shortcut to it) → [1] Release, [2] Test, [3] Ant only
 2. Bat calls `ant jar` in source folder, then wraps with Launch4j
 
-The install-folder Build.bat is the one that runs; a canonical copy is tracked at the repo root for version control — **edit both together**. Keep it ASCII (no BOM) with CRLF: a UTF-8 BOM silently breaks `@echo off` and makes cmd echo every line (happened June 2026).
+`Build.bat` lives ONLY at the repo root (version-controlled); the install folder holds just a shortcut, so there is one copy to edit. The script uses `INSTALL_DIR` (not `%~dp0`) to launch the built exe, since `%~dp0` resolves to the repo, not the install folder. Keep it ASCII (no BOM) with CRLF: a UTF-8 BOM silently breaks `@echo off` and makes cmd echo every line (happened June 2026).
 
 **Launch4j configs:** `D:\Downloads\Shimeji Workspace\exe builder launch4j\` — `configTest.xml` → `ShimejiTest.exe`, `config.xml` → `Shimeji.exe`
 

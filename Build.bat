@@ -2,6 +2,7 @@
 setlocal
 
 set WORKSPACE=D:\Downloads\Shimeji Workspace\Stable
+set INSTALL_DIR=C:\Users\ko\Desktop\Mario Install Testing
 set LAUNCH4J=D:\Downloads\Shimeji Workspace\exe builder launch4j\launch4j\launch4jc.exe
 set CONFIG_RELEASE=D:\Downloads\Shimeji Workspace\exe builder launch4j\config.xml
 set CONFIG_TEST=D:\Downloads\Shimeji Workspace\exe builder launch4j\configTest.xml
@@ -73,6 +74,6 @@ if "%CHOICE%"=="1" (
 set /p RUNCHOICE=Press 1 to launch %EXE_NAME%, or Enter to close:
 if "%RUNCHOICE%"=="1" (
     echo Launching %EXE_NAME%...
-    start "" "%~dp0%EXE_NAME%"
+    start "" "%INSTALL_DIR%\%EXE_NAME%"
 )
 exit /b 0
