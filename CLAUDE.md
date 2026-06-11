@@ -141,7 +141,7 @@ Persisted under `AssistantMode.<imageSet>` in `settings.properties` (keyed by na
 ```
 System audio → WASAPI loopback → WasapiLoopbackCapture → AudioTranscriptBuffer
 Microphone → VoiceCommandListener (separate channel)
-Both → WhisperProcess (faster-whisper, CUDA) → Ollama (gemma3:4b) → bubble
+Both → WhisperProcess (faster-whisper, CPU int8 — whisper_server.py hardcodes device="cpu", no VRAM use) → Ollama → bubble
 ```
 VAD on, `no_speech_threshold=0.7`, `temperature=0.0`, `compression_ratio_threshold=1.8`.
 
