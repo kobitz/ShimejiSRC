@@ -63,16 +63,19 @@ public class VariableMap extends AbstractMap<String, Object> implements Bindings
     }
 
     // -------------------------------------------------------------------------
-    // Named iterator class — replaces the anonymous Iterator allocated on every
-    // entrySet().iterator() call. Holds a single ReusableEntry that is updated
-    // in place rather than allocating a new entry object per next() call.
+    // Named iterator class — holds a single ReusableEntry that is updated in
+    // place rather than allocating a new entry object per next() call. That
+    // per-entry reuse is the optimization that matters (one allocation saved
+    // per variable per evaluation); the iterator object itself is allocated
+    // fresh on each iterator() call so nested or concurrent iterations over
+    // the same map each get independent cursors.
     // -------------------------------------------------------------------------
     private final class EntryIterator implements Iterator<Map.Entry<String, Object>>
     {
-        private Iterator<Map.Entry<String, Variable>> rawIterator;
+        private final Iterator<Map.Entry<String, Variable>> rawIterator;
         private final ReusableEntry entry = new ReusableEntry( );
 
-        void reset( Iterator<Map.Entry<String, Variable>> rawIterator )
+        EntryIterator( Iterator<Map.Entry<String, Variable>> rawIterator )
         {
             this.rawIterator = rawIterator;
         }
@@ -99,18 +102,14 @@ public class VariableMap extends AbstractMap<String, Object> implements Bindings
 
     // -------------------------------------------------------------------------
     // Named entry set class — replaces the anonymous AbstractSet. One instance
-    // per VariableMap, with a single EntryIterator that is reset on each
-    // iterator() call rather than allocating a new iterator object each time.
+    // per VariableMap; iterators are created per call (see EntryIterator note).
     // -------------------------------------------------------------------------
     private final class EntrySet extends AbstractSet<Map.Entry<String, Object>>
     {
-        private final EntryIterator iterator = new EntryIterator( );
-
         @Override
         public Iterator<Map.Entry<String, Object>> iterator( )
         {
-            iterator.reset( VariableMap.this.getRawMap( ).entrySet( ).iterator( ) );
-            return iterator;
+            return new EntryIterator( VariableMap.this.getRawMap( ).entrySet( ).iterator( ) );
         }
 
         @Override

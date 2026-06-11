@@ -90,7 +90,6 @@ public class Dragged extends ActionBase
             getMascot( ).setLookRight( false );
         }
         getMascot( ).setDragging( true );
-        getEnvironment( ).refreshWorkArea( );
 
         final Location cursor = getEnvironment( ).getCursor( );
 

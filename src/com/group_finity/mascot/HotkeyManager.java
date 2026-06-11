@@ -100,6 +100,18 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
      */
     private final Set<String> heldCombos = ConcurrentHashMap.newKeySet( );
 
+    /**
+     * Combo string recorded at press time, keyed by keyCode (keyboard) or
+     * button number (mouse). Release events rebuild the combo from CURRENT
+     * modifiers — if the user releases a modifier before the main key
+     * (e.g. lets go of ctrl before X on a ctrl+x binding), the rebuilt combo
+     * no longer matches and the heldCombos entry would leak, looping the
+     * behavior until the same combo was pressed again. Looking up the
+     * press-time combo guarantees release always clears what press set.
+     */
+    private final Map<Integer, String> pressedKeyCombos   = new ConcurrentHashMap<>( );
+    private final Map<Integer, String> pressedMouseCombos = new ConcurrentHashMap<>( );
+
     private Manager manager;
     private boolean hooked = false;
 
@@ -162,6 +174,8 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
             hooked = false;
         }
         heldCombos.clear( );
+        pressedKeyCombos.clear( );
+        pressedMouseCombos.clear( );
     }
 
     /**
@@ -293,6 +307,7 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
 
         // 3. YOUR ORIGINAL CODE (Now safely inside the method):
         String combo = buildKeyCombo( e );
+        pressedKeyCombos.put( keyCode, combo );
         java.util.List<Binding> list = bindings.get( combo );
         if( list == null ) return;
 
@@ -320,8 +335,11 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
         // 1. Clear the "Bouncer" clipboard so the key can be pressed again later
         toggledKeys.remove(e.getKeyCode());
 
-        // 2. Remove from held set so tick loop stops re-firing
-        final String combo = buildKeyCombo( e );
+        // 2. Remove from held set so tick loop stops re-firing.
+        // Use the combo recorded at press time — rebuilding from current
+        // modifiers leaks the entry if a modifier was released first.
+        final String pressCombo = pressedKeyCombos.remove( e.getKeyCode() );
+        final String combo = pressCombo != null ? pressCombo : buildKeyCombo( e );
         heldCombos.remove( combo );
 
         // 3. Cancel the current move/jump action so it stops immediately:
@@ -363,6 +381,7 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
     public void nativeMousePressed( NativeMouseEvent e )
     {
         String combo = buildMouseCombo( e );
+        pressedMouseCombos.put( e.getButton(), combo );
         java.util.List<Binding> list = bindings.get( combo );
         if( list == null ) return;
         for( Binding b : list )
@@ -375,7 +394,8 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
     @Override
     public void nativeMouseReleased( NativeMouseEvent e )
     {
-        heldCombos.remove( buildMouseCombo( e ) );
+        final String pressCombo = pressedMouseCombos.remove( e.getButton() );
+        heldCombos.remove( pressCombo != null ? pressCombo : buildMouseCombo( e ) );
     }
 
     @Override public void nativeMouseClicked( NativeMouseEvent e ) { }

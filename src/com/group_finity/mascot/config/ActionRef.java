@@ -39,7 +39,8 @@ public class ActionRef implements IActionBuilder {
 		return "Action(" + getName() + ")";
 	}
 
-	private String getName() {
+	/** Package-private: ActionBuilder.findNamedRef matches refs by name. */
+	String getName() {
 		return this.name;
 	}
 

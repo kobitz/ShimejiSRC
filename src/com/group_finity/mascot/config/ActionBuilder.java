@@ -208,14 +208,18 @@ public class ActionBuilder implements IActionBuilder {
 	}
 
 	/**
-	 * Depth-first search (last-to-first) for an ActionRef named 'name'.
-	 * Used by HoldLoopStep to locate e.g. "Run" inside a Select > Sequence tree.
+	 * Depth-first search (last-to-first) for a child builder named 'name' —
+	 * either an ActionReference or an inline nested Action. Used by
+	 * HoldLoopStep to locate e.g. "Run" inside a Select > Sequence tree.
 	 */
 	private IActionBuilder findNamedRef( List<IActionBuilder> refs, String name ) {
 		if( refs == null ) return null;
 		for( int i = refs.size() - 1; i >= 0; i-- ) {
 			IActionBuilder ref = refs.get(i);
-			if( ref.toString().equals( "Action(" + name + ")" ) ) return ref;
+			String refName = null;
+			if( ref instanceof ActionRef )          refName = ((ActionRef)ref).getName();
+			else if( ref instanceof ActionBuilder ) refName = ((ActionBuilder)ref).getName();
+			if( name.equals( refName ) ) return ref;
 			if( ref instanceof ActionBuilder ) {
 				IActionBuilder found = findNamedRef( ((ActionBuilder)ref).getActionRefs(), name );
 				if( found != null ) return found;

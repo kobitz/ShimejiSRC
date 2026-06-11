@@ -104,11 +104,6 @@ public class MascotEnvironment
 
     public Area getWorkArea( )
     {
-        return getWorkArea( false );
-    }
-
-    public Area getWorkArea( Boolean ignoreSettings )
-    {
         // currentWorkArea is snapshotted each tick from the correct per-monitor
         // work area. Fall back to impl only if not yet initialized.
         if( currentWorkArea != null )
@@ -298,11 +293,6 @@ public class MascotEnvironment
     public void restoreIE( )
     {
         impl.restoreIE( );
-    }
-    
-    public void refreshWorkArea( )
-    {
-        getWorkArea( true );
     }
 
     /**
