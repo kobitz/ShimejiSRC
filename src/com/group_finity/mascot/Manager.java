@@ -169,6 +169,15 @@ public class Manager {
 
 	private void tick( )
 	{
+		// ── Tick watchdog ────────────────────────────────────────────────────
+		// Started before the lock so contention (e.g. EDT holding the mascots
+		// lock during a menu) shows up as total time unaccounted for by phases.
+		final long tickStartNs = System.nanoTime();
+		long envScanNs = 0;
+		long slowestMascotNs = 0;
+		String slowestMascotName = null;
+		int mascotCount = 0;
+
 		synchronized (this.getMascots()) {
 
 			// ── Run the shared EnumWindows scan ONCE before any mascot ticks ──
@@ -177,7 +186,9 @@ public class Manager {
 			// calls read from it rather than each running their own EnumWindows.
 			// Advance global sync counter once per tick for SyncedStay/AffordanceStay phase lock
 			globalSyncTick.incrementAndGet();
+			final long envStartNs = System.nanoTime();
 			com.group_finity.mascot.win.WindowsEnvironment.beginTick();
+			envScanNs = System.nanoTime() - envStartNs;
 
 			// ── Flush add/remove queues ───────────────────────────────────────
 			boolean listChanged = !this.getAdded().isEmpty() || !this.getRemoved().isEmpty();
@@ -201,6 +212,8 @@ public class Manager {
 
 			// ── Tick + apply in a single pass ─────────────────────────────────
 			for (final Mascot mascot : this.getMascots()) {
+				mascotCount++;
+				final long mascotStartNs = System.nanoTime();
 				try {
 					mascot.getEnvironment().tick();
 					mascot.tick();
@@ -331,7 +344,35 @@ public class Manager {
 					log.log( java.util.logging.Level.SEVERE, "Mascot tick error, disposing: " + mascot, t );
 					try { mascot.dispose(); } catch( Throwable ignored ) {}
 				}
+				final long mascotNs = System.nanoTime() - mascotStartNs;
+				if (mascotNs > slowestMascotNs) {
+					slowestMascotNs = mascotNs;
+					slowestMascotName = mascot.getImageSet();
+				}
 			}
+		}
+
+		// ── Tick watchdog report ─────────────────────────────────────────────
+		// 120ms = 3 missed frames. Unattributed time (total minus envScan minus
+		// mascots) is lock wait or GC. Logged per slow tick — a 1s crawl yields
+		// a handful of lines, which is the point: the log names the phase.
+		final long totalMs = (System.nanoTime() - tickStartNs) / 1_000_000L;
+		if (totalMs >= 120) {
+			double cpu = -1, gpu = -1;
+			try {
+				final com.group_finity.mascot.environment.CpuTempMonitor mon =
+					com.group_finity.mascot.environment.CpuTempMonitor.getInstance();
+				cpu = mon.getCpuLoad();
+				gpu = mon.getGpuLoad();
+			} catch (final Exception ignored) {}
+			final Runtime rt = Runtime.getRuntime();
+			log.warning( "[TickWatch] Slow tick: total=" + totalMs + "ms"
+				+ " envScan=" + ( envScanNs / 1_000_000L ) + "ms"
+				+ " slowestMascot=" + slowestMascotName + "(" + ( slowestMascotNs / 1_000_000L ) + "ms)"
+				+ " mascots=" + mascotCount
+				+ " heap=" + ( ( rt.totalMemory() - rt.freeMemory() ) / 1_048_576L ) + "/"
+				+ ( rt.totalMemory() / 1_048_576L ) + "MB"
+				+ " cpu=" + (int) cpu + "% gpu=" + (int) gpu + "%" );
 		}
 
 		if (isExitOnLastRemoved()) {

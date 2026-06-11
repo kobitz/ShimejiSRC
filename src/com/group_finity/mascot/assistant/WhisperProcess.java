@@ -87,6 +87,11 @@ public class WhisperProcess
 
             proc = pb.start();
 
+            // Whisper transcription saturates its threads — run it BELOW_NORMAL
+            // so it yields to the tick loop (and everything else interactive).
+            com.group_finity.mascot.environment.ProcessPriorityUtil
+                .setBelowNormal( proc.pid() );
+
             stdin  = new BufferedWriter(
                 new OutputStreamWriter( proc.getOutputStream(),
                     java.nio.charset.StandardCharsets.UTF_8 ) );

@@ -143,10 +143,22 @@ public class CpuTempMonitor
 
     private void fastPollLoop( )
     {
+        int demoteCountdown = 0;
         while( true )
         {
             try { readCpuLoad( );  } catch( Exception e ) { log.log( Level.FINE, "cpuLoad error", e ); }
             try { readBattery( );  } catch( Exception e ) { log.log( Level.FINE, "battery error", e ); }
+
+            // Keep the inference processes BELOW_NORMAL so generation bursts
+            // can't starve the tick loop. ollama.exe demoted => future
+            // llama-server children inherit the class; the 5s rescan catches
+            // strays (already-demoted processes are skipped, so this is ~1ms).
+            if( --demoteCountdown <= 0 )
+            {
+                demoteCountdown = 5;
+                try { ProcessPriorityUtil.demoteByName( "ollama.exe", "llama-server.exe" ); }
+                catch( Exception e ) { log.log( Level.FINE, "priority demote error", e ); }
+            }
 
             try { Thread.sleep( FAST_POLL_MS ); }
             catch( InterruptedException e ) { Thread.currentThread( ).interrupt( ); break; }

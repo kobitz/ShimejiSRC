@@ -183,7 +183,11 @@ public class Main
     }
 
     public void run( )
-    {   
+    {
+        // Outrank the local inference processes in the Windows scheduler so the
+        // 40ms tick loop stays smooth during Ollama/Whisper generation bursts.
+        com.group_finity.mascot.environment.ProcessPriorityUtil.raiseSelfAboveNormal( );
+
         // test operating system
         if( !System.getProperty( "sun.arch.data.model" ).equals( "64" ) )
             platform = Platform.x86;
