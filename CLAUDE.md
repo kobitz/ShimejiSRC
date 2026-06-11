@@ -43,7 +43,7 @@ XML-driven: `conf/actions.xml` + `conf/behaviors.xml` (per-mascot overrides in `
 
 ### Scripting
 
-XML conditions/durations/velocities accept Nashorn JS expressions. **`ScriptFilter`** sandboxes — no `java.lang`, no I/O. `VariableMap` exposes `mascot.*` and `environment.*`. Nashorn exposes Java bean getters as properties (`o.getImageSet()` → `o.imageSet`).
+XML conditions/durations/velocities accept Nashorn JS expressions. **`ScriptFilter`** sandboxes — no `java.lang`, no I/O. `VariableMap` exposes `mascot.*` and `environment.*`. Nashorn exposes Java bean getters as properties (`o.getImageSet()` → `o.imageSet`). `Script.get()` caches `CompiledScript` per thread keyed by source (engines are per-thread `ThreadLocal`s, so the cache must be too) — previously every `#{...}` evaluation recompiled its source each frame.
 
 ### Notable Engine Features
 
@@ -207,6 +207,7 @@ Chat Bubbles tab built in `init()` (not `initComponents()`) so properties load f
 ## Patching Notes
 
 - Always read the target file before patching.
+- **`Main.updateConfigFile()` filters `*.mascotN` keys out of the saved copy only** — the live `Properties` keeps them. `DisabledBehaviours.mascotN` is read back at runtime by `Configuration.isBehaviorEnabled()`, so purging it from memory (the old behavior) silently re-enabled per-mascot toggles whenever 2+ mascots of the same image set were active. Per-mascot runtime keys are transient by design and must never persist to disk; `PinnedMascot.N` keys always persist.
 - **Schema files are read from the install folder at runtime** (`C:\Users\ko\Desktop\Mario Install Testing\conf\`), NOT from the JAR — `conf/` is on the classpath via `MANIFEST.MF`. Any addition to `conf/schema.properties` or `conf/schema_ja.properties` in source **must also be applied to the install folder copies** in the same edit session.
 - Java 8: no static methods in non-static inner classes, no `var`, no multi-line string blocks, no non-ASCII in `/** */` javadoc.
 - `SettingsWindow.java` is NetBeans-generated — `initComponents()` is GEN-BEGIN/END guarded. Add new tabs in `init()`.
