@@ -2533,6 +2533,24 @@ public class Mascot
             final String sysTranscript = buf != null ? buf.transcribe() : null;
             final boolean hasSys = sysTranscript != null && !sysTranscript.isBlank();
 
+            // Re-strip against the FRESH system transcript. The strip the voice
+            // listener did used lastSysTranscript, which can be minutes old —
+            // speaker content newer than that had no reference and slipped
+            // through as "user speech". This transcript covers the same window
+            // the mic just heard.
+            final String userSaid = hasSys
+                ? com.group_finity.mascot.assistant.AudioTranscriptBuffer
+                    .stripOverlap( sysTranscript, micText )
+                : micText;
+            if( userSaid == null || userSaid.isBlank() )
+            {
+                // Echo after all — return the cooldown so a genuine utterance
+                // shortly after can still fire.
+                globalUserSpeechLastFiredMs.compareAndSet( nowU, lastU );
+                log.fine( "[Voice] Overheard speech was speaker echo — skipping reaction." );
+                return;
+            }
+
             final String system = withSpeechReminder( personality
                 + "\n\n---"
                 + "\nRULES (override everything else):"
@@ -2552,7 +2570,7 @@ public class Mascot
                   + " Use it ONLY to understand what the user is responding to."
                 : "";
             final String prompt =
-                "You overheard the user say: \"" + micText + "\"." + sysCtx
+                "You overheard the user say: \"" + userSaid + "\"." + sysCtx
                 + " Make one short, in-character remark about the user's side of the exchange."
                 + " Do not repeat what was said verbatim.";
 
@@ -2563,7 +2581,7 @@ public class Mascot
                 if( b != null ) assistantBubble.showThinking( b );
             });
 
-            final String overheardContext = "[Overheard user] " + micText;
+            final String overheardContext = "[Overheard user] " + userSaid;
 
             client.generate( system, prompt, new OllamaClient.Callback()
             {
@@ -2581,13 +2599,13 @@ public class Mascot
                         return;
                     }
                     com.group_finity.mascot.assistant.ChatLog.append( "User(overheard)",
-                        "\"" + micText.substring( 0, Math.min( 300, micText.length() ) ) + "\"" );
+                        "\"" + userSaid.substring( 0, Math.min( 300, userSaid.length() ) ) + "\"" );
                     com.group_finity.mascot.assistant.ChatLog.append(
                         mascotName + "(to: overheard user)", text );
                     // Store only the observation — never the mascot's own reaction text.
                     com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
                         .addFact( "[Observed] User said (not to me): "
-                            + micText.substring( 0, Math.min( 150, micText.length() ) ) );
+                            + userSaid.substring( 0, Math.min( 150, userSaid.length() ) ) );
                     com.group_finity.mascot.assistant.MascotSpeechRegistry
                         .record( getImageSet(), mascotName, text, 0 );
                     javax.swing.SwingUtilities.invokeLater( () ->

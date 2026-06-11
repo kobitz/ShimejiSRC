@@ -261,8 +261,17 @@ public class AudioTranscriptBuffer
     // ── Echo removal ──────────────────────────────────────────────────────────
 
     /**
-     * Removes words from micText whose 3-word context also appears in sysText.
-     * Returns null if fewer than 4 words remain (probably just noise or full echo).
+     * Removes words from micText that are speaker echo of sysText.
+     * Matching is FUZZY: Whisper transcribes the same audio differently on the
+     * mic pass vs the loopback pass ("stepped"/"set", inflection changes,
+     * dropped words), so the old exact 3-gram equality let echo through and it
+     * got attributed to the user. Two layers:
+     *   1. Content-word coverage: if >= 60% of the mic's content words (3+
+     *      non-stopword words required) fuzzy-match words ANYWHERE in the
+     *      system transcript, the whole utterance is echo -> null.
+     *   2. Fuzzy bigram removal: consecutive mic word pairs matching a
+     *      consecutive system pair are stripped from a mixed transcript.
+     * Returns null if fewer than 4 words remain (noise or full echo).
      */
     public static String stripOverlap( final String sysText, final String micText )
     {
@@ -273,39 +282,101 @@ public class AudioTranscriptBuffer
         final String[] micW = words( micText );
         if( sysW.length == 0 ) return micText;
 
-        final int N = 3;
-        final java.util.Set<String> sysNgrams = new java.util.HashSet<>();
-        if( sysW.length >= N )
+        // ── Layer 1: content-word coverage ────────────────────────────────
+        // Stopwords ("the", "you", "so") appear in any transcript and would
+        // inflate coverage for genuine user speech — score content words only.
+        int content = 0, matched = 0;
+        for( final String w : micW )
         {
-            for( int i = 0; i <= sysW.length - N; i++ )
-                sysNgrams.add( sysW[i] + '\t' + sysW[i+1] + '\t' + sysW[i+2] );
-        }
-        else
-        {
-            for( final String w : sysW ) sysNgrams.add( w );
-        }
-
-        final boolean[] remove = new boolean[ micW.length ];
-        if( micW.length >= N )
-        {
-            for( int i = 0; i <= micW.length - N; i++ )
+            if( w.length() < 3 || STOPWORDS.contains( w ) ) continue;
+            content++;
+            for( final String s : sysW )
             {
-                if( sysNgrams.contains( micW[i] + '\t' + micW[i+1] + '\t' + micW[i+2] ) )
-                    remove[i] = remove[i+1] = remove[i+2] = true;
+                if( fuzzyWordEq( w, s ) ) { matched++; break; }
+            }
+        }
+        if( content >= 3 && matched >= content * 0.6 ) return null;
+
+        // ── Layer 2: fuzzy bigram removal ─────────────────────────────────
+        final boolean[] remove = new boolean[ micW.length ];
+        for( int i = 0; i + 1 < micW.length; i++ )
+        {
+            for( int j = 0; j + 1 < sysW.length; j++ )
+            {
+                if( fuzzyWordEq( micW[i], sysW[j] ) && fuzzyWordEq( micW[i+1], sysW[j+1] ) )
+                {
+                    remove[i] = remove[i+1] = true;
+                    break;
+                }
             }
         }
 
         final StringBuilder sb = new StringBuilder();
+        int kept = 0;
         for( int i = 0; i < micW.length; i++ )
         {
             if( !remove[i] )
             {
                 if( sb.length() > 0 ) sb.append( ' ' );
                 sb.append( micW[i] );
+                kept++;
             }
         }
-        final String result = sb.toString().trim();
-        return result.split( "\\s+" ).length >= 4 ? result : null;
+        return kept >= 4 ? sb.toString() : null;
+    }
+
+    /** Common function words excluded from echo-coverage scoring. */
+    private static final java.util.Set<String> STOPWORDS = new java.util.HashSet<>(
+        java.util.Arrays.asList(
+            "the", "a", "an", "and", "or", "but", "so", "to", "of", "in", "on",
+            "at", "is", "are", "was", "were", "be", "been", "being", "am",
+            "have", "has", "had", "do", "does", "did", "will", "would", "can",
+            "could", "should", "i", "you", "he", "she", "it", "we", "they",
+            "me", "him", "her", "us", "them", "my", "your", "his", "its", "our",
+            "their", "this", "that", "these", "those", "there", "here", "with",
+            "for", "not", "no", "yes", "what", "when", "where", "who", "how",
+            "why", "all", "just", "like", "get", "got", "well", "oh", "uh",
+            "um", "yeah", "okay", "ok", "out", "up", "down", "now", "then" ) );
+
+    /**
+     * Fuzzy equality for transcript words: exact match, inflection variants
+     * (one is the other plus a short suffix, e.g. "point"/"pointing"), or
+     * small edit distance (1 for short words, 2 for 7+ letters). Words under
+     * 4 letters must match exactly — they're too short to fuzz safely.
+     */
+    private static boolean fuzzyWordEq( final String a, final String b )
+    {
+        if( a.equals( b ) ) return true;
+        final int la = a.length(), lb = b.length();
+        if( la < 4 || lb < 4 ) return false;
+        final int diff = Math.abs( la - lb );
+        if( diff <= 3 && ( a.startsWith( b ) || b.startsWith( a ) ) ) return true;
+        if( diff > 2 ) return false;
+        final int maxEd = Math.min( la, lb ) >= 7 ? 2 : 1;
+        return editDistanceAtMost( a, b, maxEd );
+    }
+
+    /** Levenshtein distance check with early bail-out once maxEd is exceeded. */
+    private static boolean editDistanceAtMost( final String a, final String b, final int maxEd )
+    {
+        final int la = a.length(), lb = b.length();
+        int[] prev = new int[ lb + 1 ];
+        int[] curr = new int[ lb + 1 ];
+        for( int j = 0; j <= lb; j++ ) prev[j] = j;
+        for( int i = 1; i <= la; i++ )
+        {
+            curr[0] = i;
+            int rowMin = curr[0];
+            for( int j = 1; j <= lb; j++ )
+            {
+                final int cost = ( a.charAt( i - 1 ) == b.charAt( j - 1 ) ) ? 0 : 1;
+                curr[j] = Math.min( Math.min( curr[j-1] + 1, prev[j] + 1 ), prev[j-1] + cost );
+                if( curr[j] < rowMin ) rowMin = curr[j];
+            }
+            if( rowMin > maxEd ) return false;
+            final int[] t = prev; prev = curr; curr = t;
+        }
+        return prev[lb] <= maxEd;
     }
 
     /** Lowercase, strip non-alphanumeric except apostrophes, split on whitespace. */
