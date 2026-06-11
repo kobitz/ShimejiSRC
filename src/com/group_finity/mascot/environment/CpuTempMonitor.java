@@ -16,8 +16,13 @@ import java.util.logging.Logger;
  *
  * Fast loop (1s):
  *   cpuLoad      - OperatingSystemMXBean.getSystemCpuLoad(), pure Java, instant
- *   gpuTemp/Load - nvidia-smi (~80ms spawn, NVIDIA only, no admin; -1 otherwise)
  *   batteryLevel - Win32 GetSystemPowerStatus via JNA, instant
+ *
+ * Persistent process (1s stream):
+ *   gpuTemp/Load/Mem - one "nvidia-smi --query-gpu=... -l 1" process streams a CSV
+ *                  line per second (NVIDIA only, no admin; -1 otherwise). Replaces
+ *                  the old spawn-per-second model (~86k process spawns/day).
+ *                  memory.free/total also feed OllamaClient's GPU-fit heuristic.
  *
  * Persistent process (1s stream):
  *   cpuTemp      - TempSensor.exe kept alive; outputs one "cpuTemp=XX.X" line per
@@ -99,10 +104,12 @@ public class CpuTempMonitor
     private volatile double cpuLoad      = -1;
     private volatile double gpuTemp      = -1;
     private volatile double gpuLoad      = -1;
+    private volatile double gpuMemFree   = -1; // MiB
+    private volatile double gpuMemTotal  = -1; // MiB
     private volatile double batteryLevel = -1;
 
-    private volatile boolean nvidiaSmiAvailable = true;
-    private volatile Process tempProcess       = null;
+    private volatile Process tempProcess = null;
+    private volatile Process gpuProcess  = null;
 
     private CpuTempMonitor( ) { }
 
@@ -118,10 +125,17 @@ public class CpuTempMonitor
         temp.setPriority( Thread.MIN_PRIORITY );
         temp.start( );
 
-        // Kill TempSensor.exe cleanly when the JVM exits.
+        Thread gpu = new Thread( this::gpuPollLoop, "CpuTempMonitor-Gpu" );
+        gpu.setDaemon( true );
+        gpu.setPriority( Thread.MIN_PRIORITY );
+        gpu.start( );
+
+        // Kill TempSensor.exe / nvidia-smi cleanly when the JVM exits.
         Runtime.getRuntime( ).addShutdownHook( new Thread( ( ) -> {
             Process p = tempProcess;
             if( p != null ) p.destroy( );
+            Process g = gpuProcess;
+            if( g != null ) g.destroy( );
         } ) );
     }
 
@@ -132,7 +146,6 @@ public class CpuTempMonitor
         while( true )
         {
             try { readCpuLoad( );  } catch( Exception e ) { log.log( Level.FINE, "cpuLoad error", e ); }
-            try { readGpu( );      } catch( Exception e ) { log.log( Level.FINE, "gpu error", e ); }
             try { readBattery( );  } catch( Exception e ) { log.log( Level.FINE, "battery error", e ); }
 
             try { Thread.sleep( FAST_POLL_MS ); }
@@ -147,50 +160,67 @@ public class CpuTempMonitor
         cpuLoad = ( load >= 0.0 ) ? load * 100.0 : -1;
     }
 
-    private void readGpu( )
+    // --- GPU loop: one persistent nvidia-smi streaming a CSV line per second ---
+
+    private void gpuPollLoop( )
     {
-        if( !nvidiaSmiAvailable ) return;
-
-        Process process = null;
-        BufferedReader reader = null;
-        try
+        while( true )
         {
-            ProcessBuilder pb = new ProcessBuilder(
-                "nvidia-smi",
-                "--query-gpu=temperature.gpu,utilization.gpu",
-                "--format=csv,noheader,nounits"
-            );
-            pb.redirectErrorStream( true );
-            process = pb.start( );
-            reader = new BufferedReader( new InputStreamReader( process.getInputStream( ) ) );
+            try
+            {
+                runGpuStream( );
+            }
+            catch( java.io.IOException e )
+            {
+                // nvidia-smi not on PATH — no NVIDIA GPU, don't retry
+                log.log( Level.FINE, "nvidia-smi unavailable, GPU sensors disabled", e );
+                return;
+            }
+            catch( Exception e )
+            {
+                log.log( Level.FINE, "nvidia-smi stream exited, restarting", e );
+            }
 
-            String line = reader.readLine( );
-            if( line != null )
+            gpuTemp = -1; gpuLoad = -1; gpuMemFree = -1; gpuMemTotal = -1;
+            try { Thread.sleep( TEMP_RESTART_DELAY_MS ); }
+            catch( InterruptedException e ) { Thread.currentThread( ).interrupt( ); return; }
+        }
+    }
+
+    // Spawns nvidia-smi in loop mode (-l 1) and reads one CSV line per second
+    // until the process exits.
+    private void runGpuStream( ) throws Exception
+    {
+        ProcessBuilder pb = new ProcessBuilder(
+            "nvidia-smi",
+            "--query-gpu=temperature.gpu,utilization.gpu,memory.free,memory.total",
+            "--format=csv,noheader,nounits",
+            "-l", "1"
+        );
+        pb.redirectErrorStream( true );
+        Process process = pb.start( );
+        gpuProcess = process;
+
+        try( BufferedReader reader = new BufferedReader(
+                new InputStreamReader( process.getInputStream( ) ) ) )
+        {
+            String line;
+            while( ( line = reader.readLine( ) ) != null )
             {
                 String[] parts = line.trim( ).split( "\\s*,\\s*" );
-                if( parts.length >= 2 )
+                if( parts.length >= 4 )
                 {
-                    gpuTemp = parseDouble( parts[0] );
-                    gpuLoad = parseDouble( parts[1] );
+                    gpuTemp     = parseDouble( parts[0] );
+                    gpuLoad     = parseDouble( parts[1] );
+                    gpuMemFree  = parseDouble( parts[2] );
+                    gpuMemTotal = parseDouble( parts[3] );
                 }
             }
-            process.waitFor( );
-        }
-        catch( java.io.IOException e )
-        {
-            nvidiaSmiAvailable = false;
-            gpuTemp = -1;
-            gpuLoad = -1;
-            log.log( Level.FINE, "nvidia-smi unavailable, GPU sensors disabled", e );
-        }
-        catch( Exception e )
-        {
-            log.log( Level.FINE, "nvidia-smi error", e );
         }
         finally
         {
-            if( reader  != null ) try { reader.close( );  } catch( Exception ignored ) { }
-            if( process != null ) process.destroy( );
+            gpuProcess = null;
+            process.destroy( );
         }
     }
 
@@ -291,6 +321,10 @@ public class CpuTempMonitor
     public double getCpuLoad( )      { return cpuLoad;      }
     public double getGpuTemp( )      { return gpuTemp;      }
     public double getGpuLoad( )      { return gpuLoad;      }
+    /** Free GPU memory in MiB, or -1 when no NVIDIA GPU data is available. */
+    public double getGpuMemFree( )   { return gpuMemFree;   }
+    /** Total GPU memory in MiB, or -1 when no NVIDIA GPU data is available. */
+    public double getGpuMemTotal( )  { return gpuMemTotal;  }
     public double getRamLoad( )      { return -1; }
     public double getBatteryLevel( ) { return batteryLevel; }
 }

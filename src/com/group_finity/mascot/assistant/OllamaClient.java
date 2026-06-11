@@ -9,9 +9,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,10 +38,11 @@ public class OllamaClient
     /** Hard cap on generated tokens - physically prevents runaway responses. */
     private static final int MAX_TOKENS = 100;
 
-    /** Text model linger after a call. 120s covers the 45-90s reaction cadence, so
-     *  the model stays warm between reactions (each call re-arms the timer). Cost:
-     *  the model's memory (VRAM + any CPU-overflow RAM share) is held while warm. */
-    private static final int TEXT_KEEP_ALIVE_SEC   = 20;
+    /** Text model linger after a call. 30s is tuned to the response window: it keeps
+     *  the model warm long enough for a follow-up/queued request to land, then lets it
+     *  unload between the 45-90s reaction cadence gaps to free VRAM/RAM. Deliberately
+     *  shorter than the cadence — reloads between reactions are an accepted cost. */
+    private static final int TEXT_KEEP_ALIVE_SEC   = 30;
     /** Unload vision model immediately — it's called rarely and is large. */
     private static final int VISION_KEEP_ALIVE_SEC = 0;
 
@@ -106,21 +104,8 @@ public class OllamaClient
     /** Single worker thread that drains the queue at DISPATCH_INTERVAL_MS cadence. */
     private final Thread queueWorker;
 
-    /** Executor used only for the worker thread itself. */
-    private final ExecutorService workerExecutor = Executors.newSingleThreadExecutor( r ->
-    {
-        Thread t = new Thread( r, "ollama-queue-worker" );
-        t.setDaemon( true );
-        return t;
-    });
-
     /** Total transformer layer count for the loaded model; -1 = not yet fetched. */
     private volatile int    cachedLayerCount   = -1;
-
-    /** Cached GPU available fraction and the time it was measured. */
-    private volatile double cachedGpuFraction  = -1.0;
-    private volatile long   gpuCacheTime       = 0;
-    private static final long GPU_CACHE_TTL_MS = 5_000;
 
     public OllamaClient()
     {
@@ -204,7 +189,7 @@ public class OllamaClient
     /**
      * Like {@link #generate} but with a caller-supplied token limit.
      * Use this for tasks (e.g. summarization) that need more output than the
-     * default 80-token cap used for normal mascot responses.
+     * default MAX_TOKENS cap used for normal mascot responses.
      */
     public void generate( final String systemPrompt,
                           final String userMessage,
@@ -219,7 +204,13 @@ public class OllamaClient
             // rather than stale autonomous reactions clogging the pipeline.
             final Request dropped = requestQueue.poll();
             if( dropped != null )
+            {
                 log.warning( "[OllamaQueue] Queue full — dropped oldest pending request." );
+                // Notify the dropped caller so its UI (e.g. a "Thinking..." bubble)
+                // doesn't wait forever for a response that will never come.
+                try { dropped.callback.onError( "Request skipped — queue full." ); }
+                catch( final Exception ignored ) {}
+            }
             requestQueue.offer( req );
         }
     }
@@ -290,7 +281,19 @@ public class OllamaClient
 
         final int status = conn.getResponseCode();
         if( status != 200 )
+        {
+            // Drain and close the error stream so the keep-alive connection can be reused.
+            try( final java.io.InputStream es = conn.getErrorStream() )
+            {
+                if( es != null )
+                {
+                    final byte[] buf = new byte[ 1024 ];
+                    while( es.read( buf ) > 0 ) { /* discard */ }
+                }
+            }
+            catch( final IOException ignored ) {}
             throw new IOException( "HTTP " + status + " from Ollama (model=" + effectiveModel + ")" );
+        }
 
         final StringBuilder sb = new StringBuilder();
         try ( BufferedReader br = new BufferedReader(
@@ -356,48 +359,29 @@ public class OllamaClient
     }
 
     /**
-     * Queries nvidia-smi for current GPU utilization and free memory.
-     * Result is cached for GPU_CACHE_TTL_MS to avoid a subprocess on every request.
-     * Returns the available fraction as min(compute_headroom, memory_headroom).
-     * Returns 1.0 on any failure (no GPU / nvidia-smi not found).
+     * Returns the GPU available fraction as min(compute_headroom, memory_headroom),
+     * read from CpuTempMonitor's persistent nvidia-smi stream — no subprocess spawn
+     * per request. Returns 1.0 when no NVIDIA GPU data is available (allow full use;
+     * Ollama itself falls back to CPU when there is genuinely no GPU).
      */
     private double queryGpuAvailableFraction()
     {
-        final long now = System.currentTimeMillis();
-        if( cachedGpuFraction >= 0 && ( now - gpuCacheTime ) < GPU_CACHE_TTL_MS )
-            return cachedGpuFraction;
         try
         {
-            final ProcessBuilder pb = new ProcessBuilder(
-                "nvidia-smi",
-                "--query-gpu=utilization.gpu,memory.free,memory.total",
-                "--format=csv,noheader,nounits"
-            );
-            pb.redirectErrorStream( true );
-            final Process p = pb.start();
-            final BufferedReader br = new BufferedReader( new InputStreamReader( p.getInputStream() ) );
-            final String line = br.readLine();
-            br.close();
-            if( !p.waitFor( 5, TimeUnit.SECONDS ) )
-                p.destroyForcibly();
-            if( line == null )
-                return 1.0;
-            final String[] parts = line.split( "," );
-            if( parts.length < 3 )
-                return 1.0;
-            final double utilPct  = Double.parseDouble( parts[0].trim() );
-            final double memFree  = Double.parseDouble( parts[1].trim() );
-            final double memTotal = Double.parseDouble( parts[2].trim() );
-            final double computeAvail = ( 100.0 - utilPct ) / 100.0;
+            final com.group_finity.mascot.environment.CpuTempMonitor mon =
+                com.group_finity.mascot.environment.CpuTempMonitor.getInstance();
+            final double load     = mon.getGpuLoad();
+            final double memFree  = mon.getGpuMemFree();
+            final double memTotal = mon.getGpuMemTotal();
+            if( load < 0 )
+                return 1.0; // no NVIDIA GPU / nvidia-smi unavailable
+            final double computeAvail = ( 100.0 - load ) / 100.0;
             final double memAvail     = memTotal > 0 ? memFree / memTotal : 1.0;
-            final double result       = Math.min( computeAvail, memAvail );
-            cachedGpuFraction = result;
-            gpuCacheTime      = System.currentTimeMillis();
-            return result;
+            return Math.min( computeAvail, memAvail );
         }
         catch( final Exception e )
         {
-            return 1.0; // no NVIDIA GPU or nvidia-smi not on PATH — allow full use
+            return 1.0;
         }
     }
 
@@ -487,13 +471,36 @@ public class OllamaClient
                 final char next = json.charAt( i + 1 );
                 switch( next )
                 {
-                    case '"':  sb.append('"');  break;
-                    case '\\': sb.append('\\'); break;
-                    case 'n':  sb.append('\n'); break;
-                    case 't':  sb.append('\t'); break;
-                    default:   sb.append(next); break;
+                    case '"':  sb.append('"');  i += 2; break;
+                    case '\\': sb.append('\\'); i += 2; break;
+                    case 'n':  sb.append('\n'); i += 2; break;
+                    case 't':  sb.append('\t'); i += 2; break;
+                    case 'r':  sb.append('\r'); i += 2; break;
+                    case 'u':
+                        // \\uXXXX — Go's JSON encoder HTML-escapes < > & as \\u003c etc.
+                        // Without this, those characters surface as literal "u003c" text.
+                        if( i + 6 <= json.length() )
+                        {
+                            try
+                            {
+                                sb.append( (char) Integer.parseInt(
+                                    json.substring( i + 2, i + 6 ), 16 ) );
+                                i += 6;
+                            }
+                            catch( final NumberFormatException e )
+                            {
+                                sb.append( next );
+                                i += 2;
+                            }
+                        }
+                        else
+                        {
+                            sb.append( next );
+                            i += 2;
+                        }
+                        break;
+                    default:   sb.append(next); i += 2; break;
                 }
-                i += 2;
             }
             else if( c == '"' )
             {

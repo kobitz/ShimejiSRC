@@ -57,13 +57,19 @@ public class MascotMemory
     private int    interactionCount = 0;
     private int    sinceLastSummary = 0;
 
-    /** Dirty flag + timer for debounced saves — collapses burst writes into one. */
-    private boolean            dirty      = false;
-    private java.util.Timer    flushTimer = null;
-    private static final long  FLUSH_DELAY_MS = 500;
+    /** Dirty flag + pending task for debounced saves — collapses burst writes into one. */
+    private boolean                 dirty     = false;
+    private java.util.TimerTask     flushTask = null;
+    private static final long       FLUSH_DELAY_MS = 500;
+    /** One shared daemon timer for all instances — the old code spun up a new
+     *  Timer thread per flush cycle. */
+    private static final java.util.Timer FLUSH_TIMER = new java.util.Timer( "memory-flush", true );
 
     // ── Static cache — one instance per imageSet ──────────────────────────────
-    private static final Map<String, MascotMemory> CACHE = new HashMap<>();
+    // ConcurrentHashMap: forImageSet() is hit from the EDT, the Manager tick
+    // thread, the Ollama queue worker, and the peer-reaction scheduler.
+    private static final Map<String, MascotMemory> CACHE =
+        new java.util.concurrent.ConcurrentHashMap<>();
 
     public static MascotMemory forImageSet( final String imageSet )
     {
@@ -254,10 +260,17 @@ public class MascotMemory
     {
         public final List<String> keywords;
         public final String       content;
+        /** Word-boundary patterns compiled once per memory instead of per lookup. */
+        final java.util.regex.Pattern[] keywordPatterns;
         PermanentMemory( final List<String> keywords, final String content )
         {
             this.keywords = Collections.unmodifiableList( new ArrayList<>( keywords ) );
             this.content  = content;
+            this.keywordPatterns = new java.util.regex.Pattern[ this.keywords.size() ];
+            for( int i = 0; i < this.keywords.size(); i++ )
+                this.keywordPatterns[i] = java.util.regex.Pattern.compile(
+                    "\\b" + java.util.regex.Pattern.quote(
+                        this.keywords.get( i ).toLowerCase( java.util.Locale.ROOT ) ) + "\\b" );
         }
     }
 
@@ -288,10 +301,10 @@ public class MascotMemory
         final List<String> hits = new ArrayList<>();
         for( final PermanentMemory pm : permanentMemories )
         {
-            for( final String kw : pm.keywords )
+            for( final java.util.regex.Pattern kw : pm.keywordPatterns )
             {
                 // Word-boundary match so "bike" doesn't match "biker"
-                if( lower.matches( ".*\\b" + java.util.regex.Pattern.quote( kw.toLowerCase( java.util.Locale.ROOT ) ) + "\\b.*" ) )
+                if( kw.matcher( lower ).find() )
                 {
                     hits.add( pm.content );
                     break;
@@ -413,17 +426,17 @@ public class MascotMemory
     private synchronized void scheduleSave()
     {
         dirty = true;
-        if( flushTimer != null ) return;
-        flushTimer = new java.util.Timer( "memory-flush", true ); // daemon
-        flushTimer.schedule( new java.util.TimerTask()
+        if( flushTask != null ) return;
+        flushTask = new java.util.TimerTask()
         {
             public void run() { flushDirty(); }
-        }, FLUSH_DELAY_MS );
+        };
+        FLUSH_TIMER.schedule( flushTask, FLUSH_DELAY_MS );
     }
 
     private synchronized void flushDirty()
     {
-        flushTimer = null;
+        flushTask = null;
         if( !dirty ) return;
         dirty = false;
         save();

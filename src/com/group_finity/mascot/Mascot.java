@@ -258,6 +258,10 @@ public class Mascot
     private static final java.util.concurrent.atomic.AtomicLong globalVisionLastFiredMs =
         new java.util.concurrent.atomic.AtomicLong( 0L );
 
+    /** Fallback when the VisionModel property is absent — matches the documented
+     *  default (shared multimodal model), NOT a separate vision-only model. */
+    private static final String DEFAULT_VISION_MODEL = "gemma3:4b";
+
     private static final int CLICK_MAX_MS      = 100;
     private static final int CLICK_MAX_MOVE_PX = 8;
 
@@ -1269,9 +1273,11 @@ public class Mascot
             activeDialog = null;
         }
 
-        // Lazily create the shared Ollama client
+        // Lazily create the shared Ollama client — must go through createOllamaClient()
+        // so the configured OllamaModel/OllamaEndpoint settings are honored (the bare
+        // constructor would silently fall back to the hardcoded default model).
         if( ollamaClient == null )
-            ollamaClient = new OllamaClient( );
+            ollamaClient = createOllamaClient( );
 
         // Ensure a bubble exists so the dialog has something to attach to
         if( assistantBubble == null )
@@ -1408,73 +1414,108 @@ public class Mascot
         return s;
     }
 
+    /**
+     * First-person rewrite table: {regex, suffix appended to the mascot name}.
+     * Order matters — contractions before bare-I, catch-all I last, pronouns after.
+     * Patterns are name-independent and compiled once (see REWRITE_PATTERNS);
+     * the old replaceAll chain recompiled ~50 regexes on every utterance.
+     */
+    private static final String[][] FIRST_PERSON_REWRITES = {
+        { "\\bI'm not\\b", " is not" },
+        { "\\bI'm\\b",     " is" },
+        { "\\bI've\\b",    " has" },
+        { "\\bI'll\\b",    " will" },
+        { "\\bI'd\\b",     " would" },
+        // be / have
+        { "\\bI am\\b",   " is" },
+        { "\\bI was\\b",  " was" },
+        { "\\bI have\\b", " has" },
+        { "\\bI had\\b",  " had" },
+        // do
+        { "\\bI do\\b",  " does" },
+        { "\\bI did\\b", " did" },
+        // modals (person-invariant)
+        { "\\bI can\\b",    " can" },
+        { "\\bI will\\b",   " will" },
+        { "\\bI would\\b",  " would" },
+        { "\\bI could\\b",  " could" },
+        { "\\bI should\\b", " should" },
+        { "\\bI might\\b",  " might" },
+        { "\\bI must\\b",   " must" },
+        // common present-tense verbs
+        { "\\bI think\\b",      " thinks" },
+        { "\\bI know\\b",       " knows" },
+        { "\\bI want\\b",       " wants" },
+        { "\\bI need\\b",       " needs" },
+        { "\\bI like\\b",       " likes" },
+        { "\\bI love\\b",       " loves" },
+        { "\\bI hate\\b",       " hates" },
+        { "\\bI feel\\b",       " feels" },
+        { "\\bI hope\\b",       " hopes" },
+        { "\\bI see\\b",        " sees" },
+        { "\\bI say\\b",        " says" },
+        { "\\bI mean\\b",       " means" },
+        { "\\bI get\\b",        " gets" },
+        { "\\bI wonder\\b",     " wonders" },
+        { "\\bI understand\\b", " understands" },
+        { "\\bI remember\\b",   " remembers" },
+        { "\\bI believe\\b",    " believes" },
+        { "\\bI find\\b",       " finds" },
+        { "\\bI guess\\b",      " guesses" },
+        { "\\bI suggest\\b",    " suggests" },
+        { "\\bI prefer\\b",     " prefers" },
+        { "\\bI wish\\b",       " wishes" },
+        { "\\bI acknowledge\\b", " acknowledges" },
+        { "\\bI agree\\b",      " agrees" },
+        { "\\bI notice\\b",     " notices" },
+        { "\\bI suppose\\b",    " supposes" },
+        { "\\bI doubt\\b",      " doubts" },
+        { "\\bI admit\\b",      " admits" },
+        { "\\bI expect\\b",     " expects" },
+        { "\\bI detect\\b",     " detects" },
+        // catch-all I -> name (may leave unconjugated verbs; acceptable)
+        { "\\bI\\b", "" },
+        // object / possessive pronouns
+        { "\\b[Mm]yself\\b", "" },
+        { "\\b[Mm]ine\\b",   "'s" },
+        { "\\b[Mm]y\\b",     "'s" },
+        { "\\b[Mm]e\\b",     "" },
+    };
+
+    /** Compiled once from FIRST_PERSON_REWRITES, same order. */
+    private static final java.util.regex.Pattern[] REWRITE_PATTERNS;
+    static
+    {
+        REWRITE_PATTERNS = new java.util.regex.Pattern[ FIRST_PERSON_REWRITES.length ];
+        for( int i = 0; i < FIRST_PERSON_REWRITES.length; i++ )
+            REWRITE_PATTERNS[i] = java.util.regex.Pattern.compile( FIRST_PERSON_REWRITES[i][0] );
+    }
+
+    /** Name-contraction patterns ("Paimon'm" etc.), cached per mascot name. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, java.util.regex.Pattern[]>
+        NAME_CONTRACTION_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final String[] NAME_CONTRACTION_SUFFIXES = { " is", " will", " has", " would" };
+
     private static String rewriteFirstPerson( String s, final String name )
     {
-        // Contractions — must come before bare-I replacements
-        // Model sometimes contracts onto the name directly: "Paimon'm", "Paimon'll", "Paimon've"
-        s = s.replaceAll( "\\b" + name + "'m\\b",  name + " is" );
-        s = s.replaceAll( "\\b" + name + "'ll\\b", name + " will" );
-        s = s.replaceAll( "\\b" + name + "'ve\\b", name + " has" );
-        s = s.replaceAll( "\\b" + name + "'d\\b",  name + " would" );
-        s = s.replaceAll( "\\bI'm not\\b", name + " is not" );
-        s = s.replaceAll( "\\bI'm\\b",     name + " is" );
-        s = s.replaceAll( "\\bI've\\b",    name + " has" );
-        s = s.replaceAll( "\\bI'll\\b",    name + " will" );
-        s = s.replaceAll( "\\bI'd\\b",     name + " would" );
-        // be / have
-        s = s.replaceAll( "\\bI am\\b",   name + " is" );
-        s = s.replaceAll( "\\bI was\\b",  name + " was" );
-        s = s.replaceAll( "\\bI have\\b", name + " has" );
-        s = s.replaceAll( "\\bI had\\b",  name + " had" );
-        // do
-        s = s.replaceAll( "\\bI do\\b",  name + " does" );
-        s = s.replaceAll( "\\bI did\\b", name + " did" );
-        // modals (person-invariant)
-        s = s.replaceAll( "\\bI can\\b",    name + " can" );
-        s = s.replaceAll( "\\bI will\\b",   name + " will" );
-        s = s.replaceAll( "\\bI would\\b",  name + " would" );
-        s = s.replaceAll( "\\bI could\\b",  name + " could" );
-        s = s.replaceAll( "\\bI should\\b", name + " should" );
-        s = s.replaceAll( "\\bI might\\b",  name + " might" );
-        s = s.replaceAll( "\\bI must\\b",   name + " must" );
-        // common present-tense verbs
-        s = s.replaceAll( "\\bI think\\b",      name + " thinks" );
-        s = s.replaceAll( "\\bI know\\b",       name + " knows" );
-        s = s.replaceAll( "\\bI want\\b",       name + " wants" );
-        s = s.replaceAll( "\\bI need\\b",       name + " needs" );
-        s = s.replaceAll( "\\bI like\\b",       name + " likes" );
-        s = s.replaceAll( "\\bI love\\b",       name + " loves" );
-        s = s.replaceAll( "\\bI hate\\b",       name + " hates" );
-        s = s.replaceAll( "\\bI feel\\b",       name + " feels" );
-        s = s.replaceAll( "\\bI hope\\b",       name + " hopes" );
-        s = s.replaceAll( "\\bI see\\b",        name + " sees" );
-        s = s.replaceAll( "\\bI say\\b",        name + " says" );
-        s = s.replaceAll( "\\bI mean\\b",       name + " means" );
-        s = s.replaceAll( "\\bI get\\b",        name + " gets" );
-        s = s.replaceAll( "\\bI wonder\\b",     name + " wonders" );
-        s = s.replaceAll( "\\bI understand\\b", name + " understands" );
-        s = s.replaceAll( "\\bI remember\\b",   name + " remembers" );
-        s = s.replaceAll( "\\bI believe\\b",    name + " believes" );
-        s = s.replaceAll( "\\bI find\\b",       name + " finds" );
-        s = s.replaceAll( "\\bI guess\\b",      name + " guesses" );
-        s = s.replaceAll( "\\bI suggest\\b",    name + " suggests" );
-        s = s.replaceAll( "\\bI prefer\\b",     name + " prefers" );
-        s = s.replaceAll( "\\bI wish\\b",       name + " wishes" );
-        s = s.replaceAll( "\\bI acknowledge\\b", name + " acknowledges" );
-        s = s.replaceAll( "\\bI agree\\b",      name + " agrees" );
-        s = s.replaceAll( "\\bI notice\\b",     name + " notices" );
-        s = s.replaceAll( "\\bI suppose\\b",    name + " supposes" );
-        s = s.replaceAll( "\\bI doubt\\b",      name + " doubts" );
-        s = s.replaceAll( "\\bI admit\\b",      name + " admits" );
-        s = s.replaceAll( "\\bI expect\\b",     name + " expects" );
-        s = s.replaceAll( "\\bI detect\\b",     name + " detects" );
-        // catch-all I → name (may leave unconjugated verbs; acceptable)
-        s = s.replaceAll( "\\bI\\b", name );
-        // object / possessive pronouns
-        s = s.replaceAll( "\\b[Mm]yself\\b", name );
-        s = s.replaceAll( "\\b[Mm]ine\\b",   name + "'s" );
-        s = s.replaceAll( "\\b[Mm]y\\b",     name + "'s" );
-        s = s.replaceAll( "\\b[Mm]e\\b",     name );
+        // Contractions onto the name directly: "Paimon'm", "Paimon'll", "Paimon've", "Paimon'd"
+        final java.util.regex.Pattern[] namePats = NAME_CONTRACTION_CACHE.computeIfAbsent( name, n ->
+        {
+            final String q = java.util.regex.Pattern.quote( n );
+            return new java.util.regex.Pattern[] {
+                java.util.regex.Pattern.compile( "\\b" + q + "'m\\b" ),
+                java.util.regex.Pattern.compile( "\\b" + q + "'ll\\b" ),
+                java.util.regex.Pattern.compile( "\\b" + q + "'ve\\b" ),
+                java.util.regex.Pattern.compile( "\\b" + q + "'d\\b" ),
+            };
+        });
+        for( int i = 0; i < namePats.length; i++ )
+            s = namePats[i].matcher( s ).replaceAll(
+                java.util.regex.Matcher.quoteReplacement( name + NAME_CONTRACTION_SUFFIXES[i] ) );
+
+        for( int i = 0; i < REWRITE_PATTERNS.length; i++ )
+            s = REWRITE_PATTERNS[i].matcher( s ).replaceAll(
+                java.util.regex.Matcher.quoteReplacement( name + FIRST_PERSON_REWRITES[i][1] ) );
         return s;
     }
 
@@ -1890,7 +1931,7 @@ public class Mascot
                 @Override public void onResponse( final String raw )
                 {
                     fireActionFromResponse( raw );
-                    final String text = applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) );
+                    final String text = applyPersonaRewrites( polishUtterance( stripActionTag( sanitizeResponse( raw ) ) ) );
                     com.group_finity.mascot.assistant.ChatLog.append( mascotName, text );
                     // Append mascot reply to thread for next chained reply
                     if( assistantBubble != null && message != null )
@@ -2280,7 +2321,7 @@ public class Mascot
         if( ollamaClient == null ) ollamaClient = createOllamaClient();
         final OllamaClient client = ollamaClient;
         final String vModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", "moondream" );
+            .getProperty( "VisionModel", DEFAULT_VISION_MODEL );
 
         // Snapshot window title now — focus may shift during Whisper's run
         final String windowTitleSnapshot = lastActiveWindowTitle;
@@ -2456,7 +2497,7 @@ public class Mascot
             + "\n- Reply in ONE sentence. 15 words maximum."
             + QUICK_REACTION_STYLE_RULES
             + "\n- This is an unprompted observation. Be brief and natural."
-            + "\n- No greetings, no questions, no filler."
+            + "\n- No greetings, no filler."
             + "\n- Do not reuse or echo words directly from the window title."
             + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
@@ -2535,7 +2576,7 @@ public class Mascot
             + "\n- Reply in ONE sentence. 15 words maximum."
             + QUICK_REACTION_STYLE_RULES
             + "\n- This is an unprompted glance at the user's screen. Be brief, natural, in-character."
-            + "\n- No greetings, no questions, no filler."
+            + "\n- No greetings, no filler."
             + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
             + "\n---", visionSpeechRule );
@@ -2543,7 +2584,7 @@ public class Mascot
         if( ollamaClient == null ) ollamaClient = createOllamaClient();
         final OllamaClient client = ollamaClient;
         final String vModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", "moondream" );
+            .getProperty( "VisionModel", DEFAULT_VISION_MODEL );
 
         new Thread( () ->
         {
@@ -2835,7 +2876,7 @@ public class Mascot
                 setTime( getTime( ) + 1 );
             }
             
-            if( debugWindow != null )
+            if( debugWindow != null && behavior != null )
             {
                 debugWindow.setBehaviour( behavior.toString( ).substring( 9, behavior.toString( ).length( ) - 1 ).replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " ) );
                 debugWindow.setShimejiX( anchor.x );
@@ -3631,7 +3672,7 @@ public class Mascot
                                     final OllamaClient client )
     {
         final String visionModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", "moondream" );
+            .getProperty( "VisionModel", DEFAULT_VISION_MODEL );
         new Thread( () ->
         {
             try
@@ -3761,9 +3802,33 @@ public class Mascot
         Main.getInstance( ).getProperties( ).remove( "ManualOnly.mascot" + id );
         Main.getInstance( ).getProperties( ).remove( "FloorEnabled.mascot" + id );
         Main.getInstance( ).getProperties( ).remove( "Tooltip.mascot" + id );
-unregisterVoiceCommand();
-        com.group_finity.mascot.assistant.MascotSpeechRegistry.unregister( getImageSet() );
-        Main.getInstance( ).getProperties( ).remove( "AssistantMode.mascot" + id );
+
+        // Voice and peer-speech registrations are keyed by image set / name, shared
+        // by all mascots of this set. Only tear them down when this is the last one;
+        // otherwise hand them to a surviving clone (its earlier registration may have
+        // been overwritten by ours, so re-registering keeps reactions alive).
+        Mascot survivor = null;
+        if( getManager( ) != null )
+        {
+            for( final Mascot m : getManager( ).getMascotList( ) )
+            {
+                if( m != this && getImageSet( ).equals( m.getImageSet( ) ) )
+                {
+                    survivor = m;
+                    break;
+                }
+            }
+        }
+        if( survivor == null )
+        {
+            unregisterVoiceCommand( );
+            com.group_finity.mascot.assistant.MascotSpeechRegistry.unregister( getImageSet( ) );
+        }
+        else if( survivor.assistantMode )
+        {
+            survivor.registerPeerListener( );
+            survivor.registerVoiceCommand( );
+        }
         for( String key : new String[]{ "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen", "ScreenLoop" } )
             Main.getInstance( ).getProperties( ).remove( key + ".mascot" + id );
         getWindow( ).dispose( );

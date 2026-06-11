@@ -647,22 +647,6 @@ public class VoiceCommandListener
         return preferred != null ? preferred : fallback;
     }
 
-    private static TargetDataLine tryOpenLine( final Mixer.Info mixerInfo )
-    {
-        try
-        {
-            final Mixer mixer = AudioSystem.getMixer( mixerInfo );
-            for( final Line.Info info : mixer.getTargetLineInfo() )
-            {
-                if( !( info instanceof DataLine.Info ) ) continue;
-                if( ( (DataLine.Info) info ).isFormatSupported( FORMAT ) )
-                    return (TargetDataLine) mixer.getLine( info );
-            }
-        }
-        catch( Exception ignored ) {}
-        return null;
-    }
-
     private static void writeWav( final byte[] pcm, final File dest ) throws IOException
     {
         final int dataLen  = pcm.length;

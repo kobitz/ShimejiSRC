@@ -135,7 +135,10 @@ public class AssistantBubble
 
     private volatile boolean thinking = false;
 
-    private final List<Message> messages = new ArrayList<>();
+    // CopyOnWriteArrayList: EDT timers/clicks mutate while the Manager thread
+    // iterates via reposition() -> layout(). A plain ArrayList risks
+    // ConcurrentModificationException on that path.
+    private final List<Message> messages = new CopyOnWriteArrayList<>();
 
     /** Tiny overlay window for the X dismiss button. */
     private final JWindow xWindow;
@@ -828,18 +831,19 @@ public class AssistantBubble
     public void showSay( final String text, final Rectangle mascotBounds )
     {
         thinking = false;
-        // Remove any existing Say messages — stop their timers cleanly
-        final java.util.Iterator<Message> it = messages.iterator();
-        while( it.hasNext() )
+        // Remove any existing Say messages — stop their timers cleanly.
+        // (Collected first: CopyOnWriteArrayList iterators don't support remove().)
+        final List<Message> oldSays = new ArrayList<>();
+        for( final Message m : messages )
         {
-            final Message m = it.next();
             if( m.fromSay )
             {
                 if( m.timer != null ) { m.timer.stop(); m.timer = null; }
                 if( selectedMessage == m ) closeReplyDialog();
-                it.remove();
+                oldSays.add( m );
             }
         }
+        messages.removeAll( oldSays );
         final Message msg = new Message(
             text.isEmpty() ? "(no response)" : text, "[Said by mascot] " + text );
         msg.fromSay = true;
@@ -1116,11 +1120,11 @@ public class AssistantBubble
     {
         final int  charCount    = msg.getDisplayText().length();
         final long delayMs      = Math.max( FADE_DELAY_MS, charCount * 250L );
-        // Phase 1: immediately fade 1.0 → 0.8 over FADE_DURATION_MS
+        // Phase 1: immediately fade 1.0 → 0.5 over FADE_DURATION_MS
         final long fadeInEndMs  = System.currentTimeMillis() + FADE_DURATION_MS;
-        // Phase 2: hold at 0.8 for delayMs
+        // Phase 2: hold at 0.5 for delayMs
         final long holdEndMs    = fadeInEndMs + delayMs;
-        // Phase 3: fade 0.8 → 0 over FADE_DURATION_MS
+        // Phase 3: fade 0.5 → 0 over FADE_DURATION_MS
         final long fadeOutEndMs = holdEndMs + FADE_DURATION_MS;
 
         msg.timer = new Timer( FADE_TICK_MS, e ->

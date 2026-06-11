@@ -17,7 +17,11 @@ import java.util.Date;
 public final class ChatLog
 {
     private static final File LOG_FILE = new File( "chat.log" );
+    // SimpleDateFormat is not thread-safe — only ever used inside the class lock.
+    // Timezone pinned explicitly to the computer's local zone (the default, but
+    // explicit so a JVM launched with an overridden user.timezone can't shift it).
     private static final SimpleDateFormat FMT = new SimpleDateFormat( "yyyy-MM-dd:HH:mm:ss" );
+    static { FMT.setTimeZone( java.util.TimeZone.getDefault() ); }
 
     private ChatLog() {}
 
@@ -25,9 +29,9 @@ public final class ChatLog
     {
         final String clean = message == null ? ""
             : message.replace( "\r", "" ).replace( "\n", " " ).trim();
-        final String line = FMT.format( new Date() ) + ":" + source + ":" + clean;
         synchronized( ChatLog.class )
         {
+            final String line = FMT.format( new Date() ) + ":" + source + ":" + clean;
             try( BufferedWriter w = new BufferedWriter( new FileWriter( LOG_FILE, true ) ) )
             {
                 w.write( line );

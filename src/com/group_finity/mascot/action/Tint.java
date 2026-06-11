@@ -70,8 +70,6 @@ public class Tint extends ActionBase
     private static final String DEFAULT_COLOR   = "FFFFFF";
     private static final double DEFAULT_OPACITY = 0.0;
     private static final double DEFAULT_LERP    = 0.1;
-    // Sentinel: Target attribute absent from XML
-    private static final double TARGET_ABSENT   = -1.0;
 
     public Tint( final ResourceBundle schema, final List<Animation> animations, final VariableMap params )
     {

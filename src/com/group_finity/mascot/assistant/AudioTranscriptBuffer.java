@@ -418,19 +418,10 @@ public class AudioTranscriptBuffer
 
     // ── Device discovery (system audio only) ─────────────────────────────────
 
-    private static final String[] LOOPBACK_FRAGS = {
-        "cable", "virtual", "loopback", "stereo mix", "wave out mix", "what u hear"
-    };
-
-    private static boolean isLoopback( final String name )
-    {
-        final String lower = name.toLowerCase();
-        for( final String f : LOOPBACK_FRAGS )
-            if( lower.contains( f ) ) return true;
-        return false;
-    }
-
-    /** Finds a loopback/mix device for system audio (fallback when WASAPI unavailable). */
+    /** Finds a loopback/mix device for system audio (fallback when WASAPI unavailable).
+     *  Only matches devices whose names identify them as loopback/mix sources — no
+     *  blind fallback: grabbing an arbitrary capture device here would silently
+     *  treat the microphone as "system audio". */
     private static TargetDataLine findLoopbackLine()
     {
         final String[][] preferred = {
@@ -454,11 +445,6 @@ public class AudioTranscriptBuffer
                     if( tdl != null ) return tdl;
                 }
             }
-        }
-        for( final Mixer.Info mi : AudioSystem.getMixerInfo() )
-        {
-            final TargetDataLine tdl = tryOpenLine( mi );
-            if( tdl != null ) return tdl;
         }
         return null;
     }
