@@ -38,11 +38,13 @@ public class OllamaClient
     /** Hard cap on generated tokens - physically prevents runaway responses. */
     private static final int MAX_TOKENS = 100;
 
-    /** Text model linger after a call. 30s is tuned to the response window: it keeps
-     *  the model warm long enough for a follow-up/queued request to land, then lets it
+    /** Text model linger after a call. Tuned to the response window: it keeps
+     *  the model warm long enough for follow-up/queued requests to land, then lets it
      *  unload between the 45-90s reaction cadence gaps to free VRAM/RAM. Deliberately
-     *  shorter than the cadence — reloads between reactions are an accepted cost. */
-    private static final int TEXT_KEEP_ALIVE_SEC   = 30;
+     *  shorter than the cadence — reloads between reactions are an accepted cost.
+     *  45s (was 30) compensates for the 5s dispatch spacing: a full 5-deep queue now
+     *  takes ~25s to drain, so the warm window must outlast it. */
+    private static final int TEXT_KEEP_ALIVE_SEC   = 45;
     /** Unload vision model immediately — it's called rarely and is large. */
     private static final int VISION_KEEP_ALIVE_SEC = 0;
 
@@ -50,8 +52,12 @@ public class OllamaClient
      * Rate-limit: minimum ms between successive Ollama calls dispatched by the
      * queue worker. Requests that arrive while a call is in-flight are held in the
      * queue; only the oldest waiting request fires when the interval elapses.
+     * 5s (was 2s): peer-reaction storms (5 generations in 16s observed) created
+     * sustained CPU/GPU bursts whose kernel/compositor contention stuttered the
+     * tick loop even with priority separation active. Same total work, spread
+     * out — replies landing a few seconds later is fine by design.
      */
-    private static final long DISPATCH_INTERVAL_MS = 2_000L;
+    private static final long DISPATCH_INTERVAL_MS = 5_000L;
 
     /** Maximum number of pending requests. Oldest entries are dropped when full. */
     private static final int MAX_QUEUE_DEPTH = 5;

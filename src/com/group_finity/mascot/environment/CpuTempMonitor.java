@@ -156,7 +156,11 @@ public class CpuTempMonitor
             if( --demoteCountdown <= 0 )
             {
                 demoteCountdown = 5;
-                try { ProcessPriorityUtil.demoteByName( "ollama.exe", "llama-server.exe" ); }
+                try
+                {
+                    ProcessPriorityUtil.ensureSelfAboveNormal( );
+                    ProcessPriorityUtil.demoteByName( "ollama.exe", "llama-server.exe" );
+                }
                 catch( Exception e ) { log.log( Level.FINE, "priority demote error", e ); }
             }
 

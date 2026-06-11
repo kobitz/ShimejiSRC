@@ -96,6 +96,39 @@ public final class ProcessPriorityUtil
         }
     }
 
+    private static volatile boolean selfWarned = false;
+
+    /**
+     * Verifies this JVM still holds ABOVE_NORMAL and re-raises if not.
+     * Logs at WARNING (visible at the install folder's WARNING-only file
+     * handler level) only when the raise is genuinely failing — silent when
+     * healthy, same philosophy as TickWatch. Called from CpuTempMonitor's
+     * periodic pass.
+     */
+    public static void ensureSelfAboveNormal()
+    {
+        if( !WINDOWS ) return;
+        try
+        {
+            final Pointer self = K32.INSTANCE.GetCurrentProcess();
+            if( K32.INSTANCE.GetPriorityClass( self ) == ABOVE_NORMAL_PRIORITY_CLASS ) return;
+            if( !K32.INSTANCE.SetPriorityClass( self, ABOVE_NORMAL_PRIORITY_CLASS ) && !selfWarned )
+            {
+                selfWarned = true;
+                log.warning( "[Priority] Shimeji is NOT ABOVE_NORMAL and the raise failed — "
+                    + "inference bursts can starve the tick loop." );
+            }
+        }
+        catch( final Throwable t )
+        {
+            if( !selfWarned )
+            {
+                selfWarned = true;
+                log.log( Level.WARNING, "[Priority] self-priority check failed", t );
+            }
+        }
+    }
+
     /** Demote a process we spawned (e.g. the Whisper server) to BELOW_NORMAL. */
     public static void setBelowNormal( final long pid )
     {
