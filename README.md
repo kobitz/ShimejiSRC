@@ -1,6 +1,6 @@
 # Shimeji AI — Environment-Aware Desktop Mascots
 
-A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (Java desktop mascots for Windows) with a fully local AI assistant layer. Mascots now perceive the user's real environment and react to it in character: what's on screen, what's playing through the speakers, what the user says (to them or near them), system load, the weather, even the contents of local drives.
+A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (Java desktop mascots for Windows) with a fully local AI assistant layer. Mascots now perceive the user's environment and react to it in character: what's on screen, what's playing through the speakers, what the user says (to them or near them), system load, the weather, even the contents of local drives.
 
 **Everything runs locally.** No cloud APIs, no subscriptions, no telemetry. LLM inference via [Ollama](https://ollama.com), speech-to-text via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU.
 
