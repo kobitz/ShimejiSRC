@@ -11,19 +11,13 @@ using LibreHardwareMonitor.Hardware;
 
 internal static class Program
 {
-    private static string _logPath = "";
     private static void Log(string msg)
     {
-        try { System.IO.File.AppendAllText(_logPath, DateTime.Now.ToString("HH:mm:ss") + " " + msg + "\n"); }
-        catch { }
         Console.Error.WriteLine(msg);
     }
 
     private static void Main(string[] args)
     {
-        _logPath = System.IO.Path.Combine(
-            System.IO.Path.GetDirectoryName(Environment.ProcessPath) ?? ".", "tempsensor_debug.log");
-
         Log("TempSensor started.");
 
         var computer = new Computer { IsCpuEnabled = true };
