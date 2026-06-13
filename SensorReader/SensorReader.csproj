@@ -7,10 +7,16 @@
     <PublishSingleFile>true</PublishSingleFile>
     <AssemblyName>TempSensor</AssemblyName>
     <Nullable>enable</Nullable>
+    <!-- CA1416: System.Management is Windows-only; this app is Windows-only, so the platform warnings are noise.
+         MSB3277: harmless same-assembly unification (NuGet System.Management 10.0.0.0 vs the runtime pack's
+         in-box 10.0.0.2 that LibreHardwareMonitorLib references); self-contained publish ships one copy and
+         .NET Core's loader resolves it by name. -->
+    <NoWarn>CA1416;MSB3277</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="LibreHardwareMonitorLib">
       <HintPath>LibreHardwareMonitorLib.dll</HintPath>
     </Reference>
+    <PackageReference Include="System.Management" Version="10.0.0" />
   </ItemGroup>
 </Project>

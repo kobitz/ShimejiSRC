@@ -41,10 +41,6 @@ public class CpuTempMonitor
     private static final long FAST_POLL_MS = 1000;
     private static final long TEMP_RESTART_DELAY_MS = 5000;
 
-    /** CPU temp (degrees C) at which the fan-max is turned off if currently on. */
-    private static final double FAN_ON_THRESHOLD  = 80.0; // trigger fan max above this
-    private static final double COOL_THRESHOLD     = 75.0; // turn fan off below this
-
     private static CpuTempMonitor instance;
 
     public static synchronized CpuTempMonitor getInstance( )
@@ -100,7 +96,6 @@ public class CpuTempMonitor
     // --- Sensor values (volatile for cross-thread visibility) ---
 
     private volatile double cpuTemp      = -1;
-    private volatile boolean cpuTempWasHot = false; // for cool-down crossing detection
     private volatile double cpuLoad      = -1;
     private volatile double gpuTemp      = -1;
     private volatile double gpuLoad      = -1;
@@ -302,20 +297,9 @@ public class CpuTempMonitor
             {
                 if( line.startsWith( "cpuTemp=" ) )
                 {
+                    // Cooler Boost is driven purely by the CampfireON_blue mascot (Manager).
+                    // No temperature-based trigger here.
                     cpuTemp = parseDouble( line.substring( "cpuTemp=".length( ) ).trim( ) );
-                    if( cpuTemp > 0 )
-                    {
-                        if( cpuTemp >= FAN_ON_THRESHOLD && !cpuTempWasHot )
-                        {
-                            cpuTempWasHot = true;
-                            FanController.getInstance( ).triggerFanOn( );
-                        }
-                        else if( cpuTempWasHot && cpuTemp < COOL_THRESHOLD )
-                        {
-                            cpuTempWasHot = false;
-                            FanController.getInstance( ).triggerFanOff( );
-                        }
-                    }
                 }
             }
         }

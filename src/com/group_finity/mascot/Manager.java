@@ -207,8 +207,12 @@ public class Manager {
 			if( listChanged ) {
 				mascotListSnapshot = java.util.Collections.unmodifiableList(
 					new java.util.ArrayList<>( this.getMascots() ) );
-				checkCampfireBlueState( );
 			}
+
+			// Affordance can come and go without the mascot list changing (a mascot
+			// starts/stops broadcasting it as its behavior changes), so check every tick.
+			// FanController de-dupes, so this only spawns a WMI call on an actual transition.
+			checkCoolerBoostState( );
 
 			// ── Tick + apply in a single pass ─────────────────────────────────
 			for (final Mascot mascot : this.getMascots()) {
@@ -384,14 +388,18 @@ public class Manager {
 		}
 	}
 
-	/** Toggle fan max on/off based on whether any CampfireON_blue mascot is active. */
-	private void checkCampfireBlueState( )
-	{
-		int count = 0;
-		for( Mascot m : this.getMascots( ) )
-			if( "CampfireON_blue".equals( m.getImageSet( ) ) ) count++;
+	/** Toggle MSI Cooler Boost on/off based on whether any mascot is currently
+	 *  broadcasting the "CoolerBoost" affordance. Any image set opts in purely via
+	 *  XML -- an Action carrying Affordance="CoolerBoost" (e.g. CampfireON_blue). */
+	public static final String COOLER_BOOST_AFFORDANCE = "CoolerBoost";
 
-		if( count > 0 )
+	private void checkCoolerBoostState( )
+	{
+		boolean active = false;
+		for( Mascot m : this.getMascots( ) )
+			if( m.getAffordances( ).contains( COOLER_BOOST_AFFORDANCE ) ) { active = true; break; }
+
+		if( active )
 			com.group_finity.mascot.environment.FanController.getInstance( ).triggerFanOn( );
 		else
 			com.group_finity.mascot.environment.FanController.getInstance( ).triggerFanOff( );

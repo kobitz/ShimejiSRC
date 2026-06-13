@@ -4,11 +4,12 @@ import java.io.PrintWriter;
 import java.util.logging.Logger;
 
 /**
- * Toggles Cooler Boost by sending "fan_on" / "fan_off" commands to TempSensor.exe stdin.
- * TempSensor writes those to EC register 0x98 via LibreHardwareMonitor Ring0.
+ * Toggles MSI Cooler Boost by sending "fan_on" / "fan_off" commands to TempSensor.exe stdin.
+ * TempSensor writes EC register 0x98 (bit 0x80) via the MSI_ACPI WMI interface -- the same
+ * firmware path MSI Center uses.
  *
- * Fan ON:  CampfireON_blue active (Manager) OR cpuTemp > 80 C (CpuTempMonitor)
- * Fan OFF: CampfireON_blue gone AND cpuTemp < 75 C
+ * Fan ON:  a CampfireON_blue mascot is active (Manager.checkCampfireBlueState)
+ * Fan OFF: no CampfireON_blue mascots remain
  *
  * CpuTempMonitor calls setSensorStdin() after spawning TempSensor so commands
  * are delivered through the already-open admin process.
