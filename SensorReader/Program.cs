@@ -212,20 +212,40 @@ internal static class Program
     }
 
     // ---- WMI plumbing ----
+    // CRITICAL: every object here is an IDisposable COM wrapper. Leaking them
+    // exhausts WMI handles over a long session, after which Set_Data silently
+    // fails and Cooler Boost stops working until the process restarts (the bug
+    // that "works fresh, dies after a while"). So: connect ONCE and cache the
+    // MSI_ACPI instance, dispose every PER-CALL object, and drop the cache on any
+    // error so the next call reconnects.
 
-    private static ManagementObject GetMsiAcpi(out ManagementScope scope)
+    private static ManagementScope? _wmiScope;
+    private static ManagementObject? _msiAcpi;
+
+    private static ManagementObject Acpi()
     {
-        scope = new ManagementScope(@"\\.\root\wmi");
+        if (_msiAcpi != null) return _msiAcpi;
+        var scope = new ManagementScope(@"\\.\root\wmi");
         scope.Connect();
-        var searcher = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM MSI_ACPI"));
-        foreach (ManagementObject mo in searcher.Get()) return mo;
-        throw new Exception("MSI_ACPI instance not found");
+        using var searcher = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM MSI_ACPI"));
+        using var results = searcher.Get();
+        foreach (ManagementBaseObject mo in results) { _msiAcpi = (ManagementObject)mo; break; }
+        if (_msiAcpi == null) throw new Exception("MSI_ACPI instance not found");
+        _wmiScope = scope;
+        return _msiAcpi;
+    }
+
+    private static void InvalidateAcpi()
+    {
+        try { _msiAcpi?.Dispose(); } catch { }
+        _msiAcpi = null;
+        _wmiScope = null;
     }
 
     private static ManagementObject MakePackage(ManagementScope scope, byte[] bytes)
     {
-        var cls = new ManagementClass(scope, new ManagementPath("Package_32"), null);
-        ManagementObject pkg = cls.CreateInstance();
+        using var cls = new ManagementClass(scope, new ManagementPath("Package_32"), null);
+        ManagementObject pkg = cls.CreateInstance();   // disposed by the caller
         pkg["Bytes"] = bytes;
         return pkg;
     }
@@ -235,15 +255,31 @@ internal static class Program
     // null for out-only methods (GetMethodParameters returns null then).
     private static byte[]? InvokeData(string method, byte[]? inBytes)
     {
-        var acpi = GetMsiAcpi(out var scope);
-        ManagementBaseObject? inParams = acpi.GetMethodParameters(method);
-        if (inParams != null && inBytes != null)
-            inParams["Data"] = MakePackage(scope, inBytes);
-        var outParams = acpi.InvokeMethod(method, inParams, null);
-        if (outParams == null) return null;
-        object dataObj = outParams["Data"];
-        if (dataObj == null) return null;
-        return ((ManagementBaseObject)dataObj)["Bytes"] as byte[];
+        try
+        {
+            var acpi = Acpi();
+            var scope = _wmiScope!;
+            using ManagementBaseObject? inParams = acpi.GetMethodParameters(method);
+            ManagementObject? pkg = null;
+            try
+            {
+                if (inParams != null && inBytes != null)
+                {
+                    pkg = MakePackage(scope, inBytes);
+                    inParams["Data"] = pkg;
+                }
+                using ManagementBaseObject? outParams = acpi.InvokeMethod(method, inParams, null);
+                if (outParams == null) return null;
+                using var outPkg = outParams["Data"] as ManagementBaseObject;
+                return outPkg?["Bytes"] as byte[];
+            }
+            finally { pkg?.Dispose(); }
+        }
+        catch
+        {
+            InvalidateAcpi();   // force a fresh connection next time
+            throw;
+        }
     }
 
     private static byte ParseHex(string s)
