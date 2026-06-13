@@ -27,9 +27,52 @@ internal static class Program
     private const byte COOLER_BOOST_REG = 0x98;
     private const byte COOLER_BOOST_BIT = 0x80;
 
+    private static bool loggedTempSensor = false;
+
     private static void Log(string msg)
     {
         Console.Error.WriteLine(msg);
+    }
+
+    // Pick the most representative CPU temperature across vendors. Intel exposes
+    // "Core Average"; Ryzen exposes "Core (Tctl/Tdie)". Falls back to any CPU-node
+    // temperature sensor so AMD/other chips still report. ADDITIVE: "Core Average"
+    // still wins when present, so Intel behavior is unchanged. Logs the chosen
+    // sensor name once (diagnostic — confirms the fallback on unfamiliar hardware).
+    private static double ReadCpuTemp(Computer computer)
+    {
+        double best = -1;
+        int bestRank = int.MaxValue;
+        string bestName = "";
+        foreach (var hw in computer.Hardware)
+        {
+            hw.Update();
+            foreach (var s in hw.Sensors)
+            {
+                if (s.SensorType != SensorType.Temperature) continue;
+                double v = s.Value ?? -1;
+                if (v < 0) continue;
+                int rank = TempRank(s.Name ?? "");
+                if (rank < bestRank) { bestRank = rank; best = v; bestName = s.Name ?? ""; }
+            }
+        }
+        if (!loggedTempSensor && best >= 0)
+        {
+            loggedTempSensor = true;
+            Log("CPU temp sensor: \"" + bestName + "\"");
+        }
+        return best;
+    }
+
+    // Lower rank = preferred. Only CPU-node sensors reach here (IsCpuEnabled only).
+    private static int TempRank(string name)
+    {
+        if (name == "Core Average") return 0;                           // Intel package average
+        if (name == "Core (Tctl/Tdie)") return 1;                       // Ryzen control temperature
+        if (name.Contains("Tctl") || name.Contains("Tdie")) return 2;   // other Ryzen Tctl/Tdie variants
+        if (name == "CPU Package" || name == "Package") return 3;       // Intel/other package temp
+        if (name.Contains("Core Max")) return 4;
+        return 9;                                                       // any other CPU temperature sensor
     }
 
     private static void Main(string[] args)
@@ -105,17 +148,7 @@ internal static class Program
         // CPU temp loop
         while (true)
         {
-            double cpuTemp = -1;
-            foreach (var hw in computer.Hardware)
-            {
-                hw.Update();
-                foreach (var sensor in hw.Sensors)
-                {
-                    if (sensor.SensorType == SensorType.Temperature && sensor.Name == "Core Average")
-                    { cpuTemp = sensor.Value ?? -1; break; }
-                }
-                if (cpuTemp >= 0) break;
-            }
+            double cpuTemp = ReadCpuTemp(computer);
             Console.WriteLine("cpuTemp=" + cpuTemp.ToString("F1"));
             Console.Out.Flush();
             Thread.Sleep(1000);
