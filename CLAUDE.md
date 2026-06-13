@@ -26,6 +26,18 @@ A heavily modified fork of Shimeji-ee (Java/Windows desktop mascot app) with an 
 
 **Run:** `ShimejiTest.exe` / `Shimeji.exe` from install folder, or `Debug.bat` for console output. `ant jar` (fat JAR), `ant zip` (distributions), `ant clean`.
 
+## Distribution / Releases
+
+Public repo: **`github.com/kobitz/ShimejiSRC`**. The runnable app ships as a **GitHub Release asset** (a ready-to-run Windows install zip); the repo stays **code-only** — `img/`, `sound/`, and `jre/` are NOT tracked in git (binary game assets bloat history forever; they live in the install folder and ship via the release). Every release auto-gets GitHub's "Source code (zip/tar.gz)" links, so one release page carries both: install bundle + source. First release **`v1.0` (June 2026)**, `Shimeji-Install-Windows.zip` (~372 MB zipped / ~600 MB extracted). `gh` CLI is installed at `C:\Program Files\GitHub CLI\gh.exe` for `gh release create`.
+
+**Build the install bundle by ALLOWLIST from the install folder** (copy only known-good files into a fresh `dist/Shimeji/`, never copy-and-delete — guarantees no personal data leaks — then 7-Zip it). Do NOT use `build.xml`'s `zip_package` target: it builds upstream Shimeji-ee editions (Calm/Professional/Mischievous) from the source tree and predates this fork's AI layer / TempSensor / custom mascots.
+
+- **Include:** `Shimeji.exe` (Launch4j — embeds the jar AND uses bundled `jre/`), `Shimeji-ee.jar` (the bat launchers run the *external* jar, so it must ship even though the exe embeds it), `jre/`, `img/` (the 12 custom mascots only for the public release), `sound/` (only the ~14 wavs the kept mascots reference — shared `sound/`, referenced as `/Name.wav`), `conf/` (core configs), `TempSensor.exe`, `whisper_server.py`/`whisper_prompt.txt`, the MinGW DLLs, `Setup.bat`, `Admin.bat`/`Debug.bat`, the browser `.xpi`, a cleaned `settings.properties`, and a recipient-facing `README.txt`.
+- **SCRUB — never ship to a public bundle:** every `memory.json` (per-mascot conversation state), `chat.log`, `driveindex.txt` (lists the user's drive contents), all `*.log`, `*.bak`, `claude history.txt`, conf backups/`- Copy` files, and `settings.properties` session keys (`PinnedMascot.*`). Also drop the 3.3 GB `Old/` folder and duplicate `- Copy` exes.
+- **Launchers:** `Shimeji.exe` = normal; **`Admin.bat` = elevated (REQUIRED for TempSensor temps + MSI Cooler Boost)**; `Debug.bat` = console.
+- **Release default model = `gemma3:4b`** (chat+vision) — exactly what `Setup.bat` pulls (`ollama pull gemma3:4b`), so it just-works. The bundled `settings.properties` sets `OllamaModel`/`VisionModel=gemma3:4b` and a showcase `ActiveShimeji` (2B/CampfireOFF/Holo/Hornet/Mosscreep (White)/Paimon). `gemma4:e4b-it-qat` (efficient E4B QAT variant) is documented in `README.txt` as an optional upgrade, NOT installed by Setup.
+- **Sizing gotcha:** `du` on the D: source drive wildly overstates sizes (large cluster size × many tiny files — 663 MB real shows as 3 GB). Use apparent bytes (`find -printf '%s'` sum / git pack size), not `du`.
+
 ## Architecture
 
 **Behavior → Action → Animation → Environment** (40ms tick loop)
