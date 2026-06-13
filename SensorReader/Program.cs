@@ -29,9 +29,22 @@ internal static class Program
 
     private static bool loggedTempSensor = false;
 
+    private static readonly object _logLock = new object();
+    private static string? _logPath;
+
     private static void Log(string msg)
     {
-        Console.Error.WriteLine(msg);
+        string line = DateTime.Now.ToString("HH:mm:ss") + "  " + msg;
+        Console.Error.WriteLine(line);
+        try
+        {
+            _logPath ??= System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(Environment.ProcessPath ?? "") ?? ".",
+                "tempsensor.log");
+            lock (_logLock)
+                System.IO.File.AppendAllText(_logPath, line + Environment.NewLine);
+        }
+        catch { }
     }
 
     // Pick the most representative CPU temperature across vendors. Intel exposes
@@ -121,7 +134,9 @@ internal static class Program
         }
 
         // ---- Normal sensor + fan-control mode ----
-        Log("TempSensor started.");
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        { try { Log("FATAL unhandled exception: " + e.ExceptionObject); } catch { } };
+        Log("===== TempSensor started (pid " + Environment.ProcessId + ") =====");
 
         var computer = new Computer { IsCpuEnabled = true };
         try { computer.Open(); }
@@ -139,18 +154,30 @@ internal static class Program
                     if (line == "fan_on") SetCoolerBoost(true);
                     else if (line == "fan_off") SetCoolerBoost(false);
                 }
+                Log("stdin reached EOF (parent closed the pipe) -- exiting.");
             }
-            catch { }
+            catch (Exception e) { Log("stdin thread exception -- exiting: " + e.Message); }
             computer.Close();
             Environment.Exit(0);
         }) { IsBackground = true }.Start();
 
-        // CPU temp loop
+        // CPU temp loop. An intermittent LHM read throwing here used to propagate out
+        // of Main and crash the whole process -> Cooler Boost stopped until a respawn.
+        // Catch and continue so a transient sensor hiccup can't kill TempSensor.
+        int tempErrors = 0;
         while (true)
         {
-            double cpuTemp = ReadCpuTemp(computer);
-            Console.WriteLine("cpuTemp=" + cpuTemp.ToString("F1"));
-            Console.Out.Flush();
+            try
+            {
+                double cpuTemp = ReadCpuTemp(computer);
+                Console.WriteLine("cpuTemp=" + cpuTemp.ToString("F1"));
+                Console.Out.Flush();
+            }
+            catch (Exception e)
+            {
+                if (tempErrors++ < 5 || tempErrors % 60 == 0)
+                    Log("temp read error #" + tempErrors + " (continuing): " + e.Message);
+            }
             Thread.Sleep(1000);
         }
     }
