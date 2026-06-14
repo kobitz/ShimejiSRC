@@ -49,6 +49,28 @@ public class OllamaClient
     private static final int VISION_KEEP_ALIVE_SEC = 0;
 
     /**
+     * Text-model keep-alive seconds, configurable via OllamaKeepAliveSec (default 45).
+     * Raising it is the mitigation for a model that does NOT fit VRAM (e.g. gemma4:e4b on
+     * a 6 GB GPU): at 45s the model unloads during the 90s–3min reaction-cooldown gaps and
+     * reloads on the next reaction, and each ~6.5 GB reload hard-pages the desktop out
+     * (the 1-3 fps crawl). A value past the longest cooldown (~300s) keeps it resident
+     * across reactions so it loads once and settles, trading repeated thrash spikes for
+     * steady memory pressure. Costs RAM/VRAM that stays occupied longer (worse if you game
+     * mid-session) — drop it back to 45 if that bites. The real fix remains a VRAM-fitting
+     * model (gemma3:4b); this only softens gemma4.
+     */
+    private static int textKeepAliveSec()
+    {
+        try
+        {
+            final String v = com.group_finity.mascot.Main.getInstance().getProperties()
+                .getProperty( "OllamaKeepAliveSec", String.valueOf( TEXT_KEEP_ALIVE_SEC ) );
+            return Math.max( 0, Integer.parseInt( v.trim() ) );
+        }
+        catch( final Exception e ) { return TEXT_KEEP_ALIVE_SEC; }
+    }
+
+    /**
      * Rate-limit: minimum ms between successive Ollama calls dispatched by the
      * queue worker. Requests that arrive while a call is in-flight are held in the
      * queue; only the oldest waiting request fires when the interval elapses.
@@ -265,7 +287,7 @@ public class OllamaClient
         // would evict the model the text path is paying TEXT_KEEP_ALIVE_SEC to
         // keep warm — so shared models always use the text linger.
         final boolean isVision     = imageBase64 != null && !effectiveModel.equals( model );
-        final int    keepAlive     = isVision ? VISION_KEEP_ALIVE_SEC : TEXT_KEEP_ALIVE_SEC;
+        final int    keepAlive     = isVision ? VISION_KEEP_ALIVE_SEC : textKeepAliveSec();
         final String body          = buildJson( system, user, numGpu, numThread, maxTokens,
                                                imageBase64, effectiveModel, keepAlive );
         final byte[] bodyBytes = body.getBytes( StandardCharsets.UTF_8 );

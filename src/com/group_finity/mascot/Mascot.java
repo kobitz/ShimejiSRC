@@ -3736,6 +3736,9 @@ public class Mascot
     private static boolean isEphemeralQuery( final String text )
     {
         if( isWeatherQuery( text ) || isTimeQuery( text ) || isScreenQuery( text ) ) return true;
+        // Factual drive lookups (last download / how much space / what's in a folder)
+        // change as files change — don't store them as durable memory facts.
+        if( com.group_finity.mascot.assistant.DriveIndexTool.isFactualDriveQuery( text ) ) return true;
         final String t = text.toLowerCase();
         return t.contains( "timer" ) || t.contains( "reminder" ) || t.contains( "alarm" )
             || t.contains( "remind me" ) || t.contains( "set a " );

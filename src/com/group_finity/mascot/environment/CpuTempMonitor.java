@@ -284,10 +284,10 @@ public class CpuTempMonitor
         Process process = pb.start( );
         tempProcess = process;
 
-        // Register the stdin stream so FanController can send fan_on / fan_off commands.
-        java.io.PrintWriter stdin = new java.io.PrintWriter(
-            new java.io.OutputStreamWriter( process.getOutputStream( ) ) );
-        FanController.getInstance( ).setSensorStdin( stdin );
+        // We never write to TempSensor's stdin -- fan commands go through FanController
+        // spawning "TempSensor.exe boost on|off" directly. We leave stdin open (don't
+        // close it) so it serves as TempSensor's parent-death lifeline: it sees EOF only
+        // when this process dies, then exits instead of orphaning an elevated process.
 
         try( BufferedReader reader = new BufferedReader(
                 new InputStreamReader( process.getInputStream( ) ) ) )
@@ -305,7 +305,6 @@ public class CpuTempMonitor
         }
         finally
         {
-            FanController.getInstance( ).setSensorStdin( null );
             tempProcess = null;
             process.destroy( );
         }

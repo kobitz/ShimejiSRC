@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Management;
 using System.Text;
 using System.Threading;
@@ -7,9 +6,12 @@ using LibreHardwareMonitor.Hardware;
 
 // Persistent CPU temperature reader + MSI Cooler Boost toggle.
 //
-// Default (no args): outputs "cpuTemp=XX.X" once per second to stdout, and
-// listens on stdin for "fan_on" / "fan_off" to toggle Cooler Boost. Exits when
-// stdin closes. Spawned by the Java app (already elevated for LHM Ring0).
+// Default (no args): outputs "cpuTemp=XX.X" once per second to stdout. Reads stdin
+// only as a lifeline -- on EOF (parent gone) it exits. Fan toggles do NOT come through
+// stdin anymore; FanController (Java) spawns the "boost on|off" CLI mode below per
+// toggle (see the Cooler Boost stall history in CLAUDE.md for why the long-lived stdin
+// pipe + long-lived WMI were retired). Spawned by the Java app (already elevated for
+// LHM Ring0).
 //
 // CLI modes (run from an elevated prompt to test directly):
 //   TempSensor.exe boost on|off    -> toggle MSI Cooler Boost (read-modify-write + readback)
@@ -143,22 +145,16 @@ internal static class Program
         try { computer.Open(); }
         catch (Exception e) { Log("hardware open failed: " + e.Message); Environment.Exit(1); }
 
-        // Stdin command listener (fan_on / fan_off -> MSI Cooler Boost)
+        // Stdin lifeline. Fan toggles no longer arrive here -- FanController spawns the
+        // "boost on|off" CLI mode per toggle. We still read stdin solely to detect the
+        // parent dying: on EOF (pipe closed / JVM killed before its shutdown hook ran) we
+        // exit, so no orphaned elevated TempSensor.exe lingers holding the LHM Ring0 driver
+        // open (a stdout-write failure alone wouldn't end us -- the temp loop swallows it).
         new Thread(() =>
         {
-            try
-            {
-                string? line;
-                while ((line = Console.In.ReadLine()) != null)
-                {
-                    line = line.Trim('﻿', ' ');
-                    if (line != "fan_on" && line != "fan_off") continue;
-                    Log("received: " + line);
-                    ApplyBoostViaChild(line == "fan_on");
-                }
-                Log("stdin reached EOF (parent closed the pipe) -- exiting.");
-            }
-            catch (Exception e) { Log("stdin thread exception -- exiting: " + e.Message); }
+            try { while (Console.In.ReadLine() != null) { /* discard: lifeline only */ } }
+            catch (Exception e) { Log("stdin lifeline exception -- exiting: " + e.Message); }
+            Log("stdin reached EOF (parent gone) -- exiting.");
             computer.Close();
             Environment.Exit(0);
         }) { IsBackground = true }.Start();
@@ -182,42 +178,6 @@ internal static class Program
             }
             Thread.Sleep(1000);
         }
-    }
-
-    // Apply a boost toggle in a SHORT-LIVED CHILD PROCESS (our own "boost on/off" CLI
-    // mode) instead of doing WMI in this long-running process. A blocking WMI/COM call
-    // wedges the whole .NET process -- it stalls the GC, freezing every managed thread,
-    // so an in-process watchdog can't recover it (the ~15-min "boost just stops" bug).
-    // A separate process CAN be force-killed regardless of its COM state, so a hung EC
-    // call kills only the disposable child; this parent never touches WMI, so it can't
-    // freeze. stdout is redirected+drained so the child can never write into the cpuTemp
-    // pipe back to Shimeji; the child writes its own result line to tempsensor.log.
-    private static void ApplyBoostViaChild(bool on)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = Environment.ProcessPath ?? "TempSensor.exe",
-                Arguments = on ? "boost on" : "boost off",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            using var child = Process.Start(psi);
-            if (child == null) { Log("boost child failed to start"); return; }
-            child.OutputDataReceived += (s, e) => { };
-            child.ErrorDataReceived += (s, e) => { };
-            child.BeginOutputReadLine();
-            child.BeginErrorReadLine();
-            if (!child.WaitForExit(8000))
-            {
-                Log("boost child WEDGED (>8s) -- killing it; parent stays healthy.");
-                try { child.Kill(true); } catch (Exception ke) { Log("kill failed: " + ke.Message); }
-            }
-        }
-        catch (Exception e) { Log("boost child error: " + e.Message); }
     }
 
     // ---- MSI Cooler Boost (read-modify-write, preserves the sibling 0x02 bit) ----

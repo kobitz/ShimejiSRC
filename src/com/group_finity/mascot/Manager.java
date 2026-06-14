@@ -357,13 +357,15 @@ public class Manager {
 		}
 
 		// ── Tick watchdog report ─────────────────────────────────────────────
-		// 200ms = 5 missed frames (raised from 120 once the starvation fixes
-		// landed — sub-200ms blips are accepted residue, not actionable).
-		// Unattributed time (total minus envScan minus mascots) is lock wait or
-		// GC. Logged per slow tick — a 1s crawl yields a handful of lines,
-		// which is the point: the log names the phase.
+		// 250ms (raised from 200, from an original 120) — sub-250ms blips are
+		// accepted residue from a large mascot population + envScan, not the
+		// actionable "huge spike" we care about (the gemma4 generation
+		// starvation events run 400ms-1s). Unattributed time (total minus
+		// envScan minus mascots) is lock wait or GC. Logged per slow tick — a
+		// 1s crawl yields a handful of lines, which is the point: the log names
+		// the phase.
 		final long totalMs = (System.nanoTime() - tickStartNs) / 1_000_000L;
-		if (totalMs >= 200) {
+		if (totalMs >= 250) {
 			double cpu = -1, gpu = -1;
 			try {
 				final com.group_finity.mascot.environment.CpuTempMonitor mon =

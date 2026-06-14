@@ -1,6 +1,5 @@
 package com.group_finity.mascot.environment;
 
-import java.io.PrintWriter;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -46,10 +45,6 @@ public class FanController
     private volatile long lastOffTransitionMs = 0;
 
     private FanController( ) { }
-
-    /** Retained for CpuTempMonitor compatibility; the stdin pipe is no longer used
-     *  for fan commands (see class doc), so this is now a no-op. */
-    public void setSensorStdin( PrintWriter pw ) { }
 
     /** Affordance present this tick. */
     public synchronized void triggerFanOn( )
