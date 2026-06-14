@@ -1,22 +1,37 @@
 package com.group_finity.mascot.environment;
 
 import java.io.PrintWriter;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
- * Toggles MSI Cooler Boost by sending "fan_on" / "fan_off" commands to TempSensor.exe stdin.
- * TempSensor writes EC register 0x98 (bit 0x80) via the MSI_ACPI WMI interface -- the same
- * firmware path MSI Center uses.
+ * Drives MSI Cooler Boost. Manager.checkCoolerBoostState() calls triggerFanOn()
+ * every tick while a mascot broadcasts the CoolerBoost affordance, triggerFanOff()
+ * every tick while none does.
  *
- * Fan ON:  a CampfireON_blue mascot is active (Manager.checkCampfireBlueState)
- * Fan OFF: no CampfireON_blue mascots remain
+ * Each toggle spawns a SHORT-LIVED "TempSensor.exe boost on|off" process that opens a
+ * fresh WMI connection, does the one EC write, and exits. History of why:
+ *   1. In-process WMI in the long-running TempSensor froze the whole process (a hung
+ *      COM call stalls the GC -> all threads freeze).
+ *   2. Moving the EC write into a child spawned BY TempSensor fixed that, but exposed
+ *      that the long-lived stdin pipe (Java -> TempSensor) silently stops delivering
+ *      after ~20 min (Java's PrintWriter.checkError stays false, TempSensor's ReadLine
+ *      never returns; confirmed via fancontroller.log healthy + tempsensor.log frozen).
+ *   3. So fan commands no longer go through that pipe at all: FanController spawns the
+ *      boost process directly. No long-lived pipe, no long-lived WMI -> neither failure
+ *      mode exists. TempSensor.exe stays purely the temperature streamer.
  *
- * CpuTempMonitor calls setSensorStdin() after spawning TempSensor so commands
- * are delivered through the already-open admin process.
+ * LEVEL-TRIGGERED with periodic RE-ASSERT so a manual Fn+F8 / MSI Center toggle or an
+ * external EC change self-heals within REASSERT_MS instead of sticking.
+ * Writes fancontroller.log (install folder) for observability.
  */
 public class FanController
 {
     private static final Logger log = Logger.getLogger( FanController.class.getName( ) );
+
+    private static final long REASSERT_MS            = 7000;
+    private static final long OFF_REASSERT_WINDOW_MS = 30000;
+    private static final long BOOST_PROC_TIMEOUT_S   = 8;
 
     private static FanController instance;
 
@@ -26,47 +41,89 @@ public class FanController
         return instance;
     }
 
-    private volatile boolean fanOn = false;
-    private volatile PrintWriter sensorStdin = null;
+    private volatile boolean desiredOn = false;
+    private volatile long lastSendMs = 0;
+    private volatile long lastOffTransitionMs = 0;
 
     private FanController( ) { }
 
-    /** Called by CpuTempMonitor after TempSensor.exe is spawned. */
-    public void setSensorStdin( PrintWriter pw ) { sensorStdin = pw; }
+    /** Retained for CpuTempMonitor compatibility; the stdin pipe is no longer used
+     *  for fan commands (see class doc), so this is now a no-op. */
+    public void setSensorStdin( PrintWriter pw ) { }
 
+    /** Affordance present this tick. */
     public synchronized void triggerFanOn( )
     {
-        if( !fanOn )
+        long now = System.currentTimeMillis( );
+        if( !desiredOn )
         {
-            send( "fan_on" );
-            fanOn = true;
-            log.info( "Fan max ON" );
+            desiredOn = true;
+            spawnBoost( true, now, "blue fire present" );
+        }
+        else if( now - lastSendMs >= REASSERT_MS )
+        {
+            spawnBoost( true, now, "re-assert" );
         }
     }
 
+    /** Affordance absent this tick. */
     public synchronized void triggerFanOff( )
     {
-        if( fanOn )
+        long now = System.currentTimeMillis( );
+        if( desiredOn )
         {
-            send( "fan_off" );
-            fanOn = false;
-            log.info( "Fan max OFF" );
+            desiredOn = false;
+            lastOffTransitionMs = now;
+            spawnBoost( false, now, "blue fire gone" );
+        }
+        else if( now - lastSendMs >= REASSERT_MS && now - lastOffTransitionMs < OFF_REASSERT_WINDOW_MS )
+        {
+            spawnBoost( false, now, "re-assert" );
         }
     }
 
-    public boolean isFanOn( ) { return fanOn; }
+    public boolean isFanOn( ) { return desiredOn; }
 
-    private void send( String cmd )
+    private void spawnBoost( boolean on, long now, String why )
     {
-        PrintWriter pw = sensorStdin;
-        if( pw != null )
+        lastSendMs = now;
+        try
         {
-            pw.println( cmd );
-            pw.flush( );
+            final Process p = new ProcessBuilder( "TempSensor.exe", "boost", on ? "on" : "off" )
+                .redirectOutput( ProcessBuilder.Redirect.DISCARD )
+                .redirectError( ProcessBuilder.Redirect.DISCARD )
+                .start( );
+            flog( "boost " + ( on ? "on" : "off" ) + " (" + why + ") -> spawned pid " + p.pid( ) );
+            // Reap on a daemon so a (rare) hung fresh-connection write can't linger forever
+            // and never blocks the tick thread.
+            Thread reaper = new Thread( ( ) ->
+            {
+                try
+                {
+                    if( !p.waitFor( BOOST_PROC_TIMEOUT_S, TimeUnit.SECONDS ) )
+                    {
+                        p.destroyForcibly( );
+                        flog( "boost process pid " + p.pid( ) + " exceeded " + BOOST_PROC_TIMEOUT_S + "s -- killed" );
+                    }
+                }
+                catch( InterruptedException ie ) { Thread.currentThread( ).interrupt( ); }
+            } );
+            reaper.setDaemon( true );
+            reaper.start( );
         }
-        else
+        catch( Exception e )
         {
-            log.warning( "Fan command dropped (TempSensor not ready): " + cmd );
+            flog( "boost " + ( on ? "on" : "off" ) + " (" + why + ") SPAWN FAILED: " + e.getMessage( ) );
         }
+    }
+
+    private static void flog( String msg )
+    {
+        try ( java.io.FileWriter fw = new java.io.FileWriter( "fancontroller.log", true ) )
+        {
+            fw.write( new java.text.SimpleDateFormat( "HH:mm:ss" ).format( new java.util.Date( ) )
+                + "  " + msg + System.lineSeparator( ) );
+        }
+        catch( Exception ignore ) { }
     }
 }
