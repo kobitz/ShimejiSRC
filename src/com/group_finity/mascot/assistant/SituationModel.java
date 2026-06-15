@@ -49,6 +49,8 @@ public class SituationModel
     private static final int  AUDIO_ACTIVE_RMS   = 600;              // speaker energy => "sound playing"
     private static final int  MULTITASK_SWITCHES = 4;                // switches in TEMPO_WINDOW => multitasking
     private static final double FOCUS_FRACTION   = 0.8;              // share of FOCUS_WINDOW in one app
+    private static final double SALIENT_THRESHOLD = 0.5;            // salience >= this == a "salient change"
+    private static final long   SELF_AUDIO_MUTE_MS = 4_000;        // ignore loopback audio this long after a mascot SFX
 
     private static SituationModel instance;
     private static volatile boolean started = false;
@@ -134,6 +136,8 @@ public class SituationModel
     private String  prevApp          = null;
     private boolean prevAudioPlaying = false;
     private String  prevState        = "active";
+    private volatile long lastSalientMs   = 0; // wall-clock of last salient change (read cross-thread)
+    private volatile long lastSelfAudioMs = 0; // wall-clock of last mascot-played sound (self-reference guard)
 
     private SituationModel( ) { }
 
@@ -147,6 +151,25 @@ public class SituationModel
 
     /** Current fused situation snapshot. Never null. */
     public Situation current( ) { return current.get( ); }
+
+    /** True once the daemon is running (respects SituationModelEnabled). */
+    public static boolean isActive( ) { return started; }
+
+    /** ms since the last salient change (>= SALIENT_THRESHOLD), or a large value if none yet. */
+    public long msSinceSalientChange( )
+    {
+        return ( lastSalientMs == 0 ) ? Long.MAX_VALUE / 2 : System.currentTimeMillis( ) - lastSalientMs;
+    }
+
+    /**
+     * Called when a mascot plays a sound. Its own audio reaches the WASAPI loopback that feeds
+     * the audio signal, so freeze that signal briefly -- the companion must never treat its own
+     * SFX as a change in the user's environment (self-reference guard). No-op until the daemon runs.
+     */
+    public static void noteSelfAudio( )
+    {
+        if( instance != null ) instance.lastSelfAudioMs = System.currentTimeMillis( );
+    }
 
     private void loop( )
     {
@@ -180,7 +203,8 @@ public class SituationModel
             s.lastMs = now;
             s.latestTitle = title;
         }
-        else if( !app.equals( "(none)" ) )   // never start a session for a blank foreground
+        else if( !app.equals( "(none)" ) )   // skip blank foreground -- also excludes our own bubble
+                                             // (non-focusable) and reply dialog (undecorated/untitled => "(none)")
         {
             sessions.add( new Session( app, title, now ) );
             appChanged = ( prevApp != null );   // suppress the very first sample
@@ -192,7 +216,10 @@ public class SituationModel
         while( !samples.isEmpty( ) && samples.peekFirst( ).ms < now - WINDOW_MS ) samples.removeFirst( );
 
         // ── derive ──
-        final boolean audioPlaying = audio >= AUDIO_ACTIVE_RMS;
+        // Freeze the audio signal right after a mascot plays a sound: loopback captures our
+        // own SFX, so the companion must not read its own chirp as the user's environment changing.
+        final boolean selfAudioRecent = ( now - lastSelfAudioMs ) < SELF_AUDIO_MUTE_MS;
+        final boolean audioPlaying = selfAudioRecent ? prevAudioPlaying : ( audio >= AUDIO_ACTIVE_RMS );
         final boolean lateNight    = isLateNight( );
         final Session cur          = sessions.isEmpty( ) ? null : sessions.get( sessions.size( ) - 1 );
         final long    sessionMin   = ( cur == null ) ? 0 : Math.max( 0, ( now - cur.firstMs ) / 60_000 );
@@ -216,6 +243,7 @@ public class SituationModel
         }
         if( !state.equals( prevState ) ) salience += 0.4;
         salience = Math.min( 1.0, salience );
+        if( salience >= SALIENT_THRESHOLD ) lastSalientMs = now;
 
         final String activity = ( cur == null ) ? "(no foreground window)"
                                                  : cur.app + " (~" + sessionMin + "m)";

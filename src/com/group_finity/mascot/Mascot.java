@@ -252,6 +252,9 @@ public class Mascot
     private static final long GLOBAL_AUDIO_COOLDOWN_MS       =  90_000L; // 90 s
     private static final long GLOBAL_VISION_COOLDOWN_MS      = 180_000L; // 3 min
     private static final long GLOBAL_USER_SPEECH_COOLDOWN_MS = 120_000L; // 2 min
+    // Layer C: a spontaneous comment is suppressed in "focused" flow unless a salient
+    // change landed within this window (the clock cadence is the ceiling, salience the trigger).
+    private static final long PROACTIVE_SALIENCE_WINDOW_MS   = 150_000L; // 2.5 min
     private static final java.util.concurrent.atomic.AtomicLong globalSpontaneousLastFiredMs =
         new java.util.concurrent.atomic.AtomicLong( 0L );
     private static final java.util.concurrent.atomic.AtomicLong globalAudioLastFiredMs =
@@ -1851,9 +1854,11 @@ public class Mascot
             com.group_finity.mascot.assistant.WeatherTool.getCachedPlaceName();
         final String cachedWx =
             com.group_finity.mascot.assistant.WeatherTool.getCachedResult();
+        final String sitCtx = situationContext( );
         final String envCtx = "\n[Current time: " + timeStr + ".]"
             + ( cachedPlace != null ? "\n[User location: " + cachedPlace + ".]" : "" )
-            + ( cachedWx   != null ? "\n[Current weather: " + cachedWx + ".]" : "" );
+            + ( cachedWx   != null ? "\n[Current weather: " + cachedWx + ".]" : "" )
+            + ( sitCtx.isEmpty( ) ? "" : "\n[" + sitCtx + "]" );
 
         final String permBlock = userText != null
             ? memory.buildPermanentMemoryBlock( userText ) : "";
@@ -2657,9 +2662,11 @@ public class Mascot
             + "\n---", spontSpeechRule );
 
         final String audioCtxSpont = audioSnapshotContext();
+        final String sitCtxSpont = situationContext( );
         final String prompt =
             "The user's active window is: \"" + windowTitle + "\"."
             + ( audioCtxSpont.isEmpty() ? "" : " " + audioCtxSpont + "." )
+            + ( sitCtxSpont.isEmpty() ? "" : " [Background — " + sitCtxSpont + "]" )
             + " Make one short in-character observation, addressing the user directly as \"you\" — not in third person."
             + " Do not repeat the raw title string.";
 
@@ -2853,6 +2860,21 @@ public class Mascot
     {
         if( speechRule.isEmpty() ) return system;
         return system + "\nFinal reminder: " + speechRule;
+    }
+
+    /**
+     * Fused situational read (Layer C) — one line summarizing what the user is doing
+     * (state/activity/audio/time + recent change), drawn from the shared SituationModel.
+     * Empty when the model is inactive, so callers can append it unconditionally.
+     */
+    private static String situationContext( )
+    {
+        if( !com.group_finity.mascot.assistant.SituationModel.isActive( ) ) return "";
+        try
+        {
+            return com.group_finity.mascot.assistant.SituationModel.getInstance( ).current( ).asContextBlock( );
+        }
+        catch( Exception e ) { return ""; }
     }
 
     private String getPersonality( final com.group_finity.mascot.config.Configuration cfg,
@@ -3230,6 +3252,21 @@ public class Mascot
                     if( title != null && !title.isEmpty()
                             && !title.equals( lastSpontaneousTitle ) )
                     {
+                        // Layer C: don't interrupt focused flow. The clock cadence already
+                        // fired; only speak if the user is not deep-focused, or something
+                        // salient changed recently. Stays a no-op when SituationModel is off.
+                        if( com.group_finity.mascot.assistant.SituationModel.isActive() )
+                        {
+                            final com.group_finity.mascot.assistant.SituationModel sm =
+                                com.group_finity.mascot.assistant.SituationModel.getInstance();
+                            if( "focused".equals( sm.current().state )
+                                    && sm.msSinceSalientChange() > PROACTIVE_SALIENCE_WINDOW_MS )
+                            {
+                                log.info( "[Spontaneous] suppressed — focused flow, no recent salient change ("
+                                    + getImageSet() + ")" );
+                                return;
+                            }
+                        }
                         final long now = System.currentTimeMillis();
                         final long last = globalSpontaneousLastFiredMs.get();
                         if( now - last >= GLOBAL_SPONTANEOUS_COOLDOWN_MS
@@ -3468,6 +3505,9 @@ public class Mascot
                         clip.stop( );
                         clip.setMicrosecondPosition( 0 );
                         clip.start( );
+                        // Tell the situational model we just made noise, so its audio
+                        // signal (WASAPI loopback) doesn't read our own SFX as the user's.
+                        com.group_finity.mascot.assistant.SituationModel.noteSelfAudio( );
                     }
                 }
             }
