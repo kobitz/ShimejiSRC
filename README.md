@@ -22,7 +22,7 @@ Hornet (Hollow Knight), Holo (Spice and Wolf), Paimon (Genshin Impact), 2B (NieR
 
 - Windows 10/11 (the AI layer is Windows-only: WASAPI loopback, JNA Win32)
 - Java 17+ (a JRE is bundled in release builds)
-- [Ollama](https://ollama.com) with a small instruct model (tuned for ~4B class, e.g. `gemma3:4b`; multimodal model needed for vision features)
+- [Ollama](https://ollama.com) with a small instruct model (tuned for ~4B class, e.g. `gemma4:e2b-it-qat`; multimodal model needed for vision features)
 - Python with `faster-whisper` for voice/audio features (`whisper_server.py` runs beside the JAR)
 - NVIDIA GPU optional — GPU telemetry uses `nvidia-smi`; everything degrades gracefully without it
 

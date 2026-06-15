@@ -84,8 +84,8 @@ public class SettingsWindow extends javax.swing.JDialog
     private int    bubbleFontSize = 14;
     private String bubbleFontName = "";
     private boolean bubbleBg      = false;
-    private String ollamaModel    = "llama3.2";
-    private String visionModel    = "moondream";
+    private String ollamaModel    = "gemma4:e2b-it-qat";
+    private String visionModel    = "gemma4:e2b-it-qat";
     private String whisperModel   = "tiny";
     private int    whisperThreads = 1;
     private int    voicePollMs    = 6000;
@@ -154,8 +154,8 @@ public class SettingsWindow extends javax.swing.JDialog
         bubbleFontSize = Integer.parseInt( properties.getProperty( "BubbleFontSize", "14"  ) );
         bubbleFontName = properties.getProperty( "BubbleFontName", "" );
         bubbleBg       = Boolean.parseBoolean( properties.getProperty( "BubbleBackground", "false" ) );
-        ollamaModel    = properties.getProperty( "OllamaModel",   "llama3.2" );
-        visionModel    = properties.getProperty( "VisionModel",   "moondream" );
+        ollamaModel    = properties.getProperty( "OllamaModel",   "gemma4:e2b-it-qat" );
+        visionModel    = properties.getProperty( "VisionModel",   "gemma4:e2b-it-qat" );
         whisperModel   = properties.getProperty( "WhisperModel",  "tiny" );
         try { whisperThreads = Math.max( 1, Math.min( 16,
             Integer.parseInt( properties.getProperty( "WhisperThreads", "1" ) ) ) ); }

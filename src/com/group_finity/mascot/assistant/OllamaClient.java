@@ -29,8 +29,11 @@ public class OllamaClient
     /** Default endpoint — change if the user runs Ollama on a different port. */
     public static final String DEFAULT_ENDPOINT = "http://localhost:11434/api/generate";
 
-    /** Default model. Small, fast, good instruction following. */
-    public static final String DEFAULT_MODEL = "llama3.2";
+    /** Default model. gemma4:e2b-it-qat — elastic E2B QAT build: multimodal (covers
+     *  chat + vision), fully VRAM-resident on a 6 GB GPU (~1.5 GB, 100% GPU), and faster
+     *  + higher quality (incl. instruction/tag following) than gemma3:4b in the June 2026
+     *  benchmark. Replaced gemma3:4b as the shipped default. */
+    public static final String DEFAULT_MODEL = "gemma4:e2b-it-qat";
 
     /** Connection / read timeout in milliseconds. Cold model load can take 60-90s. */
     private static final int TIMEOUT_MS = 90_000;
@@ -57,7 +60,8 @@ public class OllamaClient
      * across reactions so it loads once and settles, trading repeated thrash spikes for
      * steady memory pressure. Costs RAM/VRAM that stays occupied longer (worse if you game
      * mid-session) — drop it back to 45 if that bites. The real fix remains a VRAM-fitting
-     * model (gemma3:4b); this only softens gemma4.
+     * model (the default gemma4:e2b-it-qat, which sits 100% in VRAM, or gemma3:4b);
+     * this keep-alive lever only softens gemma4:e4b.
      */
     private static int textKeepAliveSec()
     {

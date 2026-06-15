@@ -473,7 +473,7 @@ override.
 ---- Screen Queries ----
 
 Ask "what am I looking at?" or "what's on my screen?" and the mascot will capture a
-screenshot and describe it using a local vision model (moondream by default, configurable
+screenshot and describe it using a local vision model (gemma4:e2b-it-qat by default, configurable
 via VisionModel in settings.properties).
 
 ---- Speech Constraints ----
@@ -490,9 +490,10 @@ via VisionModel in settings.properties).
 ---- Settings ----
 
 The Chat Bubbles tab in the Settings dialog exposes:
-  OllamaModel      -- which Ollama chat model to use (default: gemma3:4b)
+  OllamaModel      -- which Ollama chat model to use (default: gemma4:e2b-it-qat;
+                      for higher quality on an 8 GB+ GPU, try gemma4:e4b-it-qat)
   OllamaEndpoint   -- Ollama server URL (default: http://localhost:11434/api/generate)
-  VisionModel      -- Ollama model for screen queries (default: gemma3:4b)
+  VisionModel      -- Ollama model for screen queries (default: gemma4:e2b-it-qat)
   BubbleWidth      -- Width of speech bubbles in pixels (default: 180)
   BubbleFontSize   -- Font size in speech bubbles (default: 14)
   WhisperThreads   -- CPU threads for voice recognition (default: half of available)

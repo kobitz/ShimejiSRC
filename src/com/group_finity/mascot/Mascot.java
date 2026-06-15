@@ -263,7 +263,7 @@ public class Mascot
 
     /** Fallback when the VisionModel property is absent — matches the documented
      *  default (shared multimodal model), NOT a separate vision-only model. */
-    private static final String DEFAULT_VISION_MODEL = "gemma3:4b";
+    private static final String DEFAULT_VISION_MODEL = "gemma4:e2b-it-qat";
 
     private static final int CLICK_MAX_MS      = 100;
     private static final int CLICK_MAX_MOVE_PX = 8;
