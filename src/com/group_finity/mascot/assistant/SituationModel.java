@@ -46,7 +46,9 @@ public class SituationModel
     private static final long IDLE_MS            = 5L * 60 * 1000;    // same foreground this long => idle
     private static final long MIN_FOCUS_MS       = 2L * 60 * 1000;    // min session age to call it "focused"
     private static final int  MAX_SESSIONS       = 40;
-    private static final int  AUDIO_ACTIVE_RMS   = 600;              // speaker energy => "sound playing"
+    private static final int  AUDIO_ON_RMS       = 600;             // RMS to call audio "playing"
+    private static final int  AUDIO_OFF_RMS      = 250;             // RMS to call it "stopped" (hysteresis, anti-flicker)
+    private static final long AMBIENT_ACTIVE_MS  = 600_000;        // salient pulse every 10 min during sustained activity
     private static final int  MULTITASK_SWITCHES = 4;                // switches in TEMPO_WINDOW => multitasking
     private static final double FOCUS_FRACTION   = 0.8;              // share of FOCUS_WINDOW in one app
     private static final double SALIENT_THRESHOLD = 0.5;            // salience >= this == a "salient change"
@@ -160,6 +162,7 @@ public class SituationModel
     private String  prevState        = "active";
     private volatile long lastSalientMs   = 0; // wall-clock of last salient change (read cross-thread)
     private volatile long lastSelfAudioMs = 0; // wall-clock of last mascot-played sound (self-reference guard)
+    private long lastActivityPulseMs = 0;      // last ambient activity pulse (loop thread only)
     private volatile String synthSummary = "";  // Layer B LLM narrative (written on worker thread, read on loop thread)
     private volatile String synthMood    = "";
     private OllamaClient synthClient = null;     // lazy; only the loop thread touches the reference
@@ -186,6 +189,9 @@ public class SituationModel
     {
         return ( lastSalientMs == 0 ) ? Long.MAX_VALUE / 2 : System.currentTimeMillis( ) - lastSalientMs;
     }
+
+    /** Timestamp of the most recent salient event or activity pulse (for edge-triggered consumers). */
+    public long salientStamp( ) { return lastSalientMs; }
 
     /**
      * Called when a mascot plays a sound. Its own audio reaches the WASAPI loopback that feeds
@@ -247,7 +253,8 @@ public class SituationModel
         // Freeze the audio signal right after a mascot plays a sound: loopback captures our
         // own SFX, so the companion must not read its own chirp as the user's environment changing.
         final boolean selfAudioRecent = ( now - lastSelfAudioMs ) < SELF_AUDIO_MUTE_MS;
-        final boolean audioPlaying = selfAudioRecent ? prevAudioPlaying : ( audio >= AUDIO_ACTIVE_RMS );
+        final boolean audioPlaying = selfAudioRecent ? prevAudioPlaying
+            : ( prevAudioPlaying ? ( audio >= AUDIO_OFF_RMS ) : ( audio >= AUDIO_ON_RMS ) );
         final boolean lateNight    = isLateNight( );
         final Session cur          = sessions.isEmpty( ) ? null : sessions.get( sessions.size( ) - 1 );
         final long    sessionMin   = ( cur == null ) ? 0 : Math.max( 0, ( now - cur.firstMs ) / 60_000 );
@@ -266,12 +273,23 @@ public class SituationModel
         }
         if( audioPlaying != prevAudioPlaying )
         {
-            salience += 0.3;
+            salience += 0.5;   // audio onset/offset alone is a salient change (crosses threshold)
             if( notable.isEmpty( ) ) notable = audioPlaying ? "audio started" : "audio stopped";
         }
         if( !state.equals( prevState ) ) salience += 0.4;
         salience = Math.min( 1.0, salience );
         if( salience >= SALIENT_THRESHOLD ) lastSalientMs = now;
+
+        // Activity-aware ambient pulse: during sustained NON-focused activity (e.g. a long
+        // video) emit a low-frequency salient pulse so the companion isn't silent the whole
+        // stretch. Excludes focused (don't break deep work) and idle (stay quiet) -- so the
+        // only true silence is genuine inactivity: no sound, no input, no window changes.
+        if( !state.equals( "focused" ) && !state.equals( "idle" )
+            && now - lastActivityPulseMs >= AMBIENT_ACTIVE_MS )
+        {
+            lastActivityPulseMs = now;
+            lastSalientMs       = now;
+        }
 
         final String activity = ( cur == null ) ? "(no foreground window)"
                                                  : cur.app + " (~" + sessionMin + "m)";

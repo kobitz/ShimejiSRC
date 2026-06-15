@@ -226,6 +226,8 @@ public class Mascot
     private int  spontaneousTickCounter = 0;
     private int  spontaneousNextTrigger = -1; // -1 = randomize on first tick
     private final java.util.Random spontaneousRng = new java.util.Random();
+    private static final int SALIENCE_CHECK_TICKS = 50; // ~2s: salience-mode poll for a fresh salient event
+    private long lastReactedSalientStamp = 0;           // last SituationModel salient stamp we acted on
     /** Title that triggered the last spontaneous comment - avoid repeating. */
     private volatile String lastSpontaneousTitle = "";
 
@@ -252,9 +254,6 @@ public class Mascot
     private static final long GLOBAL_AUDIO_COOLDOWN_MS       =  90_000L; // 90 s
     private static final long GLOBAL_VISION_COOLDOWN_MS      = 180_000L; // 3 min
     private static final long GLOBAL_USER_SPEECH_COOLDOWN_MS = 120_000L; // 2 min
-    // Layer C: a spontaneous comment is suppressed in "focused" flow unless a salient
-    // change landed within this window (the clock cadence is the ceiling, salience the trigger).
-    private static final long PROACTIVE_SALIENCE_WINDOW_MS   = 150_000L; // 2.5 min
     private static final java.util.concurrent.atomic.AtomicLong globalSpontaneousLastFiredMs =
         new java.util.concurrent.atomic.AtomicLong( 0L );
     private static final java.util.concurrent.atomic.AtomicLong globalAudioLastFiredMs =
@@ -3223,64 +3222,89 @@ public class Mascot
             // visibility. AssistantBubble stacks messages so a visible bubble is not a blocker.
             // Only gate the actual fire on dialogFree to avoid interrupting active user input.
             final boolean dialogFree = activeDialog == null;
-            if( spontaneousNextTrigger < 0 )
+            if( com.group_finity.mascot.assistant.SituationModel.isActive() )
             {
-                final int r = SPONTANEOUS_MAX_TICKS - SPONTANEOUS_MIN_TICKS;
-                spontaneousNextTrigger = SPONTANEOUS_MIN_TICKS
-                    + Math.max( spontaneousRng.nextInt(r), spontaneousRng.nextInt(r) );
-            }
-            spontaneousTickCounter++;
-            if( spontaneousTickCounter >= spontaneousNextTrigger && dialogFree )
-            {
-                spontaneousTickCounter = 0;
-                final int range = SPONTANEOUS_MAX_TICKS - SPONTANEOUS_MIN_TICKS;
-                spontaneousNextTrigger = SPONTANEOUS_MIN_TICKS
-                    + Math.max( spontaneousRng.nextInt( range ),
-                                spontaneousRng.nextInt( range ) );
-                // Lazily init client so spontaneous comments work even if
-                // the user has never manually opened the input dialog.
-                if( ollamaClient == null ) ollamaClient = createOllamaClient();
-
-                // GetWindowTextW sends WM_GETTEXT cross-process via SendMessage and can
-                // block if the foreground app is momentarily busy. Move off the tick thread
-                // so it can't hold up animations — same pattern as fireVisionReaction().
-                new Thread( () ->
+                // ── Salience-triggered proactivity (activity-aware) ──
+                // Speak when a FRESH salient signal lands — a real change (window switch,
+                // audio start/stop, state flip) OR an ambient pulse during sustained
+                // non-focused activity. The 2-min global cooldown is the spacing floor;
+                // genuine idle produces no signal, so the companion goes quiet.
+                spontaneousTickCounter++;
+                if( spontaneousTickCounter >= SALIENCE_CHECK_TICKS && dialogFree )
                 {
-                    final String title = getActiveWindowTitle();
-                    log.info( "[Spontaneous] tick fired — title=\"" + title
-                        + "\" last=\"" + lastSpontaneousTitle + "\"" );
-                    if( title != null && !title.isEmpty()
-                            && !title.equals( lastSpontaneousTitle ) )
+                    spontaneousTickCounter = 0;
+                    final long stamp = com.group_finity.mascot.assistant.SituationModel
+                        .getInstance().salientStamp();
+                    if( stamp > lastReactedSalientStamp )
                     {
-                        // Layer C: don't interrupt focused flow. The clock cadence already
-                        // fired; only speak if the user is not deep-focused, or something
-                        // salient changed recently. Stays a no-op when SituationModel is off.
-                        if( com.group_finity.mascot.assistant.SituationModel.isActive() )
+                        // Consume this event so we attempt it at most once, even if the
+                        // cooldown blocks the actual comment (no pile-up after a burst).
+                        lastReactedSalientStamp = stamp;
+                        if( ollamaClient == null ) ollamaClient = createOllamaClient();
+                        // Title fetch can block on a busy foreground app — off the tick thread.
+                        new Thread( () ->
                         {
-                            final com.group_finity.mascot.assistant.SituationModel sm =
-                                com.group_finity.mascot.assistant.SituationModel.getInstance();
-                            if( "focused".equals( sm.current().state )
-                                    && sm.msSinceSalientChange() > PROACTIVE_SALIENCE_WINDOW_MS )
+                            final String title = getActiveWindowTitle();
+                            if( title == null || title.isEmpty() ) return;
+                            final long now = System.currentTimeMillis();
+                            final long last = globalSpontaneousLastFiredMs.get();
+                            if( now - last >= GLOBAL_SPONTANEOUS_COOLDOWN_MS
+                                    && globalSpontaneousLastFiredMs.compareAndSet( last, now ) )
                             {
-                                log.info( "[Spontaneous] suppressed — focused flow, no recent salient change ("
-                                    + getImageSet() + ")" );
-                                return;
+                                lastSpontaneousTitle = title;
+                                log.info( "[Spontaneous] salience-triggered (" + getImageSet() + ")" );
+                                fireSpontaneousComment( title );
+                            }
+                            else
+                            {
+                                log.info( "[Spontaneous] salient event but global cooldown active — skipping for "
+                                    + getImageSet() );
+                            }
+                        }, "spontaneous-title-fetch" ).start();
+                    }
+                }
+            }
+            else
+            {
+                // ── Legacy timer-driven fallback (SituationModel disabled) ──
+                if( spontaneousNextTrigger < 0 )
+                {
+                    final int r = SPONTANEOUS_MAX_TICKS - SPONTANEOUS_MIN_TICKS;
+                    spontaneousNextTrigger = SPONTANEOUS_MIN_TICKS
+                        + Math.max( spontaneousRng.nextInt(r), spontaneousRng.nextInt(r) );
+                }
+                spontaneousTickCounter++;
+                if( spontaneousTickCounter >= spontaneousNextTrigger && dialogFree )
+                {
+                    spontaneousTickCounter = 0;
+                    final int range = SPONTANEOUS_MAX_TICKS - SPONTANEOUS_MIN_TICKS;
+                    spontaneousNextTrigger = SPONTANEOUS_MIN_TICKS
+                        + Math.max( spontaneousRng.nextInt( range ),
+                                    spontaneousRng.nextInt( range ) );
+                    if( ollamaClient == null ) ollamaClient = createOllamaClient();
+                    new Thread( () ->
+                    {
+                        final String title = getActiveWindowTitle();
+                        log.info( "[Spontaneous] tick fired — title=\"" + title
+                            + "\" last=\"" + lastSpontaneousTitle + "\"" );
+                        if( title != null && !title.isEmpty()
+                                && !title.equals( lastSpontaneousTitle ) )
+                        {
+                            final long now = System.currentTimeMillis();
+                            final long last = globalSpontaneousLastFiredMs.get();
+                            if( now - last >= GLOBAL_SPONTANEOUS_COOLDOWN_MS
+                                    && globalSpontaneousLastFiredMs.compareAndSet( last, now ) )
+                            {
+                                lastSpontaneousTitle = title;
+                                fireSpontaneousComment( title );
+                            }
+                            else
+                            {
+                                log.info( "[Spontaneous] Global cooldown active — skipping for " + getImageSet() );
                             }
                         }
-                        final long now = System.currentTimeMillis();
-                        final long last = globalSpontaneousLastFiredMs.get();
-                        if( now - last >= GLOBAL_SPONTANEOUS_COOLDOWN_MS
-                                && globalSpontaneousLastFiredMs.compareAndSet( last, now ) )
-                        {
-                            lastSpontaneousTitle = title;
-                            fireSpontaneousComment( title );
-                        }
-                        else
-                        {
-                            log.info( "[Spontaneous] Global cooldown active — skipping for " + getImageSet() );
-                        }
-                    }
-                }, "spontaneous-title-fetch" ).start();
+                    }, "spontaneous-title-fetch" ).start();
+                }
             }
 
             // Audio transcript reaction — independent cadence, not gated on bubbleFree
