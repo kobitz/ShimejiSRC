@@ -280,11 +280,13 @@ public class SituationModel
         salience = Math.min( 1.0, salience );
         if( salience >= SALIENT_THRESHOLD ) lastSalientMs = now;
 
-        // Activity-aware ambient pulse: during sustained NON-focused activity (e.g. a long
-        // video) emit a low-frequency salient pulse so the companion isn't silent the whole
-        // stretch. Excludes focused (don't break deep work) and idle (stay quiet) -- so the
-        // only true silence is genuine inactivity: no sound, no input, no window changes.
-        if( !state.equals( "focused" ) && !state.equals( "idle" )
+        // Activity-aware ambient pulse: during sustained activity (e.g. a long video) emit a
+        // low-frequency salient pulse so the companion isn't silent for the whole stretch.
+        // Suppress ONLY genuine idle and SILENT deep-work. A movie in one window also classifies
+        // as "focused" (one app dominating), but audio playing means passive watching, so it
+        // should still pulse -- only focused-WITHOUT-audio is true don't-interrupt deep work.
+        final boolean silentDeepWork = state.equals( "focused" ) && !audioPlaying;
+        if( !state.equals( "idle" ) && !silentDeepWork
             && now - lastActivityPulseMs >= AMBIENT_ACTIVE_MS )
         {
             lastActivityPulseMs = now;

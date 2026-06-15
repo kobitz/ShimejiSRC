@@ -3227,8 +3227,9 @@ public class Mascot
                 // ── Salience-triggered proactivity (activity-aware) ──
                 // Speak when a FRESH salient signal lands — a real change (window switch,
                 // audio start/stop, state flip) OR an ambient pulse during sustained
-                // non-focused activity. The 2-min global cooldown is the spacing floor;
-                // genuine idle produces no signal, so the companion goes quiet.
+                // activity (incl. a long video — "focused" but audio playing). The 2-min
+                // global cooldown is the spacing floor; only genuine idle and silent
+                // deep-work produce no signal, so the companion goes quiet there.
                 spontaneousTickCounter++;
                 if( spontaneousTickCounter >= SALIENCE_CHECK_TICKS && dialogFree )
                 {
