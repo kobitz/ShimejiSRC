@@ -387,6 +387,10 @@ public class Mascot
         // Start the background drive indexer (idempotent across mascots)
         if( assistantMode ) com.group_finity.mascot.assistant.DriveIndexTool.ensureStarted();
 
+        // Start the situational synthesis model -- Layer A, rule-based, one shared
+        // instance across all mascots (idempotent). LLM-free: only samples + logs.
+        if( assistantMode ) com.group_finity.mascot.assistant.SituationModel.ensureStarted();
+
         // Always on top — global setting AND per-imageset override, both default true
         applyAlwaysOnTop( );
 
