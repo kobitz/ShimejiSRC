@@ -52,6 +52,19 @@ public class SituationModel
     private static final double SALIENT_THRESHOLD = 0.5;            // salience >= this == a "salient change"
     private static final long   SELF_AUDIO_MUTE_MS = 4_000;        // ignore loopback audio this long after a mascot SFX
 
+    // ── Layer B: periodic LLM synthesis ──
+    private static final long SYNTH_INTERVAL_MS      = 240_000;     // synthesis cadence (4 min)
+    private static final long SYNTH_RETRY_MS         = 30_000;      // retry sooner when gated (model busy / no data)
+    private static final long SYNTH_QUIET_MS         = 15_000;      // skip if any generation dispatched this recently
+    private static final long SYNTH_INITIAL_DELAY_MS = 60_000;      // wait after launch so there's data to summarize
+    private static final int  SYNTH_MAX_TOKENS       = 100;
+    private static final String SYNTH_SYSTEM =
+          "You summarize what a computer user is currently doing, for a desktop companion's situational awareness."
+        + " Output EXACTLY two lines and nothing else:"
+        + "\nSUMMARY: one neutral third-person sentence (max 25 words) describing the user's current activity and recent pattern."
+        + "\nMOOD: one lowercase word for the user's likely state (focused, relaxed, frustrated, tired, ...), or 'neutral' if unclear."
+        + " Base it ONLY on the data given; do not invent details, do not give advice, and when unsure about mood say neutral.";
+
     private static SituationModel instance;
     private static volatile boolean started = false;
 
@@ -106,30 +119,39 @@ public class SituationModel
         public final double  cpuLoad, gpuLoad, ramLoad;
         public final boolean audioPlaying;
         public final boolean lateNight;
+        public final String  summary;        // Layer B: LLM narrative, or "" (falls back to rule-based facts)
+        public final String  mood;           // Layer B: conservative one-word mood, or "" / "neutral"
 
         Situation( String state, String activity, String notable, double salience, long sessionMinutes,
-                   double cpuLoad, double gpuLoad, double ramLoad, boolean audioPlaying, boolean lateNight )
+                   double cpuLoad, double gpuLoad, double ramLoad, boolean audioPlaying, boolean lateNight,
+                   String summary, String mood )
         {
             this.state = state; this.activity = activity; this.notable = notable;
             this.salience = salience; this.sessionMinutes = sessionMinutes;
             this.cpuLoad = cpuLoad; this.gpuLoad = gpuLoad; this.ramLoad = ramLoad;
             this.audioPlaying = audioPlaying; this.lateNight = lateNight;
+            this.summary = summary; this.mood = mood;
         }
 
-        /** Compact neutral context block for prompt injection / logging (no hedging words). */
+        /** Compact context block for prompt injection / logging. Leads with the LLM narrative
+         *  when present (Layer B), else the rule-based facts (Layer A). No hedging in output. */
         public String asContextBlock( )
         {
             StringBuilder sb = new StringBuilder( );
-            sb.append( "User state: " ).append( state ).append( ". Activity: " ).append( activity ).append( '.' );
+            if( summary != null && !summary.isEmpty( ) ) sb.append( summary ).append( ' ' );
+            else sb.append( "User state: " ).append( state ).append( ". " );
+            sb.append( "Activity: " ).append( activity ).append( '.' );
             if( audioPlaying ) sb.append( " Audio is playing." );
             if( lateNight )    sb.append( " It is late at night." );
+            if( mood != null && !mood.isEmpty( ) && !mood.equalsIgnoreCase( "neutral" ) )
+                sb.append( " Inferred mood: " ).append( mood ).append( '.' );
             if( notable != null && !notable.isEmpty( ) ) sb.append( " Recent change: " ).append( notable ).append( '.' );
             return sb.toString( );
         }
     }
 
     private final AtomicReference<Situation> current = new AtomicReference<>(
-        new Situation( "active", "(starting up)", "", 0, 0, -1, -1, -1, false, false ) );
+        new Situation( "active", "(starting up)", "", 0, 0, -1, -1, -1, false, false, "", "" ) );
 
     private final List<Session> sessions = new ArrayList<>( );
     private final Deque<Sample>  samples = new ArrayDeque<>( );
@@ -138,6 +160,10 @@ public class SituationModel
     private String  prevState        = "active";
     private volatile long lastSalientMs   = 0; // wall-clock of last salient change (read cross-thread)
     private volatile long lastSelfAudioMs = 0; // wall-clock of last mascot-played sound (self-reference guard)
+    private volatile String synthSummary = "";  // Layer B LLM narrative (written on worker thread, read on loop thread)
+    private volatile String synthMood    = "";
+    private OllamaClient synthClient = null;     // lazy; only the loop thread touches the reference
+    private long nextSynthAtMs = System.currentTimeMillis( ) + SYNTH_INITIAL_DELAY_MS; // loop thread only
 
     private SituationModel( ) { }
 
@@ -177,6 +203,8 @@ public class SituationModel
         {
             try { sampleOnce( ); }
             catch( Exception e ) { log.log( Level.FINE, "situation sample error", e ); }
+            try { maybeSynthesize( ); }
+            catch( Exception e ) { log.log( Level.FINE, "situation synth error", e ); }
             try { Thread.sleep( SAMPLE_MS ); }
             catch( InterruptedException e ) { Thread.currentThread( ).interrupt( ); return; }
         }
@@ -249,7 +277,7 @@ public class SituationModel
                                                  : cur.app + " (~" + sessionMin + "m)";
 
         final Situation sit = new Situation( state, activity, notable, salience, sessionMin,
-            cpu, gpu, ram, audioPlaying, lateNight );
+            cpu, gpu, ram, audioPlaying, lateNight, synthSummary, synthMood );
         current.set( sit );
 
         // routine summary at FINE; transitions / high-salience at INFO (matches the
@@ -309,6 +337,89 @@ public class SituationModel
         final long from = now - 60_000;   // last minute
         for( Sample s : samples ) if( s.ms >= from && s.cpu >= 0 ) { sum += s.cpu; n++; }
         return ( n == 0 ) ? 0 : sum / n;
+    }
+
+    // ── Layer B: periodic LLM synthesis (enriches the rule-based read with a narrative + mood) ──
+    // Runs on the sampling loop thread, so it reads sessions/current() safely; the async
+    // callback only writes the volatile synthSummary/synthMood. Heavily gated to stay cheap.
+
+    private void maybeSynthesize( )
+    {
+        final long now = System.currentTimeMillis( );
+        if( now < nextSynthAtMs ) return;
+
+        if( !Boolean.parseBoolean( Main.getInstance( ).getProperties( )
+                .getProperty( "SituationSynthEnabled", "true" ) ) )
+        {
+            nextSynthAtMs = now + SYNTH_INTERVAL_MS;   // disabled — check again next cadence
+            return;
+        }
+        // Don't pile on: a recent dispatch by any client means the user is likely
+        // mid-conversation. Retry shortly rather than competing for the model.
+        if( OllamaClient.msSinceLastDispatch( ) < SYNTH_QUIET_MS || sessions.isEmpty( ) )
+        {
+            nextSynthAtMs = now + SYNTH_RETRY_MS;
+            return;
+        }
+
+        nextSynthAtMs = now + SYNTH_INTERVAL_MS;   // scheduled regardless of outcome
+
+        if( synthClient == null )
+        {
+            final String model = Main.getInstance( ).getProperties( )
+                .getProperty( "OllamaModel", OllamaClient.DEFAULT_MODEL );
+            final String endpoint = Main.getInstance( ).getProperties( )
+                .getProperty( "OllamaEndpoint", "http://localhost:11434/api/generate" );
+            synthClient = new OllamaClient( endpoint, model );
+        }
+
+        final String user = buildSynthPrompt( );
+        synthClient.generate( SYNTH_SYSTEM, user, SYNTH_MAX_TOKENS, new OllamaClient.Callback( )
+        {
+            @Override public void onResponse( String raw ) { applySynth( raw ); }
+            @Override public void onError( String err )    { log.fine( "[Situation] synth error: " + err ); }
+        } );
+        log.fine( "[Situation] synthesis dispatched" );
+    }
+
+    private String buildSynthPrompt( )
+    {
+        final StringBuilder sb = new StringBuilder( "Recent apps (oldest first, minutes spent):\n" );
+        final int from = Math.max( 0, sessions.size( ) - 6 );
+        for( int i = from; i < sessions.size( ); i++ )
+        {
+            Session s = sessions.get( i );
+            long mins = Math.max( 0, ( s.lastMs - s.firstMs ) / 60_000 );
+            sb.append( "- " ).append( s.app ).append( ": " ).append( mins ).append( "m\n" );
+        }
+        final Situation cur = current.get( );
+        sb.append( "Foreground now: " ).append( cur.activity ).append( '\n' );
+        sb.append( "Heuristic state: " ).append( cur.state ).append( '\n' );
+        sb.append( "Audio playing: " ).append( cur.audioPlaying ).append( '\n' );
+        sb.append( "Time: " ).append( isLateNight( ) ? "late night" : "daytime/evening" )
+          .append( " (hour " ).append( java.time.LocalTime.now( ).getHour( ) ).append( ")\n" );
+        if( cur.cpuLoad >= 0 ) sb.append( "CPU load ~" ).append( Math.round( cur.cpuLoad ) ).append( "%\n" );
+        if( !synthSummary.isEmpty( ) ) sb.append( "Previous summary: " ).append( synthSummary ).append( '\n' );
+        return sb.toString( );
+    }
+
+    private void applySynth( String raw )
+    {
+        if( raw == null ) return;
+        String summary = "", mood = "";
+        for( String line : raw.split( "\\r?\\n" ) )
+        {
+            final String t   = line.trim( );
+            final String low = t.toLowerCase( java.util.Locale.ROOT );
+            if( low.startsWith( "summary:" ) )   summary = t.substring( 8 ).trim( );
+            else if( low.startsWith( "mood:" ) ) mood    = t.substring( 5 ).trim( );
+        }
+        if( !summary.isEmpty( ) ) synthSummary = summary;
+        if( !mood.isEmpty( ) )
+            synthMood = mood.replaceAll( "[^A-Za-z -]", "" ).trim( ).toLowerCase( java.util.Locale.ROOT );
+        log.info( "[Situation] synthesized: "
+            + ( synthSummary.isEmpty( ) ? "(none)" : synthSummary )
+            + ( synthMood.isEmpty( ) ? "" : " | mood=" + synthMood ) );
     }
 
     private double ramLoad( )

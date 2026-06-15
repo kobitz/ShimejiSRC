@@ -123,6 +123,17 @@ public class OllamaClient
         }
     }
 
+    /** Wall-clock of the most recent dispatch by ANY client — lets background tasks
+     *  (e.g. SituationModel synthesis) yield while the model is in active use. */
+    private static volatile long lastGlobalDispatchMs = 0L;
+
+    /** ms since any OllamaClient last dispatched a request, or a large value if none yet. */
+    public static long msSinceLastDispatch( )
+    {
+        return ( lastGlobalDispatchMs == 0L ) ? Long.MAX_VALUE / 2
+                                              : System.currentTimeMillis( ) - lastGlobalDispatchMs;
+    }
+
     private final String endpoint;
     private final String model;
 
@@ -173,6 +184,7 @@ public class OllamaClient
                     Thread.sleep( wait );
 
                 lastDispatchMs = System.currentTimeMillis();
+                lastGlobalDispatchMs = lastDispatchMs;
                 log.log( Level.FINE, "[OllamaQueue] Dispatching request, queue depth={0}",
                          requestQueue.size() );
 
