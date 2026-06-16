@@ -194,6 +194,9 @@ public class Manager {
 		long mascotsTotalNs = 0;
 		long slowestMascotNs = 0;
 		String slowestMascotName = null;
+		// Phase split of the single slowest mascot's tick — names what the per-mascot
+		// cost actually is (window lookup vs behavior/script vs render) at high counts.
+		long slowestEnvNs = 0, slowestTickNs = 0, slowestApplyNs = 0;
 		int mascotCount = 0;
 
 		synchronized (this.getMascots()) {
@@ -255,8 +258,12 @@ public class Manager {
 			for (final Mascot mascot : this.getMascots()) {
 				mascotCount++;
 				final long mascotStartNs = System.nanoTime();
+				long envPhaseNs = 0, tickPhaseNs = 0, applyPhaseNs = 0;
 				try {
+					final long pe0 = System.nanoTime();
 					mascot.getEnvironment().tick();
+					envPhaseNs = System.nanoTime() - pe0;
+					final long pt0 = System.nanoTime();
 					mascot.tick();
 
 					// ── Hotkey hold-to-loop ──────────────────────────────────────
@@ -380,7 +387,10 @@ public class Manager {
 						mascot.setUserData( "_holdIntroPlayed", null );
 					}
 
+					tickPhaseNs = System.nanoTime() - pt0;   // mascot.tick() + hotkey hold logic
+					final long pa0 = System.nanoTime();
 					mascot.apply();
+					applyPhaseNs = System.nanoTime() - pa0;
 				} catch (final Throwable t) {
 					log.log( java.util.logging.Level.SEVERE, "Mascot tick error, disposing: " + mascot, t );
 					try { mascot.dispose(); } catch( Throwable ignored ) {}
@@ -390,6 +400,9 @@ public class Manager {
 				if (mascotNs > slowestMascotNs) {
 					slowestMascotNs = mascotNs;
 					slowestMascotName = mascot.getImageSet();
+					slowestEnvNs   = envPhaseNs;
+					slowestTickNs  = tickPhaseNs;
+					slowestApplyNs = applyPhaseNs;
 				}
 			}
 		}
@@ -409,6 +422,10 @@ public class Manager {
 		//               population cost. slowestMascot names the single worst one.
 		//   unattr    = total - envScan - mascotsTot = EDT lock-wait (menu/bubble holding
 		//               the mascots lock) or GC. The previously-opaque black box.
+		// slowestMascot also carries a us-level split of that one mascot's cost:
+		//   env=  per-mascot getEnvironment().tick() (window lookup)
+		//   tick= mascot.tick() + hotkey hold logic (behavior/script eval)
+		//   apply=mascot.apply() (render/cache).
 		final long totalMs = (System.nanoTime() - tickStartNs) / 1_000_000L;
 		if (totalMs >= 250) {
 			double cpu = -1, gpu = -1;
@@ -427,7 +444,10 @@ public class Manager {
 				+ " envScan=" + envScanMs + "ms(enum=" + enumMs + "ms)"
 				+ " mascotsTot=" + mascotsTotMs + "ms"
 				+ " unattr=" + unattrMs + "ms"
-				+ " slowestMascot=" + slowestMascotName + "(" + ( slowestMascotNs / 1_000_000L ) + "ms)"
+				+ " slowestMascot=" + slowestMascotName + "(" + ( slowestMascotNs / 1_000_000L ) + "ms"
+					+ " env=" + ( slowestEnvNs / 1000L ) + "us"
+					+ " tick=" + ( slowestTickNs / 1000L ) + "us"
+					+ " apply=" + ( slowestApplyNs / 1000L ) + "us)"
 				+ " mascots=" + mascotCount
 				+ " heap=" + ( ( rt.totalMemory() - rt.freeMemory() ) / 1_048_576L ) + "/"
 				+ ( rt.totalMemory() / 1_048_576L ) + "MB"
