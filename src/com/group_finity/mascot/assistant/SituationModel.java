@@ -158,6 +158,7 @@ public class SituationModel
     private final List<Session> sessions = new ArrayList<>( );
     private final Deque<Sample>  samples = new ArrayDeque<>( );
     private String  prevApp          = null;
+    private String  pendingApp       = null;   // candidate app awaiting a 2nd-sample confirmation (debounce)
     private boolean prevAudioPlaying = false;
     private String  prevState        = "active";
     private volatile long lastSalientMs   = 0; // wall-clock of last salient change (read cross-thread)
@@ -236,12 +237,25 @@ public class SituationModel
             Session s = sessions.get( sessions.size( ) - 1 );
             s.lastMs = now;
             s.latestTitle = title;
+            pendingApp = null;                  // back on the current app -- cancel any pending switch
         }
         else if( !app.equals( "(none)" ) )   // skip blank foreground -- also excludes our own bubble
                                              // (non-focusable) and reply dialog (undecorated/untitled => "(none)")
         {
-            sessions.add( new Session( app, title, now ) );
-            appChanged = ( prevApp != null );   // suppress the very first sample
+            // Debounce: only commit a switch once the new app shows up on TWO
+            // consecutive samples. A one-sample title blip -- e.g. a CLI spinner
+            // glyph that survives normalization, or a transient popup -- must not
+            // manufacture a session/switch (phantom salience + false multitasking).
+            if( app.equals( pendingApp ) )
+            {
+                sessions.add( new Session( app, title, now ) );
+                appChanged = ( prevApp != null );   // suppress the very first sample
+                pendingApp = null;
+            }
+            else
+            {
+                pendingApp = app;                   // first sighting -- hold, don't switch yet
+            }
         }
         sessions.removeIf( s -> s.lastMs < now - WINDOW_MS );
         while( sessions.size( ) > MAX_SESSIONS ) sessions.remove( 0 );
@@ -475,9 +489,26 @@ public class SituationModel
         int em = title.lastIndexOf( " — " );   // " -- " (em dash)
         int hy = title.lastIndexOf( " - " );
         int i  = Math.max( em, hy );
-        String key = ( i >= 0 ) ? title.substring( i + 3 ) : title;
-        key = key.trim( );
-        return key.isEmpty( ) ? title.trim( ) : key;
+        String key = stripDecoration( ( i >= 0 ) ? title.substring( i + 3 ) : title );
+        if( key.isEmpty( ) ) key = stripDecoration( title );
+        return key.isEmpty( ) ? "(none)" : key;
+    }
+
+    /** Strip a leading run of decorative non-alphanumeric characters (and surrounding
+     *  whitespace) -- e.g. the animated spinner glyph many CLIs prepend to the terminal
+     *  title (Claude Code cycles "✳", "⠐", "⠂", ...). Separator-less titles otherwise
+     *  go through appKey() whole, so that one changing glyph flips the key every sample
+     *  and the coalescer reads it as a rapid app switch: phantom salience + false
+     *  "multitasking" for a window the user never left. Also drops volatile leading
+     *  notification counts like "(1) ". */
+    private static String stripDecoration( String s )
+    {
+        if( s == null ) return "";
+        s = s.trim( );
+        int start = 0;
+        while( start < s.length( ) && !Character.isLetterOrDigit( s.charAt( start ) ) )
+            start++;
+        return s.substring( start ).trim( );
     }
 
     private static boolean isLateNight( )
