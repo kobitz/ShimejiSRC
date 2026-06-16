@@ -174,6 +174,7 @@ public class Manager {
 		// lock during a menu) shows up as total time unaccounted for by phases.
 		final long tickStartNs = System.nanoTime();
 		long envScanNs = 0;
+		long mascotsTotalNs = 0;
 		long slowestMascotNs = 0;
 		String slowestMascotName = null;
 		int mascotCount = 0;
@@ -349,6 +350,7 @@ public class Manager {
 					try { mascot.dispose(); } catch( Throwable ignored ) {}
 				}
 				final long mascotNs = System.nanoTime() - mascotStartNs;
+				mascotsTotalNs += mascotNs;
 				if (mascotNs > slowestMascotNs) {
 					slowestMascotNs = mascotNs;
 					slowestMascotName = mascot.getImageSet();
@@ -360,10 +362,17 @@ public class Manager {
 		// 250ms (raised from 200, from an original 120) — sub-250ms blips are
 		// accepted residue from a large mascot population + envScan, not the
 		// actionable "huge spike" we care about (the gemma4 generation
-		// starvation events run 400ms-1s). Unattributed time (total minus
-		// envScan minus mascots) is lock wait or GC. Logged per slow tick — a
-		// 1s crawl yields a handful of lines, which is the point: the log names
-		// the phase.
+		// starvation events run 400ms-1s). Logged per slow tick — a 1s crawl
+		// yields a handful of lines, which is the point: the log names the phase.
+		//
+		// Phase breakdown (each a measured sub-total, so they sum toward total):
+		//   envScan   = WindowsEnvironment.beginTick() (window enumeration), of which
+		//               enum= is the raw native EnumWindows walk (scales with open-window
+		//               count) and the rest is fullscreen/video-area post-processing.
+		//   mascotsTot= sum of ALL mascots' tick time (not just the slowest) — the true
+		//               population cost. slowestMascot names the single worst one.
+		//   unattr    = total - envScan - mascotsTot = EDT lock-wait (menu/bubble holding
+		//               the mascots lock) or GC. The previously-opaque black box.
 		final long totalMs = (System.nanoTime() - tickStartNs) / 1_000_000L;
 		if (totalMs >= 250) {
 			double cpu = -1, gpu = -1;
@@ -373,9 +382,15 @@ public class Manager {
 				cpu = mon.getCpuLoad();
 				gpu = mon.getGpuLoad();
 			} catch (final Exception ignored) {}
+			final long envScanMs = envScanNs / 1_000_000L;
+			final long enumMs = com.group_finity.mascot.win.WindowsEnvironment.lastEnumWindowsNs / 1_000_000L;
+			final long mascotsTotMs = mascotsTotalNs / 1_000_000L;
+			final long unattrMs = Math.max( 0, totalMs - envScanMs - mascotsTotMs );
 			final Runtime rt = Runtime.getRuntime();
 			log.warning( "[TickWatch] Slow tick: total=" + totalMs + "ms"
-				+ " envScan=" + ( envScanNs / 1_000_000L ) + "ms"
+				+ " envScan=" + envScanMs + "ms(enum=" + enumMs + "ms)"
+				+ " mascotsTot=" + mascotsTotMs + "ms"
+				+ " unattr=" + unattrMs + "ms"
 				+ " slowestMascot=" + slowestMascotName + "(" + ( slowestMascotNs / 1_000_000L ) + "ms)"
 				+ " mascots=" + mascotCount
 				+ " heap=" + ( ( rt.totalMemory() - rt.freeMemory() ) / 1_048_576L ) + "/"

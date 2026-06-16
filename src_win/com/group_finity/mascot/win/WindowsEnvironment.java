@@ -95,6 +95,12 @@ public class WindowsEnvironment extends Environment
      * Called ONCE by Manager.tick() at the top of each tick, before the mascot loop.
      * Runs the single shared EnumWindows scan for this tick.
      */
+    /** Nanoseconds spent in the raw EnumWindows native walk on the last beginTick().
+     *  Read by Manager's tick watchdog to split envScan into native-enumeration cost
+     *  (scales with open-window count) vs. the fullscreen/video-area post-processing
+     *  remainder. Single writer (Manager tick thread), benign read elsewhere. */
+    public static volatile long lastEnumWindowsNs = 0L;
+
     public static void beginTick( )
     {
         final List<Pointer>   handles   = new ArrayList<>( 64 );
@@ -102,6 +108,7 @@ public class WindowsEnvironment extends Environment
         final List<IEResult>  viability = new ArrayList<>( 64 );
         final List<Integer>   exStyles  = new ArrayList<>( 64 );
 
+        final long enumStartNs = System.nanoTime();
         User32.INSTANCE.EnumWindows( new User32.WNDENUMPROC( )
         {
             @Override
@@ -119,6 +126,7 @@ public class WindowsEnvironment extends Environment
                 return true;
             }
         }, null );
+        lastEnumWindowsNs = System.nanoTime() - enumStartNs;
 
         // Detect which monitors have a fullscreen application this tick.
         // A window is fullscreen if it covers the full monitor bounds (rcMonitor)
