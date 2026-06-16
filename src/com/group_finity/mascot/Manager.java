@@ -34,22 +34,26 @@ public class Manager {
 	 * Useful for Mario finding blocks to hit.
 	 */
 	public Mascot getNearestAffordance(Mascot self, String affordance, int maxDx, int maxDy) {
+		// Read the per-tick affordance bucket instead of scanning + locking the whole
+		// mascot list on every call. Usually only a handful of mascots broadcast a
+		// given affordance, so this is O(bucket) rather than O(N). Called on the tick
+		// thread after the index is built, so no lock is needed for the snapshot read.
+		final java.util.Map<String,List<Mascot>> idx = affordanceIndex;
+		final List<Mascot> candidates = ( idx != null ) ? idx.get( affordance ) : null;
+		if( candidates == null ) return null;
+
 		Mascot best = null;
 		double bestDist = Double.MAX_VALUE;
+		for( int i = 0; i < candidates.size(); i++ ) {
+			final Mascot o = candidates.get( i );
+			if( o == self ) continue;
 
-		synchronized (this.getMascots()) {
-			for (Mascot o : this.getMascots()) {
-				if (o == self || !o.getAffordances().contains(affordance)) continue;
+			int dx = Math.abs(o.getAnchor().x - self.getAnchor().x);
+			int dy = self.getAnchor().y - o.getAnchor().y; // Up is positive
 
-				int dx = Math.abs(o.getAnchor().x - self.getAnchor().x);
-				int dy = self.getAnchor().y - o.getAnchor().y; // Up is positive
-
-				if (dx <= maxDx && dy > 0 && dy <= maxDy) {
-					if (dx < bestDist) {
-						bestDist = dx;
-						best = o;
-					}
-				}
+			if (dx <= maxDx && dy > 0 && dy <= maxDy && dx < bestDist) {
+				bestDist = dx;
+				best = o;
 			}
 		}
 		return best;
@@ -89,6 +93,19 @@ public class Manager {
 	 * Safe to read from any thread without holding the mascots lock.
 	 */
 	private volatile List<Mascot> mascotListSnapshot = java.util.Collections.emptyList();
+
+	/**
+	 * Per-tick shared indices, rebuilt once at the top of every tick (O(N)) so
+	 * per-mascot lookups don't each re-scan the whole list (O(N^2) across a large
+	 * colony). {@code imageSetCounts} backs {@link #getCount(String)} (= mascot.count,
+	 * used in breed/hunt script conditions); {@code affordanceIndex} backs
+	 * {@link #getNearestAffordance}. Replaced by reference each tick (readers see a
+	 * complete prior-or-current snapshot, never a partial one).
+	 */
+	private volatile java.util.Map<String,Integer> imageSetCounts =
+		java.util.Collections.emptyMap();
+	private volatile java.util.Map<String,List<Mascot>> affordanceIndex =
+		java.util.Collections.emptyMap();
 
 	private final Set<Mascot> added   = new LinkedHashSet<Mascot>();
 	private final Set<Mascot> removed = new LinkedHashSet<Mascot>();
@@ -208,6 +225,25 @@ public class Manager {
 			if( listChanged ) {
 				mascotListSnapshot = java.util.Collections.unmodifiableList(
 					new java.util.ArrayList<>( this.getMascots() ) );
+			}
+
+			// ── Build shared per-tick indices ONCE (O(N)) ────────────────────
+			// Population counts (mascot.count in breed/hunt scripts) and affordance
+			// buckets (getNearestAffordance) were each re-scanning the whole list per
+			// call -> O(N^2) across the colony. Computing them here once makes those
+			// O(1)/O(bucket), which is what lets the population scale.
+			{
+				final java.util.HashMap<String,Integer> counts = new java.util.HashMap<>();
+				final java.util.HashMap<String,List<Mascot>> affs = new java.util.HashMap<>();
+				for( final Mascot m : this.getMascots() )
+				{
+					counts.merge( m.getImageSet( ), 1, Integer::sum );
+					final java.util.ArrayList<String> mAff = m.getAffordances( );
+					for( int a = 0; a < mAff.size( ); a++ )
+						affs.computeIfAbsent( mAff.get( a ), k -> new ArrayList<>() ).add( m );
+				}
+				imageSetCounts  = counts;
+				affordanceIndex = affs;
 			}
 
 			// Affordance can come and go without the mascot list changing (a mascot
@@ -728,16 +764,24 @@ public class Manager {
 
 	public int getCount( String imageSet )
 	{
+		if( imageSet == null )
+		{
+			synchronized( getMascots( ) ) { return getMascots( ).size( ); }
+		}
+		// Per-tick index: O(1) population lookup (these run inside breed/hunt script
+		// conditions, so an O(N) scan per call would be O(N^2) across the colony).
+		final java.util.Map<String,Integer> idx = imageSetCounts;
+		if( idx != null && !idx.isEmpty( ) )
+		{
+			final Integer c = idx.get( imageSet );
+			return c == null ? 0 : c;   // absent from a populated index => genuinely zero
+		}
+		// Fallback before the first tick builds the index: live scan.
 		synchronized( getMascots( ) )
 		{
-			if( imageSet == null )
-				return getMascots( ).size( );
 			int count = 0;
 			for( int index = 0; index < getMascots( ).size( ); index++ )
-			{
-				Mascot m = getMascots( ).get( index );
-				if( m.getImageSet( ).equals( imageSet ) ) count++;
-			}
+				if( getMascots( ).get( index ).getImageSet( ).equals( imageSet ) ) count++;
 			return count;
 		}
 	}
