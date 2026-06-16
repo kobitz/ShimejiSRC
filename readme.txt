@@ -197,6 +197,8 @@ CpuTempMonitor exposes hardware sensor data to XML scripting via mascot.environm
   cpuLoad      - CPU Total load (%)
   gpuTemp      - GPU Core temperature (degrees C, NVIDIA only)
   gpuLoad      - GPU Core load (%, NVIDIA only)
+  gpuMemFree   - Free GPU memory (MB, NVIDIA only)
+  gpuMemTotal  - Total GPU memory (MB, NVIDIA only)
   ramLoad      - Total RAM usage (%)
   batteryLevel - Battery charge level (%)
 
@@ -204,8 +206,9 @@ All values return -1 if unavailable.  CPU temperature is read by TempSensor.exe,
 self-contained companion process that loads LibreHardwareMonitor once at startup and
 streams readings every second -- this avoids the overhead of spawning a new process
 each tick.  TempSensor.exe requires Shimeji to be running as administrator.  GPU metrics
-use nvidia-smi (no admin required).  RAM and battery are read inline with no external
-process.
+(including free/total memory, which the AI layer uses to decide how a model fits in VRAM)
+come from a single persistent nvidia-smi stream (no admin required).  RAM and battery are
+read inline with no external process.
 
 ---- Affordance System ----
 
@@ -224,6 +227,18 @@ XML usage:
   </Action>
 
 Manager also exposes getNearestAffordance() and triggerBehavior() methods for scripts that need to locate and interact with other mascots directly.
+
+---- MSI Cooler Boost ----
+
+On MSI laptops, a mascot can drive the machine's fans.  Any action that broadcasts the
+"CoolerBoost" affordance (for example the blue campfire mascot) ramps both fans to maximum
+while that mascot is present; when no mascot is broadcasting it, boost turns back off.
+
+This is handled through the same MSI_ACPI firmware interface MSI Center uses (TempSensor.exe
+writes the embedded-controller register), so it requires administrator rights -- the same
+elevation TempSensor already needs for CPU temperature.  Use Admin.bat to launch elevated.
+The hardware Fn+F8 button continues to work independently.  On non-MSI hardware the
+affordance is simply inert.
 
 ---- Synchronized Animation ----
 
@@ -245,6 +260,10 @@ Per-mascot and global Always On Top settings have been added.  Each mascot's rig
 ---- Performance Improvements ----
 
 The main tick loop in Manager has been optimized: mascot.tick() and mascot.apply() are now combined into a single list pass instead of two separate loops.  The mascot list snapshot is only rebuilt when the mascot list actually changes rather than every tick.
+
+Population-aware behaviors (mascots that count how many of a given type are present, or look up nearby affordances) used to make every mascot scan every other mascot each tick -- an O(N^2) cost that grew sharply with large colonies.  The Manager now builds one shared per-tick population + affordance index that all mascots read, turning that into a single O(N) pass; the engine stays smooth at 130+ simultaneous mascots.
+
+A slow-tick watchdog ([TickWatch]) logs a warning whenever a single tick runs long (>= 250 ms), with a phase breakdown -- time spent in the window scan, the slowest individual mascot (and which phase: environment, tick logic, or apply), the mascot count, and heap/CPU/GPU load.  This makes it easy to tell an occasional stutter caused by AI inference load apart from one caused by the mascot logic itself.  The lines appear in ShimejieeLog only when a slow tick actually happens.
 
 ---- Looped Sequences ----
 
@@ -500,6 +519,15 @@ Ask "what am I looking at?" or "what's on my screen?" and the mascot will captur
 screenshot and describe it using a local vision model (gemma4:e2b-it-qat by default, configurable
 via VisionModel in settings.properties).
 
+---- Live Console Readout (2B) ----
+
+The 2B mascot displays a faint, monospaced stream of the application's live console/log
+output projected ahead of her in the direction she is facing -- a YoRHa unit jacked into
+the machine.  It shows the last few log lines (tick-watchdog notices, peer/memory/situation/
+drive events, raw output) with a recency fade, in its own lightweight overlay window that
+never disturbs the speech bubbles.  It appears only for 2B, turns on and off with her
+assistant mode, and each 2B clone gets its own.
+
 ---- Drive Awareness ----
 
 Mascots can answer questions about the files on your drives.  A background indexer walks
@@ -522,12 +550,29 @@ Ordinary conversation never triggers a drive lookup -- only questions that actua
 files, folders, a drive, or a media type do.  Indexing can be turned off entirely with
 DriveIndexEnabled=false in settings.properties.
 
+---- Staying Out of the Way ----
+
+The AI layer is tuned to run on modest hardware (a 6 GB VRAM / 16 GB RAM laptop is the
+reference) without making the desktop stutter.  At startup Shimeji raises its own process
+priority and demotes the Ollama and Whisper helper processes, so inference bursts yield to
+the animation loop.  Requests are spaced out, the chat model's CPU thread count is capped
+(OllamaResourceCap), and the model is unloaded after a short idle window (OllamaKeepAliveSec)
+to free memory between reactions.  GPU placement is always left on Ollama's auto-fit -- the
+app never forces model weights off the GPU into system RAM.  Responses are deliberately
+unhurried rather than instant; if inference ever does cause a stutter, lower
+OllamaResourceCap.
+
 ---- Speech Constraints ----
 
 <SpeechRule> -- A hard constraint injected directly into the prompt RULES section,
   more reliably followed than personality prose.  Useful for forced third-person,
   forbidden words, or required speech patterns.  Include WRONG/RIGHT examples for
   best results.
+
+<PersonalityBrief> -- A short (~30-word) character essence used for the quick unprompted
+  reactions (spontaneous, audio, vision).  The full <Personality> is still used for direct
+  replies, name triggers, and peer conversations.  Cuts the quick-reaction prompt size
+  substantially; falls back to the full personality if omitted.
 
 <ThirdPersonRewrite> -- When set to true, first-person pronouns in the AI's response
   are rewritten to the mascot's name by regex post-processing, reinforcing third-person

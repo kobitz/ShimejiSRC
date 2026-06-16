@@ -291,6 +291,11 @@ recipient-facing **readme.txt** documents usage for end users.
   text/vision model keep-alive, and GPU placement always on auto-fit (never forced into RAM).
 - **Persona system** — `<Personality>`, short `<PersonalityBrief>` for cheap quick-reactions,
   `<SpeechRule>` hard constraints, `<ThirdPersonRewrite>`, and `<VoiceTrigger>`.
+- **Live console readout** (`ConsoleReadout.java` / `ConsoleTap.java`, 2B only) — a faint
+  Ubuntu-Mono stream of the app's live console/log output (TickWatch, peer/memory/situation/
+  drive events, raw stdout/stderr) projected ahead of 2B in her facing direction — a YoRHa
+  unit jacked into the machine. ~30 fps independent window, last 5 lines with a recency
+  fade, created/disposed with her assistant mode; each clone gets its own.
 
 ### Engine features added since the migration
 
