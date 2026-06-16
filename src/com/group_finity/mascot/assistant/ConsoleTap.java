@@ -40,6 +40,12 @@ public final class ConsoleTap
     private static volatile long version = 0L;
     private static volatile boolean installed = false;
 
+    // Consecutive-duplicate collapsing: a line identical to the previous one bumps a
+    // repeat counter on that line instead of flooding the readout (e.g. the per-cycle
+    // [Situation] line during a steady state). syslog-style "(xN)".
+    private static String lastBase  = null;
+    private static int    lastCount = 0;
+
     private ConsoleTap() { }
 
     /** Idempotent. Safe to call from multiple entry points. */
@@ -119,8 +125,20 @@ public final class ConsoleTap
             line = line.substring( 0, MAX_LINE_LEN - 1 ) + "…";
         synchronized( LOCK )
         {
-            LINES.addLast( line );
-            while( LINES.size() > CAPACITY ) LINES.removeFirst();
+            if( line.equals( lastBase ) && !LINES.isEmpty() )
+            {
+                // Consecutive duplicate — bump the counter on the existing line.
+                lastCount++;
+                LINES.removeLast();
+                LINES.addLast( line + " (x" + lastCount + ")" );
+            }
+            else
+            {
+                lastBase  = line;
+                lastCount = 1;
+                LINES.addLast( line );
+                while( LINES.size() > CAPACITY ) LINES.removeFirst();
+            }
             version++;
         }
     }
