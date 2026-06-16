@@ -3913,26 +3913,45 @@ public class Mascot
     /** Capture the primary screen, scale to max 1024px wide, return base64-encoded PNG. */
     private static String captureScreenBase64() throws java.awt.AWTException, java.io.IOException
     {
-        final java.awt.Rectangle screen = new java.awt.Rectangle(
-            java.awt.Toolkit.getDefaultToolkit().getScreenSize() );
-        final java.awt.image.BufferedImage full =
-            new java.awt.Robot().createScreenCapture( screen );
-
-        final int maxW = 1024;
-        java.awt.image.BufferedImage img = full;
-        if( full.getWidth() > maxW )
+        // Capture + downscale + PNG-encode is a CPU spike that competes with the 40ms
+        // tick loop — a screen glance is the heaviest unprompted reaction, and the
+        // TickWatch breakdown traced the multi-second whole-program crawls to exactly
+        // these vision bursts (cpu pegged, every mascot tick + EnumWindows starved
+        // together). Drop this (dedicated, short-lived) thread's priority for the
+        // duration so the loop keeps moving, then restore it for the HTTP/inference wait.
+        final Thread me = Thread.currentThread();
+        final int prevPriority = me.getPriority();
+        me.setPriority( Thread.MIN_PRIORITY );
+        try
         {
-            final int h = (int)( full.getHeight() * (double) maxW / full.getWidth() );
-            img = new java.awt.image.BufferedImage( maxW, h,
-                java.awt.image.BufferedImage.TYPE_INT_RGB );
-            final java.awt.Graphics2D g = img.createGraphics();
-            g.drawImage( full, 0, 0, maxW, h, null );
-            g.dispose();
-        }
+            final java.awt.Rectangle screen = new java.awt.Rectangle(
+                java.awt.Toolkit.getDefaultToolkit().getScreenSize() );
+            final java.awt.image.BufferedImage full =
+                new java.awt.Robot().createScreenCapture( screen );
 
-        final java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-        javax.imageio.ImageIO.write( img, "png", baos );
-        return java.util.Base64.getEncoder().encodeToString( baos.toByteArray() );
+            // 768-wide cap (was 1024): fewer vision tokens => less model preprocessing
+            // and inference (the part that pegs the CPU) plus a smaller/faster encode.
+            // Raise back toward 1024 if the vision model's screen-text legibility suffers.
+            final int maxW = 768;
+            java.awt.image.BufferedImage img = full;
+            if( full.getWidth() > maxW )
+            {
+                final int h = (int)( full.getHeight() * (double) maxW / full.getWidth() );
+                img = new java.awt.image.BufferedImage( maxW, h,
+                    java.awt.image.BufferedImage.TYPE_INT_RGB );
+                final java.awt.Graphics2D g = img.createGraphics();
+                g.drawImage( full, 0, 0, maxW, h, null );
+                g.dispose();
+            }
+
+            final java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write( img, "png", baos );
+            return java.util.Base64.getEncoder().encodeToString( baos.toByteArray() );
+        }
+        finally
+        {
+            me.setPriority( prevPriority );
+        }
     }
 
     /**
