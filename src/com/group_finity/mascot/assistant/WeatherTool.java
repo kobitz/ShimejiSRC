@@ -48,7 +48,7 @@ public class WeatherTool
                 && location.equals( cachedLocation ) )
             return cachedResult;
 
-        log.warning( "[WeatherTool] fetching, location=" + location );
+        log.fine( "[WeatherTool] fetching, location=" + location );
         try
         {
             double lat, lon;
@@ -151,7 +151,7 @@ public class WeatherTool
             cacheTime       = System.currentTimeMillis();
             cachedLocation  = location;
             cachedPlaceName = placeName;
-            log.warning( "[WeatherTool] " + result );
+            log.fine( "[WeatherTool] " + result );
             return result;
         }
         catch( final Exception e )

@@ -432,9 +432,30 @@ Mascots observe their environment and comment without being prompted:
   - Active window title (what program you are using)
   - System audio (what is playing through your speakers, transcribed via Whisper)
   - Screen content (what is visible on screen, via a vision model)
+  - Overheard speech -- if you talk without naming a mascot (e.g. on a call, or
+    reacting aloud to a video), one mascot may chime in.  Speaker audio is echo-stripped
+    so what the other person says isn't mistaken for you.
 
-Reactions fire at a randomized 45-90 second cadence per channel, with a global cooldown
-per channel across all mascots so they do not all speak simultaneously.
+Audio, vision, and overheard reactions fire on a randomized cadence with a global cooldown
+per channel across all mascots so they do not all speak at once.  Spontaneous comments
+about what you're doing are instead driven by the situational model (below) -- they fire
+when something actually changes, not on a blind timer.
+
+---- Situational Awareness ----
+
+A shared, always-running situational model samples what you're doing every few seconds --
+which app is in front, how fast you're switching windows, whether audio is playing,
+system load, time of day -- and fuses it into a single read of your state: focused,
+multitasking, winding down, or idle.  Mascots use this fused read (not just a raw window
+title) when they react, and a spontaneous comment is triggered by a genuine change in the
+situation rather than a clock.  When you're deep in silent focus they stay quiet; during a
+long video or listening session they'll still chime in occasionally.
+
+An optional periodic step (a single small, low-priority LLM call every few minutes, skipped
+whenever you're actively chatting) adds a one-line narrative summary and a conservative mood
+read on top.  Both the model and the synthesis step can be toggled in settings.properties
+(SituationModelEnabled / SituationSynthEnabled); the model is rule-based and free, the
+synthesis is the only part that uses the LLM.
 
 ---- Memory ----
 
@@ -448,10 +469,13 @@ their keywords match your message.
 
 ---- Peer Conversations ----
 
-When one mascot speaks, nearby mascots can overhear and respond, forming chains of
-conversation between characters.  Chain probability decreases with depth
-({35%, 25%, 15%, 5%}) and a per-pair cooldown prevents immediate re-triggering.
-Each mascot builds a separate memory of its relationship with each peer.
+When one mascot speaks, nearby mascots can overhear and respond, forming short chains of
+conversation between characters.  Chains are capped at depth 2 (original ->
+reaction -> counter-reaction, then stop) with reaction probability decreasing by depth
+({35%, 20%}); a per-pair cooldown prevents immediate re-triggering.  Each mascot replies
+in its own voice (anti-mirroring rules keep characters from converging on one register)
+and builds a separate memory of its relationship with each peer, including a per-peer
+tone that drifts over time.
 
 ---- Timers and Reminders ----
 
@@ -476,6 +500,28 @@ Ask "what am I looking at?" or "what's on my screen?" and the mascot will captur
 screenshot and describe it using a local vision model (gemma4:e2b-it-qat by default, configurable
 via VisionModel in settings.properties).
 
+---- Drive Awareness ----
+
+Mascots can answer questions about the files on your drives.  A background indexer walks
+your drive roots (skipping system folders) and keeps a lightweight index beside the app;
+nothing is ever uploaded -- the index and all lookups stay on your machine and feed only
+the local model.
+
+A query router picks the right kind of lookup for the question:
+  - Keyword     -- exact name matches ("find my tax pdf").
+  - Semantic    -- vague topical recall ("that firefighter anime I downloaded"), using
+                   local nomic-embed-text embeddings.  Optional: if that model isn't
+                   installed, keyword search is used instead.
+  - Recency     -- "what's the last thing I downloaded?" (freshly scanned, always current).
+  - Aggregate   -- counts and sizes ("how many videos do I have", "how full is my drive",
+                   "what can I delete to free up space" -- surfaces the biggest stale files
+                   and game installs as suggestions).
+  - Location    -- "what's in my Downloads?" (folder listing).
+
+Ordinary conversation never triggers a drive lookup -- only questions that actually mention
+files, folders, a drive, or a media type do.  Indexing can be turned off entirely with
+DriveIndexEnabled=false in settings.properties.
+
 ---- Speech Constraints ----
 
 <SpeechRule> -- A hard constraint injected directly into the prompt RULES section,
@@ -498,3 +544,17 @@ The Chat Bubbles tab in the Settings dialog exposes:
   BubbleFontSize   -- Font size in speech bubbles (default: 14)
   WhisperThreads   -- CPU threads for voice recognition (default: half of available)
   WeatherLocation  -- "auto" for IP geolocation, or a city name (default: auto)
+
+Additional keys in settings.properties (not all surfaced in the dialog):
+  DriveIndexEnabled      -- background drive indexer for file-aware replies (default: true)
+  DriveSemanticEnabled   -- semantic (topical) drive search via nomic-embed-text;
+                            auto-inert if that model isn't installed (default: true)
+  SituationModelEnabled  -- the rule-based, LLM-free situational model (default: true)
+  SituationSynthEnabled  -- the periodic one-line LLM narrative + mood on top of it
+                            (default: true; set false for zero extra generation)
+  OllamaResourceCap      -- fraction of available CPU the model may use (0.1-1.0,
+                            default 0.5); lower it if inference makes the desktop stutter.
+                            CPU only -- GPU placement is always left on auto-fit.
+  OllamaKeepAliveSec     -- how long the chat model stays loaded between replies
+                            (default: 45).  Raise it if you run a larger model that
+                            doesn't fully fit in VRAM, so it doesn't reload every reply.

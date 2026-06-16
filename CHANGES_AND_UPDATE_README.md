@@ -1,6 +1,13 @@
 # Shimeji-ee — Changes Summary & Update Guide
 ## shimejieesrcOG → ShimejiSRC_CleanTest
 
+> **Note (June 2026):** Parts 1 and 2 below are the **historical record** of the original
+> engine migration (the first batch of changes off base Shimeji-ee: hotkeys, scaling, CPU
+> temperature, affordances). The byte counts and file lists are accurate for *that* snapshot
+> and are kept as-is. The project has since grown a full local **AI assistant layer** and
+> many more engine features — for the **current, complete feature inventory see Part 3 at
+> the bottom of this file**, and **CLAUDE.md** for the authoritative architecture reference.
+
 ---
 
 ## Part 1: Complete Changes Summary
@@ -228,7 +235,7 @@ Or use your IDE's clean/build. All new source files will be picked up automatica
 
 ---
 
-### Summary of What's New (User-Facing)
+### Summary of What's New (User-Facing) — original migration
 
 - **Global hotkeys** — Control mascots with keyboard shortcuts from anywhere on the desktop.
 - **Scale action** — Mascots can grow and shrink as part of their behaviour sequences.
@@ -236,3 +243,81 @@ Or use your IDE's clean/build. All new source files will be picked up automatica
 - **Improved Windows environment** — `WindowsEnvironment.java` has been substantially rewritten, likely improving multi-monitor support and window interaction accuracy.
 - **Improved jump/IE interaction physics** — `Jump.java` and `ComplexJump.java` have been significantly reworked.
 - **Java 15+ compatibility** — Nashorn JS engine is now bundled, fixing script execution on modern JVMs where it was removed from the standard library.
+
+---
+
+---
+
+## Part 3: Current Feature Inventory (June 2026)
+
+Everything below was added **after** the original migration documented in Parts 1–2. This is
+a feature overview; **CLAUDE.md** is the authoritative architecture reference, and the
+recipient-facing **readme.txt** documents usage for end users.
+
+> The big shift since Parts 1–2: this fork now carries a **fully local AI assistant layer**
+> (LLM inference via Ollama, speech-to-text via faster-whisper, all on-machine — no cloud
+> APIs, no telemetry). Mascots given a `<Personality>` become environment-aware companions.
+
+### AI Assistant Layer (`src/.../assistant/`)
+
+- **Chat** — click-to-reply speech bubbles, typed input, persistent per-character memory
+  (`img/<name>/conf/memory.json`) with automatic summarization every 20 interactions,
+  keyword-gated permanent memories (`[REMEMBER:]`), and timers/reminders (`[TIMER:]`).
+- **Screen awareness** — periodic glances at the active window plus on-demand screen captures
+  ("what am I looking at?") fed to a local vision model.
+- **Audio awareness** — a 15s WASAPI loopback buffer transcribed by Whisper (auto-translated
+  to English), so mascots react to videos, music, and calls. Transcript-level echo removal
+  keeps speaker bleed from being mistaken for the user.
+- **Voice** — name triggers ("Hornet, …") answer directly; hotword→behavior dispatch fires
+  animations instantly; overheard speech (you talking on a call / reacting aloud) draws
+  occasional in-character remarks.
+- **Peer conversations** — mascots overhear and reply to each other, capped at depth 2,
+  each in its own voice (anti-mirroring rules), with per-peer relationship tones that drift
+  over time.
+- **Situational model** (`SituationModel.java`) — a shared, always-running, rule-based daemon
+  that fuses app sessions + activity tempo + audio + system load into one read of your state
+  (focused / multitasking / winding-down / idle). Mascots react to this fused state, and
+  spontaneous comments are triggered by genuine changes (salience), not a blind timer. An
+  optional small periodic LLM pass adds a one-line narrative + conservative mood.
+- **Drive awareness** (`DriveIndexTool.java`) — a local, never-uploaded drive index behind a
+  query router: keyword (exact), semantic (vague topical recall via local `nomic-embed-text`
+  embeddings, CPU-only), recency ("last thing I downloaded"), aggregate (counts/sizes/"what
+  can I delete"), and folder listing. Ordinary chat never triggers a lookup.
+- **Weather & time context** — current time + local weather via Open-Meteo (no API key);
+  location auto-detected from IP or set by city name.
+- **Resource discipline** — the engine is tuned to stay out of the way on modest hardware
+  (6 GB VRAM / 16 GB RAM reference): process-priority separation (Shimeji raised, Ollama/
+  Whisper demoted), request spacing, a CPU-only `num_thread` cap (`OllamaResourceCap`), split
+  text/vision model keep-alive, and GPU placement always on auto-fit (never forced into RAM).
+- **Persona system** — `<Personality>`, short `<PersonalityBrief>` for cheap quick-reactions,
+  `<SpeechRule>` hard constraints, `<ThirdPersonRewrite>`, and `<VoiceTrigger>`.
+
+### Engine features added since the migration
+
+- **Tint action** — per-frame alpha-blended colour overlay; colour and opacity drivable by
+  live JS expressions (sensor-reactive), with lerped channels and `ClearOnExpiry`.
+- **Audio level sensor** — `mascot.environment.audioLevel` exposes real-time speaker RMS to
+  behaviour scripts.
+- **Expanded hardware sensors** — `cpuLoad`/`cpuTemp`, `gpuTemp`/`gpuLoad`/`gpuMemFree`/
+  `gpuMemTotal` (NVIDIA via a persistent `nvidia-smi` stream), `ramLoad`, `batteryLevel`.
+  CPU temperature now streams from **TempSensor.exe** (LibreHardwareMonitor, requires admin);
+  the old per-tick SensorReader spawn is gone.
+- **MSI Cooler Boost** — fans ramp to max while a mascot broadcasts the `CoolerBoost`
+  affordance (e.g. the blue campfire), via the `MSI_ACPI` WMI firmware path.
+- **Animation templates**, **per-pose `ImageAnchor`**, **looped & nested `Sequence`s**,
+  **`SyncedStay`** (phase-locked shared animation), **affordance system**, **`FaceDirection`
+  on Dragged**, **always-on-top controls**, and **per-mascot behaviour toggles**.
+- **Performance** — single shared `EnumWindows` scan per tick; mascot list snapshot rebuilt
+  only on change; combined tick/apply pass; a per-tick shared population + affordance index
+  (O(N²)→O(N), holds at 130+ mascots); and a `[TickWatch]` slow-tick watchdog that logs a
+  phase breakdown (envScan / per-mascot env-tick-apply split / lock-wait) for any tick ≥250ms.
+- **Browser extension** — reports YouTube/Twitch video-player bounds to a local HTTP server
+  so mascots can walk the edges of the video as if it were a window.
+
+### Build & distribution
+
+- `Build.bat` (repo root) → `ant jar` + Launch4j wrap into `Shimeji.exe`/`ShimejiTest.exe`.
+- The runnable app ships as a **GitHub Release** install zip; the public repo
+  (`github.com/kobitz/ShimejiSRC`) is **code-only** (MIT) — image/sound/JRE assets are not
+  tracked in git and ride along in the release. `Setup.bat` installs Ollama + Python +
+  faster-whisper and pulls the default models (`gemma4:e2b-it-qat` + `nomic-embed-text`).

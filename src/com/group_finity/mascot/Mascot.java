@@ -3593,7 +3593,7 @@ public class Mascot
         if( isValidTone( peerTone ) )
         {
             memory.setPeerTone( peerName, peerTone );
-            log.warning( "[Memory] Peer tone set: " + peerName + " = " + peerTone );
+            log.fine( "[Memory] Peer tone set: " + peerName + " = " + peerTone );
         }
         else
         {
@@ -3719,7 +3719,7 @@ public class Mascot
                 @Override public void onResponse( final String text )
                 {
                     memory.resetSummarizationCounter();
-                    log.warning( "[Memory] Raw summary response for " + getImageSet()
+                    log.fine( "[Memory] Raw summary response for " + getImageSet()
                         + ":\n" + text );
 
                     // ── Parse line by line — avoids indexOf("TONE:") matching "PEER_TONE:" ──
@@ -3802,7 +3802,7 @@ public class Mascot
                     }
                     if( !foundTone )
                         log.warning( "[Memory] Summary response had no TONE: line — raw: " + text );
-                    log.warning( "[Memory] Summarized for " + getImageSet() );
+                    log.fine( "[Memory] Summarized for " + getImageSet() );
                 }
                 @Override public void onError( final String error )
                 {

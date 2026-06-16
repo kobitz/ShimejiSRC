@@ -215,7 +215,7 @@ public class VoiceCommandListener
                     lineConvRatio    = nfmt.getSampleRate() / FORMAT.getSampleRate();
                     lineConvChannels = nfmt.getChannels();
                     opened = true;
-                    log.warning( "[Voice] Mic opened at " + (int) nfmt.getSampleRate()
+                    log.fine( "[Voice] Mic opened at " + (int) nfmt.getSampleRate()
                         + " Hz / " + nfmt.getChannels() + "ch (will downsample)." );
                     break;
                 }
@@ -257,9 +257,11 @@ public class VoiceCommandListener
         });
         pollExecutor.scheduleAtFixedRate( this::poll, pollMsFinal, pollMsFinal,
                                           TimeUnit.MILLISECONDS );
-        log.warning( "[Voice] Poll interval: " + pollMsFinal + " ms" );
+        // Startup info, not events -- FINE keeps them out of the INFO-level log file
+        // (still captured by ConsoleTap/Debug.bat at Level.ALL).
+        log.fine( "[Voice] Poll interval: " + pollMsFinal + " ms" );
 
-        log.warning( "[Voice] Capture started on: " + line.getLineInfo() );
+        log.fine( "[Voice] Capture started on: " + line.getLineInfo() );
     }
 
     private synchronized void stop()

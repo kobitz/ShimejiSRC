@@ -12,7 +12,8 @@ A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (Java des
 - **React to your voice** — name triggers ("Hornet, ...") answer directly; hotword→behavior dispatch fires animations instantly; overheard speech (talking on a call, reacting aloud) draws occasional in-character remarks, with transcript-level echo removal so speaker bleed isn't mistaken for the user.
 - **Talk to each other** — peer reactions with per-character relationship tones, anti-style-contamination rules, and chain-depth caps.
 - **Reflect the machine** — CPU/GPU/RAM/temperature exposed to behavior scripts: campfires that scale with CPU load, glitch animations under heavy load, sensor-driven tint overlays.
-- **Know your files** — a local drive index supports file-aware replies (retrieval is keyword-gated; the index never leaves the machine).
+- **Know your files** — a local drive index answers file-aware questions through a query router: keyword (exact), semantic (vague topical recall via local `nomic-embed-text` embeddings), recency ("last thing I downloaded"), aggregate (counts/sizes/"what can I delete"), and folder listing. The index and embeddings never leave the machine.
+- **Sense the situation** — a shared, continuously-sampled situational model fuses what you're doing (app sessions, activity tempo, audio, system load) into one read, so mascots react to your *state* — focused, multitasking, winding down — and speak when something actually changes, not on a blind timer. An optional small periodic LLM pass adds a one-line narrative + conservative mood.
 
 ## Current cast
 
@@ -22,7 +23,7 @@ Hornet (Hollow Knight), Holo (Spice and Wolf), Paimon (Genshin Impact), 2B (NieR
 
 - Windows 10/11 (the AI layer is Windows-only: WASAPI loopback, JNA Win32)
 - Java 17+ (a JRE is bundled in release builds)
-- [Ollama](https://ollama.com) with a small instruct model (tuned for ~4B class, e.g. `gemma4:e2b-it-qat`; multimodal model needed for vision features)
+- [Ollama](https://ollama.com) with a small instruct model (tuned for ~4B class, e.g. `gemma4:e2b-it-qat`, which doubles as the multimodal model for vision); `nomic-embed-text` (CPU-only, ~280 MB) powers semantic drive recall and is optional — keyword retrieval continues without it
 - Python with `faster-whisper` for voice/audio features (`whisper_server.py` runs beside the JAR)
 - NVIDIA GPU optional — GPU telemetry uses `nvidia-smi`; everything degrades gracefully without it
 
