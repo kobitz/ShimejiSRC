@@ -188,6 +188,10 @@ public class Main
         // 40ms tick loop stays smooth during Ollama/Whisper generation bursts.
         com.group_finity.mascot.environment.ProcessPriorityUtil.raiseSelfAboveNormal( );
 
+        // Begin capturing the console/log stream for 2B's on-screen system readout.
+        // Installed early so startup lines are caught; idempotent.
+        com.group_finity.mascot.assistant.ConsoleTap.install( );
+
         // test operating system
         if( !System.getProperty( "sun.arch.data.model" ).equals( "64" ) )
             platform = Platform.x86;

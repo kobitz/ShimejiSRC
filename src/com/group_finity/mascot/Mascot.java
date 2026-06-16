@@ -195,6 +195,9 @@ public class Mascot
     // triggering the normal drag behavior. Responses come from a local Ollama LLM.
     private boolean assistantMode = false;
     private com.group_finity.mascot.assistant.AssistantBubble assistantBubble = null;
+    // 2B-only live system readout (console/log stream projected ahead of her).
+    // Null for every other image set and whenever assistant mode is off.
+    private com.group_finity.mascot.assistant.ConsoleReadout consoleReadout = null;
     // Dedicated bubble for the active countdown timer / fired reminder. Separate from
     // assistantBubble so it can maintain its fixed stacking position independently.
     private volatile com.group_finity.mascot.assistant.AssistantBubble timerBubble = null;
@@ -392,6 +395,10 @@ public class Mascot
         // Start the situational synthesis model -- Layer A, rule-based, one shared
         // instance across all mascots (idempotent). LLM-free: only samples + logs.
         if( assistantMode ) com.group_finity.mascot.assistant.SituationModel.ensureStarted();
+
+        // 2B alone gets a live console/log readout projected ahead of her.
+        if( assistantMode && "2B".equals( getImageSet() ) )
+            consoleReadout = new com.group_finity.mascot.assistant.ConsoleReadout( this );
 
         // Always on top — global setting AND per-imageset override, both default true
         applyAlwaysOnTop( );
@@ -1084,6 +1091,15 @@ public class Mascot
                         b.dismiss();
                     assistantBubble = null;
                     timerBubble     = null;
+                }
+                // 2B's console readout follows assistant mode on/off.
+                if( !assistantMode )
+                {
+                    if( consoleReadout != null ) { consoleReadout.dispose(); consoleReadout = null; }
+                }
+                else if( consoleReadout == null && "2B".equals( getImageSet() ) )
+                {
+                    consoleReadout = new com.group_finity.mascot.assistant.ConsoleReadout( Mascot.this );
                 }
                 if( !assistantMode && activeDialog != null )
                 {
@@ -3552,7 +3568,7 @@ public class Mascot
      * Validates a tone string from summarization output.
      * Rejects single-word pronouns, articles, verbs, and other non-adjective garbage
      * that LLMs sometimes emit when they don't follow the format instruction.
-     * A valid tone is 2-6 words, contains no banned pronouns as the entire value,
+     * A valid tone is 1-3 words, contains no banned pronouns as the entire value,
      * and contains at least one letter beyond a single word.
      */
     /** Parse a "Name:tone" or "Name: tone" string and apply it to memory if valid. */
@@ -3565,6 +3581,15 @@ public class Mascot
         final String peerTone = payload.substring( colon + 1 ).trim().toLowerCase();
         if( peerName.isEmpty() ) return;
         if( peerName.equalsIgnoreCase( getImageSet() ) ) return;
+        if( !isKnownImageSet( peerName ) )
+        {
+            // The summarizer occasionally hallucinates a peer name ("Holantype") or
+            // names a mascot that isn't an actual loaded image set. Only real image
+            // sets can be conversational peers, so reject anything else outright —
+            // this is what keeps garbage keys out of peerTones.
+            log.warning( "[Memory] Rejected unknown peer name: \"" + peerName + "\"" );
+            return;
+        }
         if( isValidTone( peerTone ) )
         {
             memory.setPeerTone( peerName, peerTone );
@@ -3577,6 +3602,20 @@ public class Mascot
         }
     }
 
+    /** True if {@code name} matches a real loaded image set (case-insensitive). Used to
+     *  reject hallucinated / non-existent peer names before they enter peerTones. */
+    private static boolean isKnownImageSet( final String name )
+    {
+        if( name == null || name.isBlank() ) return false;
+        try
+        {
+            for( final String set : Main.getInstance().getImageSets() )
+                if( set.equalsIgnoreCase( name.trim() ) ) return true;
+        }
+        catch( final Exception ignored ) {}
+        return false;
+    }
+
     private static boolean isValidTone( final String tone )
     {
         if( tone == null || tone.isBlank() ) return false;
@@ -3584,7 +3623,10 @@ public class Mascot
         // Must be at least 2 words OR a single word that's clearly an adjective (>=5 chars)
         final String[] words = t.split( "\\s+" );
         if( words.length == 1 && words[0].length() < 5 ) return false;
-        if( words.length > 6 ) return false;  // too long — probably a sentence slipped through
+        // Cap at 3 words — real tone phrases are 1-3 ("wary respect", "grudging respect");
+        // 4+ is almost always an in-character sentence fragment the model emitted as a
+        // "tone" (2B's "assessment lacks objective weight" / "predictable data points noted").
+        if( words.length > 3 ) return false;
         // Reject if the entire value is a pronoun or article
         final java.util.Set<String> banned = new java.util.HashSet<>( java.util.Arrays.asList(
             "i","me","my","mine","myself","you","your","yours","yourself",
@@ -4007,6 +4049,8 @@ public class Mascot
             b.dispose();
         activeBubbles.clear();
         assistantBubble = null;
+
+        if( consoleReadout != null ) { consoleReadout.dispose(); consoleReadout = null; }
 
         if( activeDialog != null )
         {
