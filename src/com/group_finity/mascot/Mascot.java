@@ -176,7 +176,9 @@ public class Mascot
     private final java.util.Map<String, Object> userData = new java.util.HashMap<>( );
 
     // ── Movement velocity tracking ───────────────────────────────────────────────
-    // Updated every setAnchor call so XML can read horizontal speed at jump time.
+    // Net pixels moved this tick, computed once in tick() around the behavior step so XML
+    // can read movement speed (e.g. horizontal speed at jump time). Robust to physics
+    // sub-stepping and trailing 0-velocity poses; not tracked by individual setAnchor* calls.
     private int lastDeltaX = 0;
     private int lastDeltaY = 0;
 
@@ -2997,6 +2999,12 @@ public class Mascot
         {
             if( getBehavior( ) != null )
             {
+                // Net displacement this tick, captured around the whole behavior step so it is
+                // correct regardless of how the action moved: a single pose-velocity step (walk),
+                // many physics sub-steps (Fall/Jump/Thrown), or a trailing 0-velocity pose that
+                // would otherwise zero it. Individual setAnchor* calls no longer track delta.
+                final int tickStartX = anchor.x;
+                final int tickStartY = anchor.y;
                 try
                 {
                     getBehavior( ).next( );
@@ -3007,6 +3015,8 @@ public class Mascot
                     Main.showError( Main.getInstance( ).getLanguageBundle( ).getString( "CouldNotGetNextBehaviourErrorMessage" ), e );
                     dispose( );
                 }
+                lastDeltaX = anchor.x - tickStartX;
+                lastDeltaY = anchor.y - tickStartY;
 
                 // Dynamic tint: re-evaluate expressions each tick so tint tracks sensors
                 // even when the Tint action is no longer the active action.
@@ -4171,15 +4181,11 @@ public class Mascot
 
     public void setAnchor( Point anchor )
     {
-        this.lastDeltaX = anchor.x - this.anchor.x;
-        this.lastDeltaY = anchor.y - this.anchor.y;
         this.anchor = anchor;
     }
 
     public void setAnchorXY( final int x, final int y )
     {
-        this.lastDeltaX = x - this.anchor.x;
-        this.lastDeltaY = y - this.anchor.y;
         this.anchor.x = x;
         this.anchor.y = y;
     }
@@ -4478,9 +4484,9 @@ public class Mascot
     /** Retrieve a value from the per-mascot script scratchpad, or null if absent. */
     public Object getUserData( final String key ) { return userData.get( key ); }
 
-    /** Last horizontal pixel delta applied in setAnchor. Reflects movement speed this tick. */
+    /** Net horizontal pixels moved during the last tick (any movement: walk, fall, throw, drag). */
     public int getLastDeltaX( ) { return lastDeltaX; }
-    /** Last vertical pixel delta applied in setAnchor. */
+    /** Net vertical pixels moved during the last tick (any movement: walk, fall, throw, drag). */
     public int getLastDeltaY( ) { return lastDeltaY; }
 
     /** Consume the queued jump X nudge (returns offset and resets to 0). */
