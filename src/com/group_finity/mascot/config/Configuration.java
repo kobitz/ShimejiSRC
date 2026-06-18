@@ -12,13 +12,20 @@ import java.util.logging.Logger;
 
 import com.group_finity.mascot.Mascot;
 import com.group_finity.mascot.action.Action;
+import com.group_finity.mascot.action.Animate;
+import com.group_finity.mascot.animation.Animation;
 import com.group_finity.mascot.behavior.Behavior;
+import com.group_finity.mascot.behavior.TransitionBehavior;
 import com.group_finity.mascot.behavior.UserBehavior;
 import com.group_finity.mascot.exception.ActionInstantiationException;
 import com.group_finity.mascot.exception.BehaviorInstantiationException;
 import com.group_finity.mascot.exception.ConfigurationException;
 import com.group_finity.mascot.exception.VariableException;
+import com.group_finity.mascot.script.Variable;
 import com.group_finity.mascot.script.VariableMap;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import com.joconner.i18n.Utf8ResourceBundleControl;
 import java.util.Locale;
 import java.util.ResourceBundle;
@@ -36,6 +43,7 @@ public class Configuration
     private final Map<String, BehaviorBuilder> behaviorBuilders = new LinkedHashMap<String, BehaviorBuilder>( );
     private final Map<String, String> information = new LinkedHashMap<String, String>( 8 );
     private final Map<String, java.util.List<Entry>> animationTemplates = new LinkedHashMap<String, java.util.List<Entry>>( );
+    private final List<TransitionEntry> transitions = new ArrayList<TransitionEntry>( );
     private ResourceBundle schema;
 
     public void load( final Entry configurationNode, final String imageSet ) throws IOException, ConfigurationException
@@ -103,7 +111,14 @@ public class Configuration
 
             loadBehaviors( list, new ArrayList<String>( ) );
         }
-        
+
+        for( final Entry list : configurationNode.selectChildren( schema.getString( "TransitionList" ) ) )
+        {
+            log.log( Level.INFO, "Transition List..." );
+
+            loadTransitions( list, imageSet );
+        }
+
         for( final Entry list : configurationNode.selectChildren( schema.getString( "Information" ) ) )
         {
             log.log( Level.INFO, "Information List..." );
@@ -132,6 +147,193 @@ public class Configuration
                 }
             }
 	}
+
+    /**
+     * Parses a {@code <TransitionList>} of {@code <Transition>} elements. Each transition
+     * names a set of {@code Before} behaviors and {@code After} behaviors (comma-separated);
+     * when the mascot naturally moves from a Before behavior into an After behavior, a short
+     * tween behavior is inserted first (see {@link #maybeTransition}). The tween's frames come
+     * either from inline {@code <Animation>} children (built as an Animate action) or from a
+     * named {@code Action="..."}. {@code Bidirectional="true"} also matches the reverse direction.
+     */
+    private void loadTransitions( final Entry list, final String imageSet ) throws ConfigurationException
+    {
+        for( final Entry node : list.selectChildren( schema.getString( "Transition" ) ) )
+        {
+            final String beforeRaw = node.getAttribute( schema.getString( "Before" ) );
+            final String afterRaw  = node.getAttribute( schema.getString( "After" ) );
+            if( beforeRaw == null || afterRaw == null )
+            {
+                log.log( Level.WARNING, "Transition missing Before/After attribute — skipping" );
+                continue;
+            }
+
+            final Set<String> before = splitNames( beforeRaw );
+            final Set<String> after  = splitNames( afterRaw );
+            final boolean bidirectional = Boolean.parseBoolean( node.getAttribute( schema.getString( "Bidirectional" ) ) );
+            final String actionName = node.getAttribute( schema.getString( "Action" ) );
+
+            List<AnimationBuilder> animationBuilders = null;
+            Map<String, String> params = null;
+
+            if( actionName == null )
+            {
+                animationBuilders = new ArrayList<AnimationBuilder>( );
+                for( final Entry anim : node.selectChildren( schema.getString( "Animation" ) ) )
+                    animationBuilders.add( new AnimationBuilder( schema, anim, imageSet, animationTemplates ) );
+
+                if( animationBuilders.isEmpty( ) )
+                {
+                    log.log( Level.WARNING, "Transition {0} -> {1} has neither Action nor Animation — skipping",
+                             new Object[ ] { beforeRaw, afterRaw } );
+                    continue;
+                }
+
+                // Remaining attributes become Animate params (BorderType, Draggable, Condition, etc.).
+                params = new LinkedHashMap<String, String>( node.getAttributes( ) );
+                params.remove( schema.getString( "Before" ) );
+                params.remove( schema.getString( "After" ) );
+                params.remove( schema.getString( "Bidirectional" ) );
+            }
+
+            transitions.add( new TransitionEntry( before, after, bidirectional, actionName, animationBuilders, params ) );
+            log.log( Level.INFO, "Loaded transition {0} -> {1}{2}",
+                     new Object[ ] { beforeRaw, afterRaw, bidirectional ? " (bidirectional)" : "" } );
+        }
+    }
+
+    private Set<String> splitNames( final String raw )
+    {
+        final Set<String> set = new LinkedHashSet<String>( );
+        for( final String s : raw.split( "," ) )
+        {
+            final String trimmed = s.trim( );
+            if( !trimmed.isEmpty( ) )
+                set.add( trimmed );
+        }
+        return set;
+    }
+
+    /**
+     * If a registered transition matches the move from {@code previousName} into
+     * {@code nextName}, returns a {@link TransitionBehavior} that plays the tween and then
+     * advances to {@code nextName}. Returns null when nothing matches (or building the tween
+     * fails), so the caller falls back to the directly-chosen behavior.
+     */
+    private Behavior maybeTransition( final String previousName, final String nextName, final Mascot mascot )
+    {
+        if( transitions.isEmpty( ) || previousName == null || nextName == null )
+            return null;
+
+        for( final TransitionEntry t : transitions )
+        {
+            if( t.matches( previousName, nextName ) )
+            {
+                try
+                {
+                    return buildTransitionBehavior( t, nextName );
+                }
+                catch( final BehaviorInstantiationException e )
+                {
+                    log.log( Level.WARNING, "Failed to build transition " + previousName + " -> " + nextName
+                                          + "; using direct behavior instead", e );
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Behavior buildTransitionBehavior( final TransitionEntry t, final String targetName )
+        throws BehaviorInstantiationException
+    {
+        try
+        {
+            return new TransitionBehavior( targetName, buildTweenAction( t ), this, targetName );
+        }
+        catch( final Exception e )
+        {
+            throw new BehaviorInstantiationException( "Failed to build transition to " + targetName, e );
+        }
+    }
+
+    /**
+     * Action-boundary counterpart to {@link #maybeTransition}: if a registered transition matches
+     * the step from action {@code previousName} into action {@code nextName} (as named by their
+     * {@code <ActionReference>}s inside a Sequence), returns the tween Action to splice between
+     * them; otherwise null. Called by {@link ActionBuilder} when building a Sequence's children, so
+     * one {@code <TransitionList>} drives both behavior-level and action-level (intra-sequence) tweens.
+     */
+    Action buildActionTween( final String previousName, final String nextName )
+    {
+        if( transitions.isEmpty( ) || previousName == null || nextName == null )
+            return null;
+
+        for( final TransitionEntry t : transitions )
+        {
+            if( t.matches( previousName, nextName ) )
+            {
+                try
+                {
+                    return buildTweenAction( t );
+                }
+                catch( final Exception e )
+                {
+                    log.log( Level.WARNING, "Failed to build action tween " + previousName + " -> " + nextName
+                                          + "; leaving sequence unchanged", e );
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** Builds the tween's Action from a transition rule (named Action, or inline Animate). */
+    private Action buildTweenAction( final TransitionEntry t ) throws Exception
+    {
+        if( t.actionName != null )
+            return buildAction( t.actionName, new HashMap<String, String>( ) );
+
+        final List<Animation> animations = new ArrayList<Animation>( );
+        for( final AnimationBuilder ab : t.animationBuilders )
+            animations.add( ab.buildAnimation( ) );
+
+        final VariableMap variables = new VariableMap( );
+        for( final Map.Entry<String, String> param : t.params.entrySet( ) )
+            variables.put( param.getKey( ), Variable.parse( param.getValue( ) ) );
+
+        return new Animate( schema, animations, variables );
+    }
+
+    /** A single before/after transition rule plus the tween it plays. */
+    private static final class TransitionEntry
+    {
+        private final Set<String> before;
+        private final Set<String> after;
+        private final boolean bidirectional;
+        private final String actionName;                       // null -> use inline animations
+        private final List<AnimationBuilder> animationBuilders; // used when actionName == null
+        private final Map<String, String> params;              // inline Animate params
+
+        TransitionEntry( final Set<String> before, final Set<String> after, final boolean bidirectional,
+                         final String actionName, final List<AnimationBuilder> animationBuilders,
+                         final Map<String, String> params )
+        {
+            this.before = before;
+            this.after = after;
+            this.bidirectional = bidirectional;
+            this.actionName = actionName;
+            this.animationBuilders = animationBuilders;
+            this.params = params;
+        }
+
+        boolean matches( final String previousName, final String nextName )
+        {
+            if( before.contains( previousName ) && after.contains( nextName ) )
+                return true;
+            return bidirectional && after.contains( previousName ) && before.contains( nextName );
+        }
+    }
 
 	public Action buildAction(final String name, final Map<String, String> params) throws ActionInstantiationException {
 
@@ -309,6 +511,9 @@ public class Configuration
             random -= behaviorFactory.getFrequency( );
             if( random < 0 )
             {
+                final Behavior transition = maybeTransition( previousName, behaviorFactory.getName( ), mascot );
+                if( transition != null )
+                    return transition;
                 return behaviorFactory.buildBehavior( );
             }
         }

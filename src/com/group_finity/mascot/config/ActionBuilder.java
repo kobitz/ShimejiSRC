@@ -41,9 +41,11 @@ public class ActionBuilder implements IActionBuilder {
 	private final List<AnimationBuilder> animationBuilders = new ArrayList<AnimationBuilder>( );
 	private final List<IActionBuilder> actionRefs = new ArrayList<IActionBuilder>( );
         private final ResourceBundle schema;
+        private final Configuration configuration;
 
 	public ActionBuilder( final Configuration configuration, final Entry actionNode, final String imageSet ) throws ConfigurationException
         {
+            this.configuration = configuration;
             schema = configuration.getSchema( );
             name = actionNode.getAttribute( schema.getString( "Name" ) );
             type = actionNode.getAttribute( schema.getString( "Type" ) );
@@ -133,7 +135,8 @@ public class ActionBuilder implements IActionBuilder {
 			} else if( this.type.equals( "AnimateWithLoop" ) ) {
                             return new AnimateWithLoop( schema, animations, variables );
 			} else if( this.type.equals( schema.getString( "Sequence" ) ) ) {
-                            return new Sequence( schema, variables, actions.toArray(new Action[0]));
+                            final List<Action> withTweens = spliceActionTransitions( actions );
+                            return new Sequence( schema, variables, withTweens.toArray(new Action[0]));
 			} else if( this.type.equals( schema.getString( "Select" ) ) ) {
                             return new Select( schema, variables, actions.toArray(new Action[0]));
 			} else {
@@ -160,6 +163,37 @@ public class ActionBuilder implements IActionBuilder {
 			actions.add( ref.buildAction( new HashMap<String, String>( ) ) );
 		}
 		return actions;
+	}
+
+	/**
+	 * Splices transition tweens between consecutive Sequence children whose
+	 * {@code <ActionReference>} names match a {@code <TransitionList>} rule. The built {@code actions}
+	 * list is parallel to {@link #getActionRefs()}, so we can recover each step's name and ask the
+	 * Configuration for a tween Action to insert before it. Returns the original list unchanged when
+	 * nothing matches. Only called for Sequence (NOT Select, where children are alternatives).
+	 */
+	private List<Action> spliceActionTransitions( final List<Action> built ) {
+		final List<IActionBuilder> refs = getActionRefs();
+		if (configuration == null || built.size() < 2 || refs.size() != built.size()) {
+			return built;
+		}
+		final List<Action> result = new ArrayList<Action>( built.size() );
+		for (int i = 0; i < built.size(); i++) {
+			if (i > 0) {
+				final Action tween = configuration.buildActionTween( refName( refs.get(i - 1) ), refName( refs.get(i) ) );
+				if (tween != null) {
+					result.add( tween );
+				}
+			}
+			result.add( built.get(i) );
+		}
+		return result;
+	}
+
+	private static String refName( final IActionBuilder ref ) {
+		if (ref instanceof ActionRef)     return ((ActionRef) ref).getName();
+		if (ref instanceof ActionBuilder) return ((ActionBuilder) ref).getName();
+		return null;
 	}
 
 	private List<Animation> createAnimations() throws AnimationInstantiationException {
