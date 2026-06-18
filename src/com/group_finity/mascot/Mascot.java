@@ -321,6 +321,10 @@ public class Mascot
     protected DebugWindow debugWindow = null;
 
     private JPopupMenu activePopup = null;
+    // Screen bounds of the open popup, captured on show. The global native-mouse dismiss
+    // listener uses this to ignore presses INSIDE the popup (so the volume slider and menu
+    // items work) and only force-close on presses outside it.
+    private volatile java.awt.Rectangle activePopupBounds = null;
     private NativeMouseListener popupDismissListener = null;
     
     private ArrayList<String> affordances = new ArrayList( 5 );
@@ -621,6 +625,7 @@ public class Mascot
             {
                 setAnimating( true );
                 activePopup = null;
+                activePopupBounds = null;
                 if( popupDismissListener != null )
                 {
                     GlobalScreen.removeNativeMouseListener( popupDismissListener );
@@ -1062,6 +1067,35 @@ public class Mascot
         popup.add( restoreMenu );
         popup.add( debugMenu );
         popup.add( tooltipMenu );
+        // Per-image-set sound-effect volume (0-100%) in the main menu, under the tooltip toggle.
+        // Persisted as Volume.imageset.<name>. Uses MenuSlider so dragging it does not dismiss the
+        // popup. Applied live at playback; written to disk only when the drag settles.
+        int initVolPct;
+        try { initVolPct = Math.max( 0, Math.min( 100, Integer.parseInt(
+            props.getProperty( "Volume.imageset." + getImageSet( ), "100" ).trim( ) ) ) ); }
+        catch( final Exception ex ) { initVolPct = 100; }
+        final javax.swing.JSlider volumeSlider = new javax.swing.JSlider( 0, 100, initVolPct );
+        final javax.swing.border.TitledBorder volumeBorder =
+            javax.swing.BorderFactory.createTitledBorder( "Volume: " + initVolPct + "%" );
+        volumeSlider.setBorder( volumeBorder );
+        volumeSlider.setOpaque( false );
+        volumeSlider.setToolTipText( "Sound effect volume for " + getImageSet( ) );
+        final java.awt.Dimension volPref = volumeSlider.getPreferredSize( );
+        volumeSlider.setPreferredSize( new java.awt.Dimension( 170, volPref.height ) );
+        volumeSlider.addChangeListener( new javax.swing.event.ChangeListener( )
+        {
+            @Override
+            public void stateChanged( final javax.swing.event.ChangeEvent e )
+            {
+                final int v = volumeSlider.getValue( );
+                volumeBorder.setTitle( "Volume: " + v + "%" );
+                volumeSlider.repaint( );
+                props.setProperty( "Volume.imageset." + getImageSet( ), String.valueOf( v ) );
+                if( !volumeSlider.getValueIsAdjusting( ) )
+                    Main.getInstance( ).updateConfigFile( );
+            }
+        } );
+        popup.add( new SliderMenuItem( volumeSlider ) );
         popup.add( new JSeparator( ) );
         if( submenu.getMenuComponentCount( ) > 0 )
             popup.add( submenu );
@@ -1150,6 +1184,13 @@ public class Mascot
             @Override
             public void nativeMousePressed( final NativeMouseEvent e )
             {
+                // Ignore presses INSIDE the popup — Swing handles those (menu-item clicks
+                // close it; the volume slider interacts with it). Only outside presses
+                // (desktop / other windows) should force-close the menu.
+                final java.awt.Rectangle b = activePopupBounds;
+                if( b != null && b.contains( e.getX( ), e.getY( ) ) )
+                    return;
+
                 if( activePopup != null )
                 {
                     SwingUtilities.invokeLater( new Runnable( )
@@ -1178,6 +1219,14 @@ public class Mascot
         GlobalScreen.addNativeMouseListener( popupDismissListener );
 
         popup.show( getWindow( ).asComponent( ), x, y );
+        // Capture the popup's screen rectangle so the native dismiss listener can tell
+        // inside-clicks (slider/menu items, handled by Swing) from outside-clicks.
+        try
+        {
+            if( popup.isShowing( ) )
+                activePopupBounds = new java.awt.Rectangle( popup.getLocationOnScreen( ), popup.getSize( ) );
+        }
+        catch( final Exception ex ) { activePopupBounds = null; }
     }
 
     // ── Assistant mode ────────────────────────────────────────────────────────
@@ -3553,12 +3602,17 @@ public class Mascot
                     Clip clip = Sounds.getSound( sound );
                     if( !clip.isRunning( ) )
                     {
-                        clip.stop( );
-                        clip.setMicrosecondPosition( 0 );
-                        clip.start( );
-                        // Tell the situational model we just made noise, so its audio
-                        // signal (WASAPI loopback) doesn't read our own SFX as the user's.
-                        com.group_finity.mascot.assistant.SituationModel.noteSelfAudio( );
+                        final float vol = getImageSetVolume( );  // 0.0 (mute) .. 1.0 (full)
+                        if( vol > 0f )
+                        {
+                            applyClipGain( clip, sound, vol );
+                            clip.stop( );
+                            clip.setMicrosecondPosition( 0 );
+                            clip.start( );
+                            // Tell the situational model we just made noise, so its audio
+                            // signal (WASAPI loopback) doesn't read our own SFX as the user's.
+                            com.group_finity.mascot.assistant.SituationModel.noteSelfAudio( );
+                        }
                     }
                 }
             }
@@ -4580,7 +4634,84 @@ public class Mascot
     {
         sound = name;
     }
-    
+
+    /** Per-image-set playback volume, 0.0 (mute) .. 1.0 (full). Read live at playback from
+     *  {@code Volume.imageset.<name>} (percent, default 100). */
+    private float getImageSetVolume( )
+    {
+        try
+        {
+            int pct = Integer.parseInt(
+                Main.getInstance( ).getProperties( ).getProperty( "Volume.imageset." + getImageSet( ), "100" ).trim( ) );
+            if( pct < 0 ) pct = 0;
+            if( pct > 100 ) pct = 100;
+            return pct / 100f;
+        }
+        catch( final Exception e )
+        {
+            return 1f;
+        }
+    }
+
+    /** Sets the shared clip's MASTER_GAIN to its baked pose dB plus this image set's volume
+     *  attenuation, just before play. Safe with shared/cached clips because the !isRunning()
+     *  guard means two mascots never drive the same clip instance at once. {@code vol} is in (0,1]. */
+    private void applyClipGain( final javax.sound.sampled.Clip clip, final String soundKey, final float vol )
+    {
+        try
+        {
+            final javax.sound.sampled.FloatControl gain =
+                (javax.sound.sampled.FloatControl) clip.getControl( javax.sound.sampled.FloatControl.Type.MASTER_GAIN );
+            float db = Sounds.getBaseGain( soundKey ) + (float)( 20.0 * Math.log10( vol ) );
+            db = Math.max( gain.getMinimum( ), Math.min( gain.getMaximum( ), db ) );
+            gain.setValue( db );
+        }
+        catch( final Exception e ) { /* leave gain unchanged on any control issue */ }
+    }
+
+    /**
+     * Hosts a JSlider inside a JPopupMenu without the popup closing on click. A JMenuItem is
+     * fully recognized by the popup's mouse grabber as part of the menu (so the grabber won't
+     * cancel the popup), while we override its event handling to (a) forward every mouse event
+     * to the embedded slider so the thumb tracks, and (b) never arm/activate the item, since
+     * activation is what calls clearSelectedPath() and closes the menu. menuSelectionChanged is
+     * a no-op so the item never highlights or auto-closes.
+     */
+    private static final class SliderMenuItem extends javax.swing.JMenuItem
+    {
+        private final javax.swing.JSlider slider;
+
+        SliderMenuItem( final javax.swing.JSlider slider )
+        {
+            this.slider = slider;
+            setLayout( new java.awt.BorderLayout( ) );
+            add( slider, java.awt.BorderLayout.CENTER );
+            setOpaque( false );
+            setPreferredSize( slider.getPreferredSize( ) );
+        }
+
+        @Override
+        public void processMouseEvent( final java.awt.event.MouseEvent e,
+                                       final javax.swing.MenuElement[] path,
+                                       final javax.swing.MenuSelectionManager manager )
+        {
+            // Redirect the interaction to the slider (with coordinates converted into the
+            // slider's space); deliberately do NOT call super, so the item never activates/closes.
+            final java.awt.Point p = javax.swing.SwingUtilities.convertPoint( this, e.getPoint( ), slider );
+            slider.dispatchEvent( new java.awt.event.MouseEvent(
+                slider, e.getID( ), e.getWhen( ), e.getModifiersEx( ),
+                p.x, p.y, e.getClickCount( ), e.isPopupTrigger( ), e.getButton( ) ) );
+        }
+
+        @Override
+        public void processKeyEvent( final java.awt.event.KeyEvent e,
+                                     final javax.swing.MenuElement[] path,
+                                     final javax.swing.MenuSelectionManager manager ) { }
+
+        @Override
+        public void menuSelectionChanged( final boolean isIncluded ) { }
+    }
+
     public boolean isPaused( )
     {
         return paused;

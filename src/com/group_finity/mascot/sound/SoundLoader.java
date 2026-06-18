@@ -35,5 +35,6 @@ public class SoundLoader
         } );
 
         Sounds.load( name + volume, clip );
+        Sounds.setBaseGain( name + volume, volume );
     }
 }

@@ -16,10 +16,27 @@ public class Sounds
 {
     private final static ConcurrentHashMap<String,Clip> SOUNDS = new ConcurrentHashMap<String,Clip>( );
 
+    // Pose dB baked into each clip at load, keyed the same as SOUNDS. Lets playback
+    // layer a per-image-set volume on top without losing the per-pose volume.
+    private final static ConcurrentHashMap<String,Float> BASE_GAIN = new ConcurrentHashMap<String,Float>( );
+
     public static void load( final String filename, final Clip clip )
     {
         // putIfAbsent is atomic on ConcurrentHashMap — no separate containsKey needed
         SOUNDS.putIfAbsent( filename, clip );
+    }
+
+    /** Records the dB baked into a clip at load (keyed like {@link #SOUNDS}). */
+    public static void setBaseGain( final String filename, final float db )
+    {
+        BASE_GAIN.putIfAbsent( filename, db );
+    }
+
+    /** The baked pose dB for a clip, or 0 if unknown. */
+    public static float getBaseGain( final String filename )
+    {
+        final Float v = BASE_GAIN.get( filename );
+        return v == null ? 0f : v.floatValue( );
     }
 
     public static boolean contains( String filename )
@@ -62,6 +79,7 @@ public class Sounds
             if( key.startsWith( searchTerm ) )
             {
                 Clip clip = SOUNDS.remove( key );
+                BASE_GAIN.remove( key );
                 if( clip != null )
                 {
                     clip.stop( );
@@ -82,6 +100,7 @@ public class Sounds
             clip.close( );
         }
         SOUNDS.clear( );
+        BASE_GAIN.clear( );
     }
 
     public static boolean isMuted( )
