@@ -41,7 +41,8 @@ public final class ConsoleReadout
     private static final int   TICK_MS     = 33;      // ~30fps follow + fade
     private static final int   GAP         = 6;       // px between sprite edge and text
     private static final int   PAD         = 4;       // inner text padding
-    private static final float POS_LERP    = 0.35f;   // position smoothing toward target
+    private static final float SMOOTH_TIME = 0.09f;   // approach time constant (lower = snappier, less drag lag)
+    private static final float MAX_SPEED   = 6000f;   // px/sec velocity ceiling so far jumps catch up fast
     private static final float FADE_LERP   = 0.30f;   // alpha smoothing toward target
 
     private final Mascot   mascot;
@@ -51,6 +52,7 @@ public final class ConsoleReadout
     private final Timer    timer;
 
     private float curX = -9999, curY = -9999;
+    private final float[] vel = new float[2];          // smoothDamp velocity per axis (x, y)
     private boolean placed = false;
     private long lastSeenVersion = -1;
     private volatile int maxTextW = Integer.MAX_VALUE;  // width cap (2x sprite), set per tick
@@ -167,11 +169,15 @@ public final class ConsoleReadout
         targetX = Math.max( screen.x, Math.min( targetX, screen.x + screen.width  - panelW ) );
         targetY = Math.max( screen.y, Math.min( targetY, screen.y + screen.height - panelH ) );
 
-        if( !placed ) { curX = targetX; curY = targetY; placed = true; }
+        if( !placed ) { curX = targetX; curY = targetY; vel[0] = vel[1] = 0f; placed = true; }
         else
         {
-            curX += ( targetX - curX ) * POS_LERP;
-            curY += ( targetY - curY ) * POS_LERP;
+            // Critically-damped smoothing: velocity ramps up, so a far jump
+            // accelerates to MAX_SPEED and arrives fast while a short flip never
+            // reaches that speed and stays smooth. Keeps up under a fast drag too.
+            final float dt = TICK_MS / 1000f;
+            curX = smoothDamp( curX, targetX, 0, dt );
+            curY = smoothDamp( curY, targetY, 1, dt );
         }
 
         if( panel.getWidth() != panelW || panel.getHeight() != panelH )
@@ -180,6 +186,30 @@ public final class ConsoleReadout
 
         if( !window.isVisible() ) window.setVisible( true );
         if( contentChanged || alphaMoving ) panel.repaint();
+    }
+
+    /** Critically-damped spring toward {@code target} (per-axis, no overshoot),
+     *  with a {@link #MAX_SPEED} ceiling. Smooth ease for small moves; ramps up
+     *  to catch a far jump or a fast drag. {@code axis} indexes {@link #vel}. */
+    private float smoothDamp( final float current, final float target, final int axis, final float dt )
+    {
+        final float omega = 2f / SMOOTH_TIME;
+        final float x = omega * dt;
+        final float exp = 1f / ( 1f + x + 0.48f * x * x + 0.235f * x * x * x );
+        float change = current - target;
+        final float maxChange = MAX_SPEED * SMOOTH_TIME;
+        change = Math.max( -maxChange, Math.min( change, maxChange ) );
+        final float retargeted = current - change;
+        final float temp = ( vel[ axis ] + omega * change ) * dt;
+        vel[ axis ] = ( vel[ axis ] - omega * temp ) * exp;
+        float output = retargeted + ( change + temp ) * exp;
+        // Clamp overshoot to the target.
+        if( ( target - current > 0f ) == ( output > target ) )
+        {
+            output = target;
+            vel[ axis ] = ( output - target ) / dt;
+        }
+        return output;
     }
 
     /** The screen rectangle containing the mascot's centre — used to clamp the
@@ -343,8 +373,20 @@ public final class ConsoleReadout
                 if( a > 0.01f )
                 {
                     final int sa = Math.round( 200 * a );  // shadow
+                    // Black drop shadow for the whole line first...
                     g2.setColor( new Color( 0, 0, 0, sa ) );
                     g2.drawString( r.text, PAD + 1, y + 1 );
+                    // ...then a red drop shadow under just the word "WARNING"...
+                    drawTokenShadow( g2, fm, r.text, "WARNING",
+                        new Color( 200, 0, 0, sa ), PAD, y );
+                    // ...and a yellow drop shadow under the "TickWatch" tag.
+                    drawTokenShadow( g2, fm, r.text, "TickWatch",
+                        new Color( 220, 200, 0, sa ), PAD, y );
+                    // A "SEVERE" (fatal) token gets a stark red rectangle behind it
+                    // instead of a drop shadow (the rect covers the black shadow above).
+                    drawTokenBox( g2, fm, r.text, "SEVERE",
+                        new Color( 170, 0, 0, Math.round( 220 * a ) ), PAD, y );
+
                     final int ta = Math.round( 255 * a );  // white text
                     g2.setColor( new Color( 235, 235, 235, ta ) );
                     g2.drawString( r.text, PAD, y );
@@ -352,6 +394,33 @@ public final class ConsoleReadout
                 y += lineH;
             }
             g2.dispose();
+        }
+
+        /** Redraw a 1px drop shadow of {@code token} (each occurrence) in {@code c}. */
+        private void drawTokenShadow( final Graphics2D g2, final FontMetrics fm,
+            final String text, final String token, final Color c, final int x, final int y )
+        {
+            g2.setColor( c );
+            for( int idx = text.indexOf( token ); idx >= 0;
+                     idx = text.indexOf( token, idx + token.length() ) )
+            {
+                final int px = x + fm.stringWidth( text.substring( 0, idx ) );
+                g2.drawString( token, px + 1, y + 1 );
+            }
+        }
+
+        /** Fill a stark rectangle behind each occurrence of {@code token}. */
+        private void drawTokenBox( final Graphics2D g2, final FontMetrics fm,
+            final String text, final String token, final Color c, final int x, final int y )
+        {
+            g2.setColor( c );
+            for( int idx = text.indexOf( token ); idx >= 0;
+                     idx = text.indexOf( token, idx + token.length() ) )
+            {
+                final int px = x + fm.stringWidth( text.substring( 0, idx ) );
+                final int w  = fm.stringWidth( token );
+                g2.fillRect( px - 1, y - fm.getAscent(), w + 2, fm.getAscent() + fm.getDescent() );
+            }
         }
     }
 }
