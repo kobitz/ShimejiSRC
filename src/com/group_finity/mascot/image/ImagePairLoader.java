@@ -37,15 +37,23 @@ public class ImagePairLoader
             rightImage = scale( premultiply( ImageIO.read( rightPath.toFile( ) ), opacity ), scaling, filter );
 
         // Center is no longer stored in MascotImage; rendering uses Mascot.renderAnchorX/Y instead.
-        ImagePair ip = new ImagePair(
-            new MascotImage( leftImage,  new Point( 0, 0 ) ),
-            new MascotImage( rightImage, new Point( 0, 0 ) ) );
+        final MascotImage left  = new MascotImage( leftImage,  new Point( 0, 0 ) );
+        final MascotImage right = new MascotImage( rightImage, new Point( 0, 0 ) );
+
+        // Retain the on-disk source so ScalableNativeImage can re-rasterize from full resolution
+        // when a mascot is dynamically (currentScale) resized — avoids the quality loss of scaling
+        // this already-(globalScaling)-scaled bitmap a second time. The right image is the left
+        // mirrored when no dedicated rightPath exists, so flag it to flip during re-rasterization.
+        left.setSource( path, false );
+        right.setSource( rightPath == null ? path : rightPath, rightPath == null );
+
+        ImagePair ip = new ImagePair( left, right );
         ImagePairs.load( key, ip );
     }
 
 	/**
 	 */
-    private static BufferedImage flip(final BufferedImage src)
+    static BufferedImage flip(final BufferedImage src)
     {
         final BufferedImage copy = new BufferedImage( src.getWidth( ), src.getHeight( ),
                                                       src.getType( ) == BufferedImage.TYPE_CUSTOM ? BufferedImage.TYPE_INT_ARGB : src.getType( ) );
@@ -60,7 +68,7 @@ public class ImagePairLoader
         return copy;
     }
     
-    private static BufferedImage premultiply( final BufferedImage source, final double opacity )
+    static BufferedImage premultiply( final BufferedImage source, final double opacity )
     {
         final BufferedImage returnImage = new BufferedImage( source.getWidth( ), source.getHeight( ),
                                                              source.getType( ) == BufferedImage.TYPE_CUSTOM ? BufferedImage.TYPE_INT_ARGB_PRE : source.getType( ) );

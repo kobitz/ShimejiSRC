@@ -18,6 +18,13 @@ public class MascotImage {
 	private final Dimension size;
 	private final BufferedImage bufferedImage;
 
+	// Original source PNG for this frame, retained so dynamic (currentScale) resizing can
+	// re-rasterize from the full-resolution source instead of resampling this already-scaled
+	// bitmap. Null for programmatically-built images (no on-disk source). sourceFlipped marks
+	// the horizontally-mirrored (right-facing) variant so the re-rasterization mirrors to match.
+	private java.nio.file.Path sourcePath;
+	private boolean sourceFlipped;
+
 	public MascotImage(final NativeImage image, final Point center, final Dimension size) {
 		this.image = image;
 		this.center = center;
@@ -46,6 +53,19 @@ public class MascotImage {
 
 	public Dimension getSize() {
 		return this.size;
+	}
+
+	public void setSource(final java.nio.file.Path sourcePath, final boolean flipped) {
+		this.sourcePath = sourcePath;
+		this.sourceFlipped = flipped;
+	}
+
+	public java.nio.file.Path getSourcePath() {
+		return this.sourcePath;
+	}
+
+	public boolean isSourceFlipped() {
+		return this.sourceFlipped;
 	}
 
 }
