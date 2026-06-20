@@ -1077,11 +1077,26 @@ public class Mascot
         final javax.swing.JSlider volumeSlider = new javax.swing.JSlider( 0, 100, initVolPct );
         final javax.swing.border.TitledBorder volumeBorder =
             javax.swing.BorderFactory.createTitledBorder( "Volume: " + initVolPct + "%" );
-        volumeSlider.setBorder( volumeBorder );
+        // The slider fills the whole menu-item width (BorderLayout.CENTER in SliderMenuItem), which
+        // otherwise puts the track and the "Volume: X%" title over the check-icon gutter that the L&F
+        // reserves for the JCheckBoxMenuItems below. Indent it right by that gutter (check-icon width
+        // + text gap) so the slider lines up with the menu's text column instead of bleeding into the
+        // checkbox column. Robust across L&Fs via UIManager, with a sane fallback.
+        int checkGutter = 22;
+        try
+        {
+            final javax.swing.Icon checkIcon = javax.swing.UIManager.getIcon( "CheckBoxMenuItem.checkIcon" );
+            final Object gap = javax.swing.UIManager.get( "MenuItem.textIconGap" );
+            if( checkIcon != null )
+                checkGutter = checkIcon.getIconWidth( ) + ( gap instanceof Integer ? (Integer) gap : 4 );
+        }
+        catch( final Exception ignore ) { }
+        volumeSlider.setBorder( javax.swing.BorderFactory.createCompoundBorder(
+            javax.swing.BorderFactory.createEmptyBorder( 0, checkGutter, 0, 0 ), volumeBorder ) );
         volumeSlider.setOpaque( false );
         volumeSlider.setToolTipText( "Sound effect volume for " + getImageSet( ) );
         final java.awt.Dimension volPref = volumeSlider.getPreferredSize( );
-        volumeSlider.setPreferredSize( new java.awt.Dimension( 170, volPref.height ) );
+        volumeSlider.setPreferredSize( new java.awt.Dimension( 170 + checkGutter, volPref.height ) );
         volumeSlider.addChangeListener( new javax.swing.event.ChangeListener( )
         {
             @Override
