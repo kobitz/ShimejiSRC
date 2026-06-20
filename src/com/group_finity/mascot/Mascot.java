@@ -1075,41 +1075,28 @@ public class Mascot
             props.getProperty( "Volume.imageset." + getImageSet( ), "100" ).trim( ) ) ) ); }
         catch( final Exception ex ) { initVolPct = 100; }
         final javax.swing.JSlider volumeSlider = new javax.swing.JSlider( 0, 100, initVolPct );
-        final javax.swing.border.TitledBorder volumeBorder =
-            javax.swing.BorderFactory.createTitledBorder( "Volume: " + initVolPct + "%" );
-        // The slider fills the whole menu-item width (BorderLayout.CENTER in SliderMenuItem), which
-        // otherwise puts the track and the "Volume: X%" title over the check-icon gutter that the L&F
-        // reserves for the JCheckBoxMenuItems below. Indent it right by that gutter (check-icon width
-        // + text gap) so the slider lines up with the menu's text column instead of bleeding into the
-        // checkbox column. Robust across L&Fs via UIManager, with a sane fallback.
-        int checkGutter = 22;
-        try
-        {
-            final javax.swing.Icon checkIcon = javax.swing.UIManager.getIcon( "CheckBoxMenuItem.checkIcon" );
-            final Object gap = javax.swing.UIManager.get( "MenuItem.textIconGap" );
-            if( checkIcon != null )
-                checkGutter = checkIcon.getIconWidth( ) + ( gap instanceof Integer ? (Integer) gap : 4 );
-        }
-        catch( final Exception ignore ) { }
-        volumeSlider.setBorder( javax.swing.BorderFactory.createCompoundBorder(
-            javax.swing.BorderFactory.createEmptyBorder( 0, checkGutter, 0, 0 ), volumeBorder ) );
+        // The "Volume: X%" label is a real (non-activating) menu item — LabelMenuItem — so the L&F
+        // positions its text in EXACTLY the same column as every other item, with no hand-computed
+        // gutter offset to get wrong. The slider sits on its own row below (SliderMenuItem). A titled
+        // border was avoided earlier because a framed box reads as a nested sub-category.
+        final LabelMenuItem volumeLabel = new LabelMenuItem( "Volume: " + initVolPct + "%" );
         volumeSlider.setOpaque( false );
         volumeSlider.setToolTipText( "Sound effect volume for " + getImageSet( ) );
         final java.awt.Dimension volPref = volumeSlider.getPreferredSize( );
-        volumeSlider.setPreferredSize( new java.awt.Dimension( 170 + checkGutter, volPref.height ) );
+        volumeSlider.setPreferredSize( new java.awt.Dimension( 130, volPref.height ) );
         volumeSlider.addChangeListener( new javax.swing.event.ChangeListener( )
         {
             @Override
             public void stateChanged( final javax.swing.event.ChangeEvent e )
             {
                 final int v = volumeSlider.getValue( );
-                volumeBorder.setTitle( "Volume: " + v + "%" );
-                volumeSlider.repaint( );
+                volumeLabel.setText( "Volume: " + v + "%" );
                 props.setProperty( "Volume.imageset." + getImageSet( ), String.valueOf( v ) );
                 if( !volumeSlider.getValueIsAdjusting( ) )
                     Main.getInstance( ).updateConfigFile( );
             }
         } );
+        popup.add( volumeLabel );
         popup.add( new SliderMenuItem( volumeSlider ) );
         popup.add( new JSeparator( ) );
         if( submenu.getMenuComponentCount( ) > 0 )
@@ -4699,10 +4686,37 @@ public class Mascot
         SliderMenuItem( final javax.swing.JSlider slider )
         {
             this.slider = slider;
+
+            // Indent past the L&F's check-icon gutter so the slider's track lines up under the menu
+            // items' text column rather than bleeding into the checkbox column. Robust via UIManager,
+            // with a sane fallback.
+            int checkGutter = 22;
+            try
+            {
+                final javax.swing.Icon checkIcon = javax.swing.UIManager.getIcon( "CheckBoxMenuItem.checkIcon" );
+                final Object gap = javax.swing.UIManager.get( "MenuItem.textIconGap" );
+                if( checkIcon != null )
+                    checkGutter = checkIcon.getIconWidth( ) + ( gap instanceof Integer ? (Integer) gap : 4 );
+            }
+            catch( final Exception ignore ) { }
+
+            // KEEP the default JMenuItem border (its left inset is where every item's content starts)
+            // and add the check-icon gutter ON TOP.
+            final javax.swing.border.Border base = getBorder( );
+            final java.awt.Insets bi = base != null ? base.getBorderInsets( this )
+                                                    : new java.awt.Insets( 0, 0, 0, 0 );
+            setBorder( javax.swing.BorderFactory.createCompoundBorder(
+                base, javax.swing.BorderFactory.createEmptyBorder( 0, checkGutter, 2, 6 ) ) );
+
             setLayout( new java.awt.BorderLayout( ) );
             add( slider, java.awt.BorderLayout.CENTER );
             setOpaque( false );
-            setPreferredSize( slider.getPreferredSize( ) );
+
+            // JMenuItem's UI sizes from text/icon, ignoring our child layout, so set it explicitly.
+            final java.awt.Dimension sp = slider.getPreferredSize( );
+            setPreferredSize( new java.awt.Dimension(
+                bi.left + checkGutter + sp.width + 6 + bi.right,
+                bi.top + sp.height + 2 + bi.bottom ) );
         }
 
         @Override
@@ -4717,6 +4731,34 @@ public class Mascot
                 slider, e.getID( ), e.getWhen( ), e.getModifiersEx( ),
                 p.x, p.y, e.getClickCount( ), e.isPopupTrigger( ), e.getButton( ) ) );
         }
+
+        @Override
+        public void processKeyEvent( final java.awt.event.KeyEvent e,
+                                     final javax.swing.MenuElement[] path,
+                                     final javax.swing.MenuSelectionManager manager ) { }
+
+        @Override
+        public void menuSelectionChanged( final boolean isIncluded ) { }
+    }
+
+    /**
+     * A non-interactive text row inside a JPopupMenu. It is a real JMenuItem, so the L&F renders
+     * its text in the exact same column as every other menu item — no hand-computed gutter offset
+     * to get wrong (that guesswork is what kept the volume label misaligned). Event handling is
+     * overridden so it never activates/highlights/closes the popup; it's purely a label.
+     */
+    private static final class LabelMenuItem extends javax.swing.JMenuItem
+    {
+        LabelMenuItem( final String text )
+        {
+            super( text );
+            setOpaque( false );
+        }
+
+        @Override
+        public void processMouseEvent( final java.awt.event.MouseEvent e,
+                                       final javax.swing.MenuElement[] path,
+                                       final javax.swing.MenuSelectionManager manager ) { }
 
         @Override
         public void processKeyEvent( final java.awt.event.KeyEvent e,
