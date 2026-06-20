@@ -844,6 +844,16 @@ public class Main
                                     ImagePairs.clear( );
                                     configurations.clear( );
 
+                                    // The global Scaling value is cached statically in two places
+                                    // (Mascot.cachedGlobalScaling for render-anchor math, and
+                                    // ActionBase.scalingConstant for the XML "scaling" constant).
+                                    // Images get reloaded at the new scale above, but without these
+                                    // invalidations the anchor/velocity math keeps using the OLD
+                                    // scale — sprites clip through the floor and teleport on turn
+                                    // until restart. Refresh both so the new Scaling takes effect live.
+                                    Mascot.invalidateGlobalScaling( );
+                                    com.group_finity.mascot.action.ActionBase.invalidateScalingConstant( );
+
                                     // Load settings
                                     for( String imageSet : imageSets )
                                     {
