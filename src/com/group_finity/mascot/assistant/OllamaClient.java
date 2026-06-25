@@ -88,6 +88,9 @@ public class OllamaClient
     /** Maximum number of pending requests. Oldest entries are dropped when full. */
     private static final int MAX_QUEUE_DEPTH = 5;
 
+    /** Poll cadence while a deferrable request waits for CPU headroom (ms). */
+    private static final long THERMAL_POLL_MS = 1500L;
+
     public interface Callback
     {
         /** Called with the model's response text on success. */
@@ -104,21 +107,29 @@ public class OllamaClient
         final String   imageBase64;   // null for text-only requests
         final String   modelOverride; // null to use client's default model
         final int      maxTokens;
+        final boolean  deferrable;    // true: queue worker may hold/drop it under CPU load
         final Callback callback;
 
         Request( String system, String user, int maxTokens, Callback callback )
         {
-            this( system, user, null, null, maxTokens, callback );
+            this( system, user, null, null, maxTokens, false, callback );
         }
 
         Request( String system, String user, String imageBase64, String modelOverride,
                  int maxTokens, Callback callback )
+        {
+            this( system, user, imageBase64, modelOverride, maxTokens, false, callback );
+        }
+
+        Request( String system, String user, String imageBase64, String modelOverride,
+                 int maxTokens, boolean deferrable, Callback callback )
         {
             this.system        = system;
             this.user          = user;
             this.imageBase64   = imageBase64;
             this.modelOverride = modelOverride;
             this.maxTokens     = maxTokens;
+            this.deferrable    = deferrable;
             this.callback      = callback;
         }
     }
@@ -183,6 +194,14 @@ public class OllamaClient
                 if( wait > 0 )
                     Thread.sleep( wait );
 
+                // CPU-load backpressure: deferrable (unprompted) reactions yield while the
+                // system is already busy, so they don't pile inference heat onto real work
+                // and push the CPU toward the campfire's 80C cooler-boost trigger. Load
+                // leads temperature, so gating on load acts before the heat exists. Direct
+                // user-initiated replies are never deferrable and skip this entirely.
+                if( req.deferrable && !awaitCpuHeadroom( req ) )
+                    continue;   // dropped (system stayed busy) — onError already fired
+
                 lastDispatchMs = System.currentTimeMillis();
                 lastGlobalDispatchMs = lastDispatchMs;
                 log.log( Level.FINE, "[OllamaQueue] Dispatching request, queue depth={0}",
@@ -208,6 +227,100 @@ public class OllamaClient
                 break;
             }
         }
+    }
+
+    /**
+     * Hold a deferrable request while the CPU (and, if enabled, GPU) is above its gate.
+     * Measured here, on the serial worker, the model is idle — so the reading is the
+     * AMBIENT load (the user's real work), never the request's own inference. Returns
+     * true once there is headroom (dispatch it); returns false if the system stays busy
+     * past OllamaThermalDeferMaxMs, having already called the request's onError so a
+     * "Thinking..." bubble doesn't hang. A gate value >= 100 disables that signal, so the
+     * default OllamaGpuGate=100 makes the GPU half inert (CPU-only gating). An unknown
+     * sensor reading (-1) counts as "not hot" — never gate on a value we can't measure.
+     */
+    private boolean awaitCpuHeadroom( final Request req )
+    {
+        final long   start    = System.currentTimeMillis();
+        final long   maxDefer = thermalMaxDeferMs();
+        final double loadGate = loadGate();
+        final double gpuGate  = gpuGate();
+        boolean logged = false;
+        while( true )
+        {
+            final com.group_finity.mascot.environment.CpuTempMonitor m =
+                com.group_finity.mascot.environment.CpuTempMonitor.getInstance();
+            final double cpu = m.getCpuLoad();
+            final double gpu = m.getGpuLoad();
+            final boolean cpuHot = loadGate < 100 && cpu >= 0 && cpu >= loadGate;
+            final boolean gpuHot = gpuGate  < 100 && gpu >= 0 && gpu >= gpuGate;
+            if( !cpuHot && !gpuHot )
+                return true;
+
+            // Never let a held reaction delay a direct user-initiated reply: if any
+            // non-deferrable request is waiting behind us, drop this one and yield.
+            for( final Request pending : requestQueue )
+                if( !pending.deferrable )
+                {
+                    try { req.callback.onError( "Skipped — yielding to user request." ); }
+                    catch( final Exception ignored ) {}
+                    return false;
+                }
+
+            if( System.currentTimeMillis() - start >= maxDefer )
+            {
+                log.log( Level.WARNING,
+                    "[OllamaQueue] Dropped deferred request after {0}ms — CPU {1}% (gate {2}%)",
+                    new Object[]{ System.currentTimeMillis() - start, (int) cpu, (int) loadGate } );
+                try { req.callback.onError( "Skipped — system busy." ); }
+                catch( final Exception ignored ) {}
+                return false;
+            }
+            if( !logged )
+            {
+                log.log( Level.FINE, "[OllamaQueue] Deferring request — CPU {0}% >= gate {1}%",
+                         new Object[]{ (int) cpu, (int) loadGate } );
+                logged = true;
+            }
+            try { Thread.sleep( THERMAL_POLL_MS ); }
+            catch( final InterruptedException e ) { Thread.currentThread().interrupt(); return false; }
+        }
+    }
+
+    /** CPU-load gate percent (OllamaLoadGate, default 60). >= 100 disables CPU gating. */
+    private static double loadGate( )
+    {
+        try
+        {
+            final String v = com.group_finity.mascot.Main.getInstance()
+                .getProperties().getProperty( "OllamaLoadGate", "60" );
+            return Math.max( 1.0, Math.min( 100.0, Double.parseDouble( v.trim() ) ) );
+        }
+        catch( final Exception e ) { return 60.0; }
+    }
+
+    /** GPU-load gate percent (OllamaGpuGate, default 100 = inert). >= 100 disables GPU gating. */
+    private static double gpuGate( )
+    {
+        try
+        {
+            final String v = com.group_finity.mascot.Main.getInstance()
+                .getProperties().getProperty( "OllamaGpuGate", "100" );
+            return Math.max( 1.0, Math.min( 100.0, Double.parseDouble( v.trim() ) ) );
+        }
+        catch( final Exception e ) { return 100.0; }
+    }
+
+    /** Max time a deferrable request is held before it's dropped (OllamaThermalDeferMaxMs, default 25000). */
+    private static long thermalMaxDeferMs( )
+    {
+        try
+        {
+            final String v = com.group_finity.mascot.Main.getInstance()
+                .getProperties().getProperty( "OllamaThermalDeferMaxMs", "25000" );
+            return Math.max( 0L, Long.parseLong( v.trim() ) );
+        }
+        catch( final Exception e ) { return 25000L; }
     }
 
     /**
@@ -237,7 +350,36 @@ public class OllamaClient
                           final int maxTokens,
                           final Callback callback )
     {
-        final Request req = new Request( systemPrompt, userMessage, maxTokens, callback );
+        enqueue( new Request( systemPrompt, userMessage, maxTokens, callback ) );
+    }
+
+    /**
+     * Like {@link #generate} but the request is DEFERRABLE: the queue worker holds it
+     * while the CPU is above OllamaLoadGate and drops it after OllamaThermalDeferMaxMs if
+     * the system stays busy. Use ONLY for unprompted reactions / background tasks — never
+     * for direct user-initiated replies, which must always answer.
+     */
+    public void generate( final String systemPrompt,
+                          final String userMessage,
+                          final int maxTokens,
+                          final boolean deferrable,
+                          final Callback callback )
+    {
+        enqueue( new Request( systemPrompt, userMessage, null, null, maxTokens, deferrable, callback ) );
+    }
+
+    /** Convenience: a deferrable request with the default token cap. */
+    public void generateDeferrable( final String systemPrompt,
+                                    final String userMessage,
+                                    final Callback callback )
+    {
+        generate( systemPrompt, userMessage, MAX_TOKENS, true, callback );
+    }
+
+    /** Enqueue, dropping the oldest pending request if the queue is full so the newest
+     *  (most relevant) request stays in the pipeline. */
+    private void enqueue( final Request req )
+    {
         if( !requestQueue.offer( req ) )
         {
             // Queue full — drop the oldest pending request and enqueue this one.

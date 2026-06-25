@@ -31,6 +31,9 @@ public class FanController
     private static final long REASSERT_MS            = 7000;
     private static final long OFF_REASSERT_WINDOW_MS = 30000;
     private static final long BOOST_PROC_TIMEOUT_S   = 8;
+    /** Blue fire must be present continuously this long before the fans actually spin up,
+     *  so a brief, self-resolving temperature spike never triggers Cooler Boost. */
+    private static final long TURN_ON_DELAY_MS       = 2000;
 
     private static FanController instance;
 
@@ -43,6 +46,7 @@ public class FanController
     private volatile boolean desiredOn = false;
     private volatile long lastSendMs = 0;
     private volatile long lastOffTransitionMs = 0;
+    private volatile long pendingOnSinceMs = 0;   // >0: turn-on debounce in progress
 
     private FanController( ) { }
 
@@ -52,8 +56,19 @@ public class FanController
         long now = System.currentTimeMillis( );
         if( !desiredOn )
         {
-            desiredOn = true;
-            spawnBoost( true, now, "blue fire present" );
+            // Turn-on debounce: require TURN_ON_DELAY_MS of continuous presence before
+            // spinning the fans up. If blue fire clears within the window, triggerFanOff
+            // resets the clock and Cooler Boost never engages for that transient spike.
+            if( pendingOnSinceMs == 0 )
+            {
+                pendingOnSinceMs = now;                 // start the clock; don't spawn yet
+            }
+            else if( now - pendingOnSinceMs >= TURN_ON_DELAY_MS )
+            {
+                desiredOn = true;
+                pendingOnSinceMs = 0;
+                spawnBoost( true, now, "blue fire sustained " + TURN_ON_DELAY_MS + "ms" );
+            }
         }
         else if( now - lastSendMs >= REASSERT_MS )
         {
@@ -65,6 +80,7 @@ public class FanController
     public synchronized void triggerFanOff( )
     {
         long now = System.currentTimeMillis( );
+        pendingOnSinceMs = 0;   // blue gone — cancel any in-progress turn-on debounce
         if( desiredOn )
         {
             desiredOn = false;

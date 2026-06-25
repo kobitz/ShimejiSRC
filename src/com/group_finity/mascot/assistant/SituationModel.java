@@ -408,7 +408,7 @@ public class SituationModel
         }
 
         final String user = buildSynthPrompt( );
-        synthClient.generate( SYNTH_SYSTEM, user, SYNTH_MAX_TOKENS, new OllamaClient.Callback( )
+        synthClient.generate( SYNTH_SYSTEM, user, SYNTH_MAX_TOKENS, true, new OllamaClient.Callback( )
         {
             @Override public void onResponse( String raw ) { applySynth( raw ); }
             @Override public void onError( String err )    { log.fine( "[Situation] synth error: " + err ); }

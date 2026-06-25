@@ -2128,7 +2128,7 @@ public class Mascot
 
         final String ctx = "[Reacting to " + speakerName + "] " + speakerText;
 
-        client.generate( system, prompt, new OllamaClient.Callback()
+        client.generateDeferrable( system, prompt, new OllamaClient.Callback()
         {
             @Override public void onResponse( final String raw )
             {
@@ -2556,7 +2556,7 @@ public class Mascot
             if( hasScreen )
                 client.generateWithImage( system, prompt, capturedBase64, vModel, audioCb );
             else
-                client.generate( system, prompt, audioCb );
+                client.generateDeferrable( system, prompt, audioCb );
         }, "audio-reaction" ).start();
     }
 
@@ -2660,7 +2660,7 @@ public class Mascot
 
             final String overheardContext = "[Overheard user] " + userSaid;
 
-            client.generate( system, prompt, new OllamaClient.Callback()
+            client.generateDeferrable( system, prompt, new OllamaClient.Callback()
             {
                 @Override public void onResponse( final String raw )
                 {
@@ -2750,7 +2750,7 @@ public class Mascot
             if( b != null ) assistantBubble.showThinking( b );
         } );
 
-        client.generate( system, prompt, new OllamaClient.Callback( )
+        client.generateDeferrable( system, prompt, new OllamaClient.Callback( )
         {
             @Override public void onResponse( final String raw )
             {
@@ -3780,7 +3780,7 @@ public class Mascot
 
             // Summary needs 300 tokens: 5 facts + TONE + PEER_TONE lines.
             // Default 80-token cap cuts off before TONE: is reached.
-            client.generate( system, prompt, 300, new OllamaClient.Callback()
+            client.generate( system, prompt, 300, true, new OllamaClient.Callback()
             {
                 @Override public void onResponse( final String text )
                 {
