@@ -6,11 +6,11 @@ A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an Engli
 
 ## The basics
 
-Mascots are little animated characters that live on top of your desktop. They walk around, sit, lie down, sleep, climb, and tumble — with real physics, so they fall under gravity and bounce when thrown. You can run many at once, mix different characters, and they roam freely across multiple monitors.
+Mascots are animated sprites rendered as borderless, always-on-top windows, moved by a physics simulation — gravity, momentum, and edge collision. They walk, sit, climb, sleep, and fall. Run any number at once, mix image sets, and they span multiple monitors.
 
-- **Pick them up and throw them** — grab a mascot with the mouse and fling it; it arcs through the air, falls, and bounces off the floor and screen edges.
-- **They use your windows** — mascots walk along the top edges of your open windows, climb up their sides, sit on them, and can even grab a window and drag or throw it across the screen. (Which apps are "interactive" is configurable.)
-- **They multiply** — a mascot can breed, pulling a copy of itself up onto the screen, so a single character can become a small crowd.
+- **Drag & throw** — grab a mascot with the mouse; releasing imparts velocity, then gravity and collision take over and it bounces off the screen and window edges.
+- **Window interaction** — mascots walk along the top edges of open windows, climb their sides, sit on them, and can grab a window to drag or throw it. Which apps are interactive is configurable.
+- **Breeding** — a mascot clones itself onto the screen, so one character becomes many.
 
 ## Controlling them
 
@@ -23,7 +23,7 @@ Mascots are little animated characters that live on top of your desktop. They wa
 - **Dismiss** — remove that one.
 - …plus this fork's extras: a tooltip toggle, a per-character sound-effects volume slider, and the AI **assistant mode** toggle with its personal-behaviour checkboxes.
 
-**The system-tray icon** manages the whole troupe: add mascots, choose which image sets are active, *Reduce to One*, *Restore Windows*, *Allowed Behaviours* (globally enable or disable individual behaviors), open *Settings*, and quit (the classic "Bye bye").
+**The system-tray icon** manages all active mascots: add mascots, choose which image sets are active, *Reduce to One*, *Restore Windows*, *Allowed Behaviours* (globally enable or disable individual behaviors), open *Settings*, and quit (the classic "Bye bye").
 
 **Settings** cover global scale, always-on-top, multi-monitor mode, which apps' windows are interactive, and all of the assistant options below.
 
@@ -34,7 +34,7 @@ Mascots are little animated characters that live on top of your desktop. They wa
 - **React to system audio** — a 15s WASAPI loopback buffer is transcribed (and auto-translated to English, e.g. for Japanese shows) so mascots can comment on videos, music, and calls.
 - **React to your voice** — name triggers ("Hornet, ...") answer directly; hotword→behavior dispatch fires animations instantly; overheard speech (talking on a call, reacting aloud) draws occasional in-character remarks, with transcript-level echo removal so speaker bleed isn't mistaken for the user.
 - **Talk to each other** — peer reactions with per-character relationship tones, anti-style-contamination rules, and chain-depth caps.
-- **Reflect the machine** — CPU/GPU/RAM/temperature exposed to behavior scripts: campfires that scale with CPU load, glitch animations under heavy load, sensor-driven tint overlays. On MSI laptops mascots can even drive the cooling — a lit blue campfire ramps the fans to max via Cooler Boost.
+- **Reflect the machine** — CPU/GPU/RAM/temperature exposed to behavior scripts: campfires that scale with CPU load, glitch animations under heavy load, sensor-driven tint overlays. On MSI laptops a lit blue campfire drives the cooling, ramping both fans to max via Cooler Boost.
 - **Know your files** — a local drive index answers file-aware questions through a query router: keyword (exact), semantic (vague topical recall via local `nomic-embed-text` embeddings), recency ("last thing I downloaded"), aggregate (counts/sizes/"what can I delete"), and folder listing. The index and embeddings never leave the machine.
 - **Sense the situation** — a shared, continuously-sampled situational model fuses what you're doing (app sessions, activity tempo, audio, system load) into one read, so mascots react to your *state* — focused, multitasking, winding down — and speak when something actually changes, not on a blind timer. An optional small periodic LLM pass adds a one-line narrative + conservative mood.
 
