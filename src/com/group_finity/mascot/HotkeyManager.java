@@ -59,9 +59,8 @@ import java.util.logging.Logger;
  *
  * In the GLOBAL file a bare behavior fires for all mascots; prefix "ImageSet:Behavior"
  * to target one. In a PER-MASCOT file the behavior is always bare (the image set is the
- * folder it lives in). Suffix the behavior with !hold for hold-to-loop, optionally
- * !hold:ContinuationBehavior. Lines starting with # are comments; blank lines ignored;
- * duplicate combos within a file are merged.
+ * folder it lives in). Suffix the behavior with !hold for hold-to-loop. Lines starting
+ * with # are comments; blank lines ignored; duplicate combos within a file are merged.
  */
 
 public class HotkeyManager implements NativeKeyListener, NativeMouseListener
@@ -90,11 +89,9 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
     private static class Binding {
         final String  behaviorEntry;   // global: "Mario:MoveRight" or "MoveRight"; per-mascot: bare "MoveRight"
         final boolean hold;            // true → loop while held; false → fire once on press
-        final String  continuation;    // optional: behavior to loop after first completion
-        Binding( String entry, boolean hold, String continuation ) {
+        Binding( String entry, boolean hold ) {
             this.behaviorEntry = entry;
             this.hold          = hold;
-            this.continuation  = continuation; // null if not specified
         }
     }
 
@@ -202,38 +199,6 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
         return null;
     }
 
-    /**
-     * Returns the continuation behavior for the held !hold binding for this imageSet,
-     * or null if none specified or no key held. (RIGHT=Mario:MoveRight!hold:MoveRightRun
-     * plays MoveRight once, then loops MoveRightRun while held.)
-     */
-    public String getHeldContinuationFor( final String imageSet )
-    {
-        if( heldCombos.isEmpty( ) ) return null;
-        for( String combo : heldCombos )
-            for( Binding b : effectiveBindings( combo, imageSet ) )
-                if( b.hold && b.continuation != null ) return b.continuation;
-        return null;
-    }
-
-    /**
-     * Returns the held directional: -1 if a "left" behavior is held, +1 if "right", else 0.
-     * Used by Jump TargetX calculation to bias the jump direction.
-     */
-    public int getHeldDirectional( final String imageSet )
-    {
-        if( heldCombos.isEmpty( ) ) return 0;
-        for( String combo : heldCombos )
-            for( Binding b : effectiveBindings( combo, imageSet ) )
-            {
-                if( !b.hold ) continue;
-                String lower = b.behaviorEntry.toLowerCase( );
-                if( lower.contains( "left"  ) ) return -1;
-                if( lower.contains( "right" ) ) return  1;
-            }
-        return 0;
-    }
-
     // ── NativeKeyListener ─────────────────────────────────────────────────────
 
     @Override
@@ -338,7 +303,7 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
                 for( String part : b.behaviorEntry.split( "," ) )
                 {
                     part = part.trim( );
-                    if( !part.isEmpty( ) ) out.add( new Binding( part, b.hold, b.continuation ) );
+                    if( !part.isEmpty( ) ) out.add( new Binding( part, b.hold ) );
                 }
             return out;   // override: do NOT fall through to global for this combo
         }
@@ -355,11 +320,11 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
                 {
                     String[] kv = part.split( ":", 2 );
                     if( kv[0].trim( ).equals( imageSet ) )
-                        out.add( new Binding( kv[1].trim( ), gb.hold, gb.continuation ) );
+                        out.add( new Binding( kv[1].trim( ), gb.hold ) );
                 }
                 else
                 {
-                    out.add( new Binding( part, gb.hold, gb.continuation ) );   // bare = all image sets
+                    out.add( new Binding( part, gb.hold ) );   // bare = all image sets
                 }
             }
         return out;
@@ -507,24 +472,18 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
                 String normKey = rawKey.toLowerCase( ).replaceAll( "\\s*\\+\\s*", "+" );
 
                 boolean hold = false;
-                String continuation = null;
                 int holdIdx = rawVal.indexOf( "!hold" );
                 if( holdIdx >= 0 )
                 {
                     hold = true;
-                    String afterHold = rawVal.substring( holdIdx + "!hold".length( ) ).trim( );
-                    rawVal = rawVal.substring( 0, holdIdx ).trim( );
-                    if( afterHold.startsWith( ":" ) )
-                        continuation = afterHold.substring( 1 ).trim( );
+                    rawVal = rawVal.substring( 0, holdIdx ).trim( );   // drop "!hold" (and anything after it)
                 }
 
-                Binding binding = new Binding( rawVal, hold, continuation );
+                Binding binding = new Binding( rawVal, hold );
                 target.computeIfAbsent( normKey, k -> new ArrayList<>( ) ).add( binding );
 
-                log.log( Level.INFO, "HotkeyManager: [{0}] bound [{1}] -> {2}{3}{4}",
-                    new Object[]{ label, normKey, rawVal,
-                        hold ? " [hold-loop]" : "",
-                        continuation != null ? " [continuation: " + continuation + "]" : "" } );
+                log.log( Level.INFO, "HotkeyManager: [{0}] bound [{1}] -> {2}{3}",
+                    new Object[]{ label, normKey, rawVal, hold ? " [hold-loop]" : "" } );
             }
         }
         catch( IOException e )

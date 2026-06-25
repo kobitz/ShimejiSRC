@@ -283,7 +283,13 @@ public class OllamaClient
                 logged = true;
             }
             try { Thread.sleep( THERMAL_POLL_MS ); }
-            catch( final InterruptedException e ) { Thread.currentThread().interrupt(); return false; }
+            catch( final InterruptedException e )
+            {
+                Thread.currentThread().interrupt();
+                try { req.callback.onError( "Skipped — shutting down." ); }
+                catch( final Exception ignored ) {}
+                return false;
+            }
         }
     }
 
