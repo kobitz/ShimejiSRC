@@ -27,6 +27,28 @@ Mascots are animated sprites rendered as borderless, always-on-top windows, move
 
 **Settings** cover global scale, always-on-top, multi-monitor mode, which apps' windows are interactive, and all of the assistant options below.
 
+## Hotkeys
+
+Global keyboard and mouse shortcuts can trigger any behavior, configured in `conf/hotkeys.properties` (plus optional per-mascot files, below). Each line is `<combo>=<Behavior>`:
+
+```
+F1=Sit
+ctrl+shift+J=Jump
+RIGHT=Mario:MoveRight!hold
+```
+
+- **Combo** — modifiers (`ctrl`, `shift`, `alt`, `meta`) plus a key, joined with `+`. Keys use names like `F1`, `A`, `SPACE`, `ENTER`, `HOME`; mouse buttons are `MOUSE1`–`MOUSE5`. Case-insensitive.
+- **Behavior** — any behavior name. By default it fires for *every* active mascot; prefix it with an image-set name (`Mario:MoveRight`) to target only that character.
+- **`!hold`** — append it to loop the behavior for as long as the key is held (e.g. walk while held, stop on release) instead of firing once on press.
+
+**Two files feed the same system.** The global `conf/hotkeys.properties` applies to every active mascot (or one, via the `ImageSet:Behavior` prefix). A per-mascot `img/<name>/conf/hotkeys.properties` is scoped to that character automatically — write **bare** behavior names, no prefix — and **overrides the global per key**: combos it defines win for that mascot, while combos it leaves out still inherit from the global file. Lines beginning with `#` are comments.
+
+## Web video (browser extension)
+
+A bundled Firefox extension (`shimeji-video-tracker.xpi`) lets mascots treat web videos as physical surfaces. The extension watches for video elements on a page (YouTube, Twitch, and the like) and reports each one's on-screen rectangle to a small HTTP server the app runs locally on `127.0.0.1:41221`. The engine treats those rectangles the same way it treats window edges — so a mascot can sit on, walk along, and climb the borders of a video playing in your browser, and it knows which site the video is on. The extension also reports when a tab enters or exits fullscreen, so mascots yield to fullscreen video.
+
+Everything stays on localhost; no page data leaves the machine. Load `shimeji-video-tracker.xpi` in Firefox to enable it — without the extension there are simply no web-video surfaces, and nothing else changes.
+
 ## What the mascots can do (the AI layer)
 
 - **Chat** — click-to-reply bubbles, typed input, persistent per-character memory (`memory.json`) with automatic summarization, keyword-gated permanent memories, and timers/reminders.
@@ -66,8 +88,6 @@ Plain `ant jar` produces the fat JAR if you don't need the exe wrapper.
 ## Configuration
 
 XML-driven behaviors (`conf/actions.xml`, `conf/behaviors.xml`, per-mascot overrides in `img/<name>/conf/`) with Nashorn JS expressions for conditions and velocities. Assistant settings (models, bubble styling, voice polling, drive indexing, resource caps) live in `conf/settings.properties` and the in-app settings UI.
-
-See **CLAUDE.md** for the full architecture reference: the tick loop, action/behavior system, the assistant package, memory format, audio pipeline, and authoring notes.
 
 ## Lineage & license
 
