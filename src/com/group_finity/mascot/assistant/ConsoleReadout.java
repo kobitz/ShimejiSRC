@@ -31,7 +31,8 @@ import javax.swing.Timer;
  *   <li>No background; white Ubuntu-Mono with a soft shadow for legibility.</li>
  *   <li>Master 50% opacity, with a per-line recency gradient and a fade-in on
  *       new lines (the bubbles' fade feel applied to a streaming readout).</li>
- *   <li>Font size = 50% of {@code BubbleFontSize}.</li>
+ *   <li>Font size = 50% of {@code BubbleFontSize}, times the global Scaling
+ *       (so it scales with her sprite; 25% of BubbleFontSize at 0.5 scale).</li>
  * </ul>
  */
 public final class ConsoleReadout
@@ -41,6 +42,9 @@ public final class ConsoleReadout
     private static final int   TICK_MS     = 33;      // ~30fps follow + fade
     private static final int   GAP         = 6;       // px between sprite edge and text
     private static final int   PAD         = 4;       // inner text padding
+    private static final float BOTTOM_ANCHOR_FRAC = 0.30f; // panel BOTTOM edge above the sprite's bottom,
+                                                            // as a fraction of sprite height (scales linearly
+                                                            // with global scale instead of the font)
     private static final float SMOOTH_TIME = 0.09f;   // approach time constant (lower = snappier, less drag lag)
     private static final float MAX_SPEED   = 6000f;   // px/sec velocity ceiling so far jumps catch up fast
     private static final float FADE_LERP   = 0.30f;   // alpha smoothing toward target
@@ -48,7 +52,10 @@ public final class ConsoleReadout
     private final Mascot   mascot;
     private final JWindow  window;
     private final ReadoutPanel panel;
-    private final Font     font;
+    private final Font     baseFont;       // undecorated mono, sized per scale below
+    private final float    bubbleFontSize; // BubbleFontSize property at construction
+    private Font           font;           // baseFont sized for the current global scale
+    private float          lastScaling = Float.NaN; // global Scaling baked into font
     private final Timer    timer;
 
     private float curX = -9999, curY = -9999;
@@ -88,7 +95,12 @@ public final class ConsoleReadout
         try { bubbleFont = Float.parseFloat(
             Main.getInstance().getProperties().getProperty( "BubbleFontSize", "14" ) ); }
         catch( final Exception ignored ) { }
-        this.font = loadMono().deriveFont( Font.PLAIN, bubbleFont * 0.5f );
+        this.bubbleFontSize = bubbleFont;
+        this.baseFont = loadMono();
+        // Unlike the chat bubbles (manual font size), this readout scales with the
+        // global Scaling setting so it stays proportional to her sprite. Recomputed
+        // live in update() when the scale changes (see refreshFont).
+        refreshFont();
 
         panel = new ReadoutPanel();
         panel.setOpaque( false );
@@ -121,6 +133,22 @@ public final class ConsoleReadout
         return new Font( Font.MONOSPACED, Font.PLAIN, 12 );
     }
 
+    /** Read the live global Scaling and, if it changed, re-derive {@link #font}.
+     *  The 0.5 factor reproduces the look tuned at 0.5 global scale
+     *  (0.25 x BubbleFontSize). Returns true if the font was rebuilt. */
+    private boolean refreshFont()
+    {
+        float scaling = 1f;
+        try { scaling = Float.parseFloat(
+            Main.getInstance().getProperties().getProperty( "Scaling", "1.0" ) ); }
+        catch( final Exception ignored ) { }
+        if( scaling == lastScaling ) return false;
+        lastScaling = scaling;
+        font = baseFont.deriveFont( Font.PLAIN, bubbleFontSize * 0.5f * scaling );
+        if( panel != null ) panel.setFont( font );
+        return true;
+    }
+
     // ── Per-tick follow + fade ────────────────────────────────────────────────
     private void update()
     {
@@ -129,7 +157,8 @@ public final class ConsoleReadout
         catch( final Exception ex ) { window.setVisible( false ); return; }
         if( b == null ) { window.setVisible( false ); return; }
 
-        final boolean contentChanged = reconcile();
+        final boolean fontChanged    = refreshFont();   // live global-scale tracking
+        final boolean contentChanged = reconcile() || fontChanged;
         final boolean alphaMoving    = animate();
 
         if( entries.isEmpty() )
@@ -138,8 +167,8 @@ public final class ConsoleReadout
             return;
         }
 
-        // Width capped at twice her sprite width; longer lines truncate (see paint).
-        final int maxPanelW = Math.max( 40, b.width * 2 );
+        // Width capped at 1.5x her sprite width; longer lines truncate (see paint).
+        final int maxPanelW = Math.max( 40, Math.round( b.width * 1.5f ) );
         maxTextW = maxPanelW - PAD * 2;
 
         final FontMetrics fm = panel.getFontMetrics( font );
@@ -157,14 +186,18 @@ public final class ConsoleReadout
         final int panelW = textW + PAD * 2;
         final int panelH = rows.size() * lineH + PAD * 2;
 
-        // Project ahead of her facing, pulled in by half her width and up by half
-        // her height, then clamped to the screen exactly like the chat bubbles.
+        // Project ahead of her facing, pulled in by half her width. Vertically the
+        // panel's BOTTOM edge (the newest line) is anchored BOTTOM_ANCHOR_FRAC of her
+        // sprite height up from the box bottom — a fraction of the SPRITE, not lineH,
+        // so it scales linearly with global scale rather than drifting with the font's
+        // rounded line height. Bottom-anchored so the readout grows UPWARD as console
+        // lines accumulate, keeping the newest line steady instead of expanding
+        // symmetrically onto her. Then clamped to the screen like the chat bubbles.
         final boolean right = mascot.isLookRight();
         final int closer = b.width / 2;
-        final int up     = b.height / 2;
         int targetX = right ? ( b.x + b.width + GAP - closer )
                             : ( b.x - panelW - GAP + closer );
-        int targetY = b.y + b.height / 2 - panelH / 2 - up;
+        int targetY = b.y + b.height - Math.round( b.height * BOTTOM_ANCHOR_FRAC ) - panelH;
         final Rectangle screen = getScreenBounds( b );
         targetX = Math.max( screen.x, Math.min( targetX, screen.x + screen.width  - panelW ) );
         targetY = Math.max( screen.y, Math.min( targetY, screen.y + screen.height - panelH ) );
