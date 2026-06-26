@@ -4,7 +4,7 @@ A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an Engli
 
 **Everything runs locally.** No cloud APIs, no subscriptions, no telemetry. LLM inference via [Ollama](https://ollama.com), speech-to-text via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU.
 
-**▶ [Download the latest release](https://github.com/kobitz/ShimejiSRC/releases/latest)** — grab `Shimeji-Install-Windows.zip`, extract anywhere, run `Setup.bat` once (installs Ollama + the local models), then launch `Shimeji.exe` (or `Admin.bat` for fan control and CPU-temperature features).
+**▶ [Download from the releases page](https://github.com/kobitz/ShimejiSRC/releases)** — grab `Shimeji-Install-Windows.zip`, extract anywhere, run `Setup.bat` once (installs Ollama + the local models), then launch `Shimeji.exe` (or `Admin.bat` for fan control and CPU-temperature features).
 
 ## The basics
 
