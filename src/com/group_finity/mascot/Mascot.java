@@ -1945,6 +1945,12 @@ public class Mascot
             + ( cachedWx   != null ? "\n[Current weather: " + cachedWx + ".]" : "" )
             + ( sitCtx.isEmpty( ) ? "" : "\n[" + sitCtx + "]" );
 
+        // Relationship layer: a compact multi-day digest of the user's activity, so the companion
+        // can call back to the arc of the week ("you've been deep in that all week"). Empty when
+        // the journal is disabled/cold. Direct replies only — the conversational surface where it lands.
+        final String recentDays =
+            com.group_finity.mascot.assistant.SituationModel.recentDaysDigest( );
+
         final String permBlock = userText != null
             ? memory.buildPermanentMemoryBlock( userText ) : "";
 
@@ -1956,6 +1962,7 @@ public class Mascot
         final String speechRule = getSpeechRule( cfg );
         final String result = personalityBase
             + memory.buildMemoryBlock()
+            + recentDays
             + permBlock
             + driveBlock
             + ( peerCtx.isEmpty() ? "" : "\n\nOther desktop mascots present:" + peerCtx )
@@ -2131,7 +2138,8 @@ public class Mascot
             + "\n---", peerSpeechRule );
 
         final String prompt = speakerName + " just said: \""
-            + speakerText + "\". Reply to them in one sentence, in a tone that is " + peerTone + ".";
+            + speakerText + "\". Reply to them in one sentence, in a tone that is " + peerTone + "."
+            + situationBackground( );
 
         if( ollamaClient == null ) ollamaClient = createOllamaClient();
         final OllamaClient client = ollamaClient;
@@ -2513,7 +2521,8 @@ public class Mascot
                 + mediaHint
                 + " Make one short, in-character reaction."
                 + reactionScope
-                + " Do not repeat what was said verbatim.";
+                + " Do not repeat what was said verbatim."
+                + situationBackground( );
 
             final String audioContext = source != null
                 ? "[Overheard audio from " + source + "] " + transcript
@@ -2666,7 +2675,8 @@ public class Mascot
             final String prompt =
                 "You overheard the user say: \"" + userSaid + "\"." + sysCtx
                 + " Make one short, in-character remark about the user's side of the exchange."
-                + " Do not repeat what was said verbatim.";
+                + " Do not repeat what was said verbatim."
+                + situationBackground( );
 
             javax.swing.SwingUtilities.invokeLater( () ->
             {
@@ -2747,11 +2757,10 @@ public class Mascot
             + "\n---", spontSpeechRule );
 
         final String audioCtxSpont = audioSnapshotContext();
-        final String sitCtxSpont = situationContext( );
         final String prompt =
             "The user's active window is: \"" + windowTitle + "\"."
             + ( audioCtxSpont.isEmpty() ? "" : " " + audioCtxSpont + "." )
-            + ( sitCtxSpont.isEmpty() ? "" : " [Background — " + sitCtxSpont + "]" )
+            + situationBackground( )
             + " Make one short in-character observation, addressing the user directly as \"you\" — not in third person."
             + " Do not repeat the raw title string.";
 
@@ -2840,7 +2849,8 @@ public class Mascot
                     "You just glanced at the user's screen."
                     + ( audioCtxVision.isEmpty() ? "" : " " + audioCtxVision + "." )
                     + " Make one brief, in-character observation about what you see."
-                    + " Address the user directly as \"you\". One sentence only.";
+                    + " Address the user directly as \"you\". One sentence only."
+                    + situationBackground( );
 
                 javax.swing.SwingUtilities.invokeLater( () ->
                 {
@@ -2960,6 +2970,21 @@ public class Mascot
             return com.group_finity.mascot.assistant.SituationModel.getInstance( ).current( ).asContextBlock( );
         }
         catch( Exception e ) { return ""; }
+    }
+
+    /**
+     * The fused situational read as a labeled, background-only clause to append to an
+     * unprompted-reaction user prompt (peer/audio/vision/user-speech/spontaneous), or "" when
+     * the model is inactive. Leading space + the "[Background — ...]" frame are included so it
+     * appends cleanly and the model treats it as ambient context, not the thing to react to
+     * (reinforced by QUICK_REACTION_STYLE_RULES' "context lines are background only"). This is
+     * the cross-signal fusion: every reaction is informed by the one shared picture of what the
+     * user is doing, not just its own triggering signal.
+     */
+    private static String situationBackground( )
+    {
+        final String s = situationContext( );
+        return s.isEmpty( ) ? "" : " [Background — " + s + "]";
     }
 
     private String getPersonality( final com.group_finity.mascot.config.Configuration cfg,

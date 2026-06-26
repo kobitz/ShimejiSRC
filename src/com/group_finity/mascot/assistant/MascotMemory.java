@@ -56,6 +56,9 @@ public class MascotMemory
     private final Map<String, String>       peerTones     = new LinkedHashMap<>();
     private int    interactionCount = 0;
     private int    sinceLastSummary = 0;
+    /** Epoch-day (LocalDate.toEpochDay) this mascot first ran for the user; 0 until set.
+     *  Anchors the "how long we've known each other" relationship signal. */
+    private long   firstSeenEpochDay = 0;
 
     /** Dirty flag + pending task for debounced saves — collapses burst writes into one. */
     private boolean                 dirty     = false;
@@ -82,6 +85,28 @@ public class MascotMemory
         this.imageSet = imageSet;
         this.filePath = Paths.get( "img", imageSet, "conf", "memory.json" );
         load();
+        // Anchor the relationship start the first time we ever run for this user.
+        // Not force-saved here (avoids creating a file for a never-used mascot); it
+        // persists with the first real write — by which point the relationship exists.
+        if( firstSeenEpochDay == 0 )
+            firstSeenEpochDay = java.time.LocalDate.now().toEpochDay();
+    }
+
+    /**
+     * A short, factual relationship-depth line ("you and this user go back N days, M exchanges")
+     * for the user-directed memory block, or "" when there's no relationship yet. Gives the
+     * companion an accumulating sense of shared history instead of a flat fact list. Conservative
+     * for users who predate this field — first-seen anchors at the upgrade, so it only undercounts
+     * and only ever grows truthfully.
+     */
+    private synchronized String relationshipLine()
+    {
+        if( interactionCount < 1 ) return "";
+        final long days = Math.max( 0, java.time.LocalDate.now().toEpochDay() - firstSeenEpochDay );
+        if( days >= 1 )
+            return "\nYou and this user go back " + days + ( days == 1 ? " day" : " days" )
+                 + " (" + interactionCount + " exchanges together).";
+        return "\nYou have shared " + interactionCount + " exchanges with this user so far.";
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -133,6 +158,7 @@ public class MascotMemory
         else
         {
             sb.append( "\nYour tone toward the user: " ).append( emotionalTone );
+            sb.append( relationshipLine() );
         }
 
         sb.append( "\n--- END MEMORY ---" );
@@ -464,6 +490,7 @@ public class MascotMemory
 
         sb.append( "  \"interactionCount\": " ).append( interactionCount ).append( ",\n" );
         sb.append( "  \"sinceLastSummary\": " ).append( sinceLastSummary ).append( ",\n" );
+        sb.append( "  \"firstSeenEpochDay\": " ).append( firstSeenEpochDay ).append( ",\n" );
         sb.append( "  \"emotionalTone\": " ).append( jsonStr( emotionalTone ) ).append( ",\n" );
 
         // peerTones
@@ -537,6 +564,7 @@ public class MascotMemory
         {
             interactionCount = parseInt( json, "interactionCount", 0 );
             sinceLastSummary = parseInt( json, "sinceLastSummary", 0 );
+            firstSeenEpochDay = parseInt( json, "firstSeenEpochDay", 0 );  // epoch-day fits int for ~5.8M yrs
             emotionalTone    = parseStr( json, "emotionalTone", "neutral" );
 
             peerTones.clear();

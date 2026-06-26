@@ -169,14 +169,43 @@ public class SituationModel
     private OllamaClient synthClient = null;     // lazy; only the loop thread touches the reference
     private long nextSynthAtMs = System.currentTimeMillis( ) + SYNTH_INITIAL_DELAY_MS; // loop thread only
 
+    // ── Relationship journal: a persisted, dated log of what the user did each day, so the
+    //    companion accumulates a sense of the user's *week*, not just the current moment. One
+    //    line per day (top apps + the day's synthesized narrative); a compact multi-day digest
+    //    is injected into direct-reply prompts (Mascot.buildSystemPrompt) for "you've been deep
+    //    in that all week" / "third late night" callbacks. Loop-thread-owned; the digest is
+    //    published to a volatile string read cross-thread by recentDaysDigest(). LOCAL ONLY —
+    //    relationship_journal.txt lists the user's activity, so it is scrubbed from public bundles.
+    private static final int  JOURNAL_DAYS        = 14;       // days retained on disk
+    private static final int  JOURNAL_DIGEST_DAYS = 6;        // days surfaced in the prompt digest
+    private static final long JOURNAL_PERSIST_MS  = 300_000;  // rewrite today's entry at most this often
+    private static final java.nio.file.Path JOURNAL_PATH =
+        java.nio.file.Paths.get( "relationship_journal.txt" );   // next to the JAR, like chat.log
+    private final java.util.LinkedHashMap<Long,String> journal = new java.util.LinkedHashMap<>(); // epochDay -> entry
+    private final java.util.Map<String,Long> dayAppMs = new java.util.HashMap<>();  // app -> foreground ms today
+    private String  dayLastSummary  = "";
+    private boolean daySawLateNight = false;
+    private long    journalDay      = -1;   // epoch day the live accumulators belong to
+    private long    lastJournalPersistMs = 0;
+    private static volatile String journalDigest = "";   // published digest, read by recentDaysDigest()
+
     private SituationModel( ) { }
 
     private void start( )
     {
+        loadJournal( );
         Thread t = new Thread( this::loop, "SituationModel" );
         t.setDaemon( true );
         t.setPriority( Thread.MIN_PRIORITY );
         t.start( );
+    }
+
+    /** The relationship-journal digest (last few days of the user's activity) as a prompt block,
+     *  or "" when empty/disabled. Static + volatile-backed so any mascot thread can read it. */
+    public static String recentDaysDigest( )
+    {
+        final SituationModel m = instance;
+        return ( m == null ) ? "" : journalDigest;
     }
 
     /** Current fused situation snapshot. Never null. */
@@ -323,9 +352,147 @@ public class SituationModel
                 + ( notable.isEmpty( ) ? "" : " notable=" + notable ) + " salience=" + fmt( salience ) );
         }
 
+        accumulateJournal( now, app, idle, lateNight );
+
         if( cur != null ) prevApp = cur.app;
         prevAudioPlaying = audioPlaying;
         prevState        = state;
+    }
+
+    // ── Relationship journal (loop-thread only) ─────────────────────────────────
+
+    private boolean journalEnabled( )
+    {
+        return Boolean.parseBoolean( Main.getInstance( ).getProperties( )
+            .getProperty( "RelationshipJournalEnabled", "true" ) );
+    }
+
+    /** Accumulate today's activity and, on a day boundary or persist interval, flush to disk. */
+    private void accumulateJournal( long now, String app, boolean idle, boolean lateNight )
+    {
+        if( !journalEnabled( ) ) return;
+        final long today = java.time.LocalDate.now( ).toEpochDay( );
+        if( journalDay == -1 )
+            journalDay = today;
+        else if( today != journalDay )
+        {
+            persistJournal( );                 // flush the day that just ended
+            dayAppMs.clear( );
+            dayLastSummary  = "";
+            daySawLateNight = false;
+            journalDay      = today;
+        }
+        if( !idle && !app.equals( "(none)" ) )
+            dayAppMs.merge( app, SAMPLE_MS, Long::sum );   // real foreground time, idle excluded
+        if( !synthSummary.isEmpty( ) ) dayLastSummary = synthSummary;
+        if( lateNight ) daySawLateNight = true;
+
+        if( now - lastJournalPersistMs >= JOURNAL_PERSIST_MS )
+            persistJournal( );
+    }
+
+    /** Upsert today's entry into the journal, trim to JOURNAL_DAYS, write the file, republish digest. */
+    private void persistJournal( )
+    {
+        lastJournalPersistMs = System.currentTimeMillis( );
+        if( journalDay < 0 ) return;
+        final String entry = buildDayEntry( );
+        if( entry.isEmpty( ) ) return;
+        journal.put( journalDay, entry );
+        while( journal.size( ) > JOURNAL_DAYS )
+            journal.remove( journal.keySet( ).iterator( ).next( ) );  // insertion order ~ ascending epoch day
+        writeJournalFile( );
+        rebuildDigest( );
+    }
+
+    /** Compose today's one-line entry: top apps by foreground time + the day's narrative + late flag. */
+    private String buildDayEntry( )
+    {
+        final java.util.List<java.util.Map.Entry<String,Long>> top =
+            new java.util.ArrayList<>( dayAppMs.entrySet( ) );
+        top.sort( ( a, b ) -> Long.compare( b.getValue( ), a.getValue( ) ) );
+        final StringBuilder apps = new StringBuilder( );
+        for( int i = 0; i < top.size( ) && i < 3; i++ )
+        {
+            if( apps.length( ) > 0 ) apps.append( ", " );
+            final double h = top.get( i ).getValue( ) / 3_600_000.0;
+            apps.append( top.get( i ).getKey( ) ).append( ' ' )
+                .append( h >= 1 ? String.format( "%.1fh", h ) : ( Math.round( h * 60 ) + "m" ) );
+        }
+        final StringBuilder sb = new StringBuilder( apps );
+        if( !dayLastSummary.isEmpty( ) )
+        {
+            if( sb.length( ) > 0 ) sb.append( " — " );
+            sb.append( dayLastSummary );
+        }
+        if( daySawLateNight ) sb.append( " (up late)" );
+        return sb.toString( ).trim( );
+    }
+
+    private void writeJournalFile( )
+    {
+        try
+        {
+            final StringBuilder sb = new StringBuilder( );
+            for( java.util.Map.Entry<Long,String> e : journal.entrySet( ) )
+                sb.append( e.getKey( ) ).append( '|' )
+                  .append( java.time.LocalDate.ofEpochDay( e.getKey( ) ) ).append( '|' )
+                  .append( e.getValue( ).replace( '\n', ' ' ).replace( '\r', ' ' ) ).append( '\n' );
+            java.nio.file.Files.write( JOURNAL_PATH,
+                sb.toString( ).getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
+        }
+        catch( Exception e ) { log.fine( "[Journal] write failed: " + e.getMessage( ) ); }
+    }
+
+    private void loadJournal( )
+    {
+        try
+        {
+            if( !java.nio.file.Files.exists( JOURNAL_PATH ) ) return;
+            final java.util.List<String> lines = java.nio.file.Files.readAllLines(
+                JOURNAL_PATH, java.nio.charset.StandardCharsets.UTF_8 );
+            // Sort by epoch-day so LinkedHashMap insertion order is ascending (trim removes oldest).
+            lines.sort( ( a, b ) ->
+            {
+                try { return Long.compare( Long.parseLong( a.split( "\\|", 2 )[0].trim( ) ),
+                                           Long.parseLong( b.split( "\\|", 2 )[0].trim( ) ) ); }
+                catch( Exception e ) { return 0; }
+            } );
+            for( String line : lines )
+            {
+                final String[] parts = line.split( "\\|", 3 );
+                if( parts.length < 3 ) continue;
+                try { journal.put( Long.parseLong( parts[0].trim( ) ), parts[2] ); }
+                catch( NumberFormatException ignored ) { }
+            }
+            while( journal.size( ) > JOURNAL_DAYS )
+                journal.remove( journal.keySet( ).iterator( ).next( ) );
+            rebuildDigest( );
+        }
+        catch( Exception e ) { log.fine( "[Journal] load failed: " + e.getMessage( ) ); }
+    }
+
+    /** Republish the volatile digest: the last JOURNAL_DIGEST_DAYS entries, weekday-labeled. */
+    private void rebuildDigest( )
+    {
+        if( journal.isEmpty( ) ) { journalDigest = ""; return; }
+        final java.util.List<Long> days = new java.util.ArrayList<>( journal.keySet( ) );
+        java.util.Collections.sort( days );
+        final long today = java.time.LocalDate.now( ).toEpochDay( );
+        final int from = Math.max( 0, days.size( ) - JOURNAL_DIGEST_DAYS );
+        final StringBuilder sb = new StringBuilder(
+            "\n\n--- RECENT DAYS (the user's activity lately — reference naturally if relevant, never list back) ---" );
+        for( int i = from; i < days.size( ); i++ )
+        {
+            final long d = days.get( i );
+            final String label = ( d == today ) ? "Today"
+                : ( d == today - 1 ) ? "Yesterday"
+                : java.time.LocalDate.ofEpochDay( d ).getDayOfWeek( )
+                    .getDisplayName( java.time.format.TextStyle.SHORT, java.util.Locale.getDefault( ) );
+            sb.append( "\n- " ).append( label ).append( ": " ).append( journal.get( d ) );
+        }
+        sb.append( "\n--- END RECENT DAYS ---" );
+        journalDigest = sb.toString( );
     }
 
     private String classify( boolean idle, int switches, boolean lateNight,
