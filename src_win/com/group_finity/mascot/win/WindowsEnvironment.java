@@ -28,9 +28,10 @@ import java.util.logging.*;
  *
  * PERFORMANCE OPTIMIZATIONS:
  *
- *  1. Shared EnumWindows scan: Manager.tick() calls WindowsEnvironment.beginTick() ONCE
- *     before the mascot loop. All mascots read from that snapshot instead of each running
- *     their own scan. 12 mascots → 1 EnumWindows/tick instead of 12.
+ *  1. Shared EnumWindows scan on a background WindowScanner daemon (decoupled from the
+ *     tick, June 2026): one scan publishes an immutable snapshot all mascots read, instead
+ *     of each running their own scan (12 mascots → 1 EnumWindows). Off-tick, so a slow scan
+ *     under load (CPU spike + window churn) can't stall rendering — mascots read ≤~40ms-stale.
  *
  *  2. Per-window work (DwmGetWindowAttribute, IsZoomed, IsIconic, GetWindowTextW,
  *     GetWindowLongW) done once per window per tick in the shared scan, not per mascot.
@@ -69,14 +70,29 @@ public class WindowsEnvironment extends Environment
 
     private enum IEResult { INVALID, NOT_IE, IE_OUT_OF_BOUNDS, IE }
 
-    // ── Shared scan snapshot (written once per tick by beginTick) ─────────────
-    // All fields are written before sharedHandles so readers can use sharedHandles
-    // as a publication guard: if sharedHandles is non-null the rest are ready.
+    // ── Shared scan snapshot ──────────────────────────────────────────────────
+    // Decoupled from the tick (June 2026): a background WindowScanner daemon runs the
+    // EnumWindows walk on its own cadence and publishes an IMMUTABLE Snapshot via the
+    // single volatile below, so a slow scan (CPU spike + window churn) can never delay
+    // the animation tick. Mascots read snapshot once into a local on the manager thread —
+    // four parallel lists captured atomically, so a mid-tick republish can't tear them.
+    private static final class Snapshot
+    {
+        final List<Pointer>   handles;
+        final List<Rectangle> rects;
+        final List<IEResult>  viability;
+        final List<Integer>   exStyles;
+        Snapshot( List<Pointer> h, List<Rectangle> r, List<IEResult> v, List<Integer> e )
+        { handles = h; rects = r; viability = v; exStyles = e; }
+        static final Snapshot EMPTY = new Snapshot(
+            java.util.Collections.<Pointer>emptyList(),   java.util.Collections.<Rectangle>emptyList(),
+            java.util.Collections.<IEResult>emptyList(),  java.util.Collections.<Integer>emptyList() );
+    }
+    private static volatile Snapshot snapshot = Snapshot.EMPTY;
 
-    private static List<Pointer>   sharedHandles   = new ArrayList<>( );
-    private static List<Rectangle> sharedRects     = new ArrayList<>( );
-    private static List<IEResult>  sharedViability = new ArrayList<>( );
-    private static List<Integer>   sharedExStyles  = new ArrayList<>( );
+    // Background scanner. Started idempotently from Manager.tick via ensureScanner().
+    private static volatile boolean scannerStarted = false;
+    private static final long SCAN_INTERVAL_MS = 40;   // ~25Hz; self-paces slower when a scan is slow
 
     /**
      * Set of monitor rectangles (rcMonitor bounds) that have a fullscreen
@@ -91,17 +107,50 @@ public class WindowsEnvironment extends Environment
     private static final RECT            reuseIn    = new RECT( );
     private static final LongByReference reuseFlags = new LongByReference( );
 
-    /**
-     * Called ONCE by Manager.tick() at the top of each tick, before the mascot loop.
-     * Runs the single shared EnumWindows scan for this tick.
-     */
-    /** Nanoseconds spent in the raw EnumWindows native walk on the last beginTick().
-     *  Read by Manager's tick watchdog to split envScan into native-enumeration cost
-     *  (scales with open-window count) vs. the fullscreen/video-area post-processing
-     *  remainder. Single writer (Manager tick thread), benign read elsewhere. */
+    /** Nanoseconds spent in the raw EnumWindows native walk on the last scan.
+     *  Read by Manager's tick watchdog (informational now that the scan is off-tick).
+     *  Single writer (the scanner thread), benign read elsewhere. */
     public static volatile long lastEnumWindowsNs = 0L;
 
-    public static void beginTick( )
+    /**
+     * Idempotent: start the background window-scanner daemon. Called every tick from
+     * Manager (cheap volatile check after the first). The first call runs one scan
+     * synchronously so the very first tick already has a populated snapshot, then hands
+     * off to the daemon. Decouples the EnumWindows walk from the animation tick — a slow
+     * scan under load no longer stalls rendering; mascots just read a ≤~40ms-stale snapshot.
+     */
+    public static void ensureScanner( )
+    {
+        if( scannerStarted ) return;
+        startScanner( );
+    }
+
+    private static synchronized void startScanner( )
+    {
+        if( scannerStarted ) return;
+        try { runScan( ); } catch( Throwable t ) { /* best-effort first populate */ }
+        final Thread t = new Thread( WindowsEnvironment::scanLoop, "WindowScanner" );
+        t.setDaemon( true );
+        t.start( );
+        scannerStarted = true;
+    }
+
+    private static void scanLoop( )
+    {
+        while( true )
+        {
+            try { runScan( ); }
+            catch( Throwable th ) { log.log( Level.FINE, "window scan error", th ); }
+            // Fixed pause between scans → self-pacing: a 200ms scan under load simply
+            // yields a lower scan rate that tick, never a stalled tick.
+            try { Thread.sleep( SCAN_INTERVAL_MS ); }
+            catch( InterruptedException e ) { Thread.currentThread( ).interrupt( ); return; }
+        }
+    }
+
+    /** The shared EnumWindows scan. Runs only on the scanner thread (and once, synchronously,
+     *  on first ensureScanner()), so its reusable native structs stay single-threaded. */
+    private static void runScan( )
     {
         final List<Pointer>   handles   = new ArrayList<>( 64 );
         final List<Rectangle> rects     = new ArrayList<>( 64 );
@@ -229,11 +278,9 @@ public class WindowsEnvironment extends Environment
             }
         }
 
-        // Publish — all lists written before sharedHandles (the guard)
-        sharedRects     = rects;
-        sharedViability = viability;
-        sharedExStyles  = exStyles;
-        sharedHandles   = handles;
+        // Publish atomically — one volatile write makes all four lists visible together,
+        // so a reader on the manager thread can never see a torn/mismatched set.
+        snapshot = new Snapshot( handles, rects, viability, exStyles );
     }
 
     // ── isIE / viability ─────────────────────────────────────────────────────
@@ -468,10 +515,11 @@ public class WindowsEnvironment extends Environment
      */
     private Pointer findNearestIEFromSnapshot( final Point anchor )
     {
-        final List<Pointer>   handles   = sharedHandles;
-        final List<Rectangle> rects     = sharedRects;
-        final List<IEResult>  viability = sharedViability;
-        final List<Integer>   exStyles  = sharedExStyles;
+        final Snapshot        snap      = snapshot;   // one volatile read — consistent set
+        final List<Pointer>   handles   = snap.handles;
+        final List<Rectangle> rects     = snap.rects;
+        final List<IEResult>  viability = snap.viability;
+        final List<Integer>   exStyles  = snap.exStyles;
 
         Rectangle mascotScreen = null;
         for( Rectangle sr : screenRects.values( ) )
@@ -607,12 +655,12 @@ public class WindowsEnvironment extends Environment
             Rectangle r;
             if( SENTINEL.equals( activeIEobject ) )
             {
-                // Find the matching rect from sharedRects
                 // Find the synthetic rect that matches the selected sentinel
                 // by finding the nearest one to mascotAnchor (mirrors findNearest logic)
                 r = null;
-                List<com.sun.jna.Pointer> h = sharedHandles;
-                List<Rectangle>           rr = sharedRects;
+                final Snapshot            snap = snapshot;   // one volatile read — h and rr stay paired
+                List<com.sun.jna.Pointer> h    = snap.handles;
+                List<Rectangle>           rr   = snap.rects;
                 double bestDist = Double.MAX_VALUE;
                 for( int i = 0; i < h.size(); i++ ) {
                     if( !SENTINEL.equals( h.get(i) ) ) continue;
