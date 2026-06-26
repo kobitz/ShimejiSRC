@@ -115,6 +115,13 @@ public class Mascot
     private int lastBaseImageHeight = -1;
     private int lastBaseImageWidth  = -1;
 
+    // Render dirty-check: the image + bounds last composited to the layered window.
+    // apply() skips the UpdateLayeredWindow/setBounds when nothing changed, so a mascot
+    // standing still doesn't re-composite its window 25x/sec (the per-tick render is the
+    // dominant TickWatch cost and what balloons under LLM GPU/CPU contention).
+    private MascotImage    lastAppliedImage  = null;
+    private java.awt.Rectangle lastAppliedBounds = null;
+
     // Raw (unscaled) anchor from the current pose's ImageAnchor attribute.
     // Set by Pose.next() each frame. Used by apply() and getBounds() to compute
     // screen-pixel cx/cy without baking the anchor into the ImagePair cache.
@@ -3600,35 +3607,55 @@ public class Mascot
                     lastDisplayScale = 0.0;
                 }
 
-                // Set Images — apply tint overlay if active
-                if( tintColor != null && tintCurrentOpacity > 0.001f )
+                final boolean tintActive = tintColor != null && tintCurrentOpacity > 0.001f;
+                final boolean visible    = getWindow().asComponent().isVisible();
+
+                // Dirty-check: when this is the SAME frame at the SAME position as last apply
+                // (and no animated tint is overlaying it), the layered window already shows
+                // exactly this — re-running UpdateLayeredWindow/setBounds is pure waste. Skipping
+                // it for the many static mascots is what removes the per-tick render pile-up.
+                // (Tint is sensor-animated, so a tinted mascot must always re-composite.)
+                final boolean unchanged = !tintActive && visible
+                    && displayImage == lastAppliedImage
+                    && bounds.equals( lastAppliedBounds );
+
+                if( !unchanged )
                 {
-                    java.awt.image.BufferedImage src = displayImage.getBufferedImage( );
-                    if( src != null )
+                    // Set Images — apply tint overlay if active
+                    if( tintActive )
                     {
-                        applyTintToScratch( src );
-                        getWindow( ).setImage( tintScratchNative );
+                        java.awt.image.BufferedImage src = displayImage.getBufferedImage( );
+                        if( src != null )
+                        {
+                            applyTintToScratch( src );
+                            getWindow( ).setImage( tintScratchNative );
+                        }
+                        else
+                        {
+                            getWindow( ).setImage( displayImage.getImage( ) );
+                        }
                     }
                     else
                     {
                         getWindow( ).setImage( displayImage.getImage( ) );
                     }
-                }
-                else
-                {
-                    getWindow( ).setImage( displayImage.getImage( ) );
-                }
 
-                // Display
-                if (!getWindow().asComponent().isVisible())
-                {
-                    getWindow().asComponent().setVisible(true);
-                }
+                    // Display
+                    if (!visible)
+                    {
+                        getWindow().asComponent().setVisible(true);
+                    }
 
-                // Reposition and redraw atomically — prevents one-frame glitch when ImageAnchor changes.
-                // setBounds is called after so the Swing component stays in sync for layout/bounds queries.
-                getWindow().updateImage(bounds);
-                getWindow().asComponent().setBounds(bounds);
+                    // Reposition and redraw atomically — prevents one-frame glitch when ImageAnchor changes.
+                    // setBounds is called after so the Swing component stays in sync for layout/bounds queries.
+                    getWindow().updateImage(bounds);
+                    getWindow().asComponent().setBounds(bounds);
+
+                    // Remember what we composited. A tinted frame is never cached (it animates
+                    // every tick), so the next tick always re-composites it.
+                    lastAppliedImage  = tintActive ? null : displayImage;
+                    lastAppliedBounds = bounds;
+                }
             }
             else
             {
