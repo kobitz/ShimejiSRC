@@ -312,6 +312,35 @@ public class MascotEnvironment
     public double getGpuLoad( )      { return CpuTempMonitor.getInstance( ).getGpuLoad( );      }
     public double getBatteryLevel( ) { return CpuTempMonitor.getInstance( ).getBatteryLevel( ); }
 
+    /**
+     * Generic settings.properties accessors for XML conditions. Lets any mascot
+     * read a tunable value straight from settings.properties (live, every tick)
+     * without adding Java code per knob. Call them as functions from a script
+     * expression, passing the property key and a default for when it's absent:
+     *
+     *   #{mascot.environment.setting('CampfireLitTemp', 75)}   -- a number
+     *   #{mascot.environment.settingText('SomeKey', 'idle')}   -- a string
+     *
+     * The campfire transform temps (CampfireLitTemp=75, CampfireBlueTemp=80) are
+     * the first users; the keys live in conf/settings.properties.
+     */
+    public double setting( final String key, final double fallback )
+    {
+        try
+        {
+            final String v = Main.getInstance( ).getProperties( ).getProperty( key );
+            if( v != null && !v.isBlank( ) ) return Double.parseDouble( v.trim( ) );
+        }
+        catch( final Exception ignored ) { }
+        return fallback;
+    }
+
+    public String settingText( final String key, final String fallback )
+    {
+        final String v = Main.getInstance( ).getProperties( ).getProperty( key );
+        return ( v != null && !v.isBlank( ) ) ? v.trim( ) : fallback;
+    }
+
     public double getRamLoad( )
     {
         try
