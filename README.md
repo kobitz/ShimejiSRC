@@ -43,6 +43,14 @@ RIGHT=Mario:MoveRight!hold
 
 **Two files feed the same system.** The global `conf/hotkeys.properties` applies to every active mascot (or one, via the `ImageSet:Behavior` prefix). A per-mascot `img/<name>/conf/hotkeys.properties` is scoped to that character automatically — write **bare** behavior names, no prefix — and **overrides the global per key**: combos it defines win for that mascot, while combos it leaves out still inherit from the global file. Lines beginning with `#` are comments.
 
+For example, `img/Frieren/conf/hotkeys.properties`:
+
+```
+F2=SitDown
+```
+
+makes only Frieren sit on `F2`, regardless of what the global file binds `F2` to — and Frieren still picks up every other global combo.
+
 ## Web video (browser extension)
 
 A bundled Firefox extension (`shimeji-video-tracker.xpi`) lets mascots treat web videos as physical surfaces. The extension watches for video elements on a page (YouTube, Twitch, and the like) and reports each one's on-screen rectangle to a small HTTP server the app runs locally on `127.0.0.1:41221`. The engine treats those rectangles the same way it treats window edges — so a mascot can sit on, walk along, and climb the borders of a video playing in your browser, and it knows which site the video is on. The extension also reports when a tab enters or exits fullscreen, so mascots yield to fullscreen video.
