@@ -356,6 +356,7 @@ public class Configuration
                 node.getName( ).equals( schema.getString( "VoiceTrigger" ) ) ||
                 node.getName( ).equals( schema.getString( "SpeechRule" ) ) ||
                 node.getName( ).equals( schema.getString( "ThirdPersonRewrite" ) ) ||
+                node.getName( ).equals( schema.getString( "ConsoleReadout" ) ) ||
                 node.getName( ).equals( schema.getString( "PersonalityBrief" ) ) )
             {
                 information.put( node.getName( ), node.getText( ) );

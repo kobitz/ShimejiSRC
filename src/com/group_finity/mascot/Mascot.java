@@ -402,8 +402,9 @@ public class Mascot
         // instance across all mascots (idempotent). LLM-free: only samples + logs.
         if( assistantMode ) com.group_finity.mascot.assistant.SituationModel.ensureStarted();
 
-        // 2B alone gets a live console/log readout projected ahead of her.
-        if( assistantMode && "2B".equals( getImageSet() ) )
+        // Mascots flagged for it get a live console/log readout projected ahead of
+        // them (2B by default; opt-in for any via <ConsoleReadout>true</ConsoleReadout>).
+        if( assistantMode && wantsConsoleReadout() )
             consoleReadout = new com.group_finity.mascot.assistant.ConsoleReadout( this );
 
         // Always on top — global setting AND per-imageset override, both default true
@@ -1130,12 +1131,13 @@ public class Mascot
                     assistantBubble = null;
                     timerBubble     = null;
                 }
-                // 2B's console readout follows assistant mode on/off.
+                // The console readout follows assistant mode on/off (for any mascot
+                // that wants one — see wantsConsoleReadout()).
                 if( !assistantMode )
                 {
                     if( consoleReadout != null ) { consoleReadout.dispose(); consoleReadout = null; }
                 }
-                else if( consoleReadout == null && "2B".equals( getImageSet() ) )
+                else if( consoleReadout == null && wantsConsoleReadout() )
                 {
                     consoleReadout = new com.group_finity.mascot.assistant.ConsoleReadout( Mascot.this );
                 }
@@ -1490,6 +1492,28 @@ public class Mascot
         if( "Paimon".equals( name ) )
             return rewriteFirstPerson( s, name );
         return s;
+    }
+
+    /**
+     * Whether this mascot should get a live {@link com.group_finity.mascot.assistant.ConsoleReadout}
+     * (the faint console/log stream projected ahead of it). Opt-in per image set via
+     * {@code <ConsoleReadout>true</ConsoleReadout>} in its {@code <Information>} block;
+     * when the flag is present it wins (true OR false), so a mascot can both enable it
+     * and 2B can disable it. When absent, defaults to 2B alone (its original home) so
+     * existing setups are unchanged. Mirrors the ThirdPersonRewrite XML-flag-with-fallback
+     * shape above.
+     */
+    private boolean wantsConsoleReadout( )
+    {
+        final com.group_finity.mascot.config.Configuration cfg =
+            Main.getInstance( ).getConfiguration( getImageSet( ) );
+        if( cfg != null )
+        {
+            final String flag = cfg.getInformation( "ConsoleReadout" );
+            if( flag != null && !flag.isBlank( ) )
+                return "true".equalsIgnoreCase( flag.trim( ) );
+        }
+        return "2B".equals( getImageSet( ) );   // default home when unspecified
     }
 
     /**
