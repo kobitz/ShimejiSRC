@@ -1479,7 +1479,9 @@ public class Mascot
         final String name = getImageSet( );
         // Strip "Name: " self-prefix the model occasionally echoes
         String s = text.startsWith( name + ": " ) ? text.substring( name.length() + 2 ) : text;
-        // Check XML flag first; fall through to per-name hardcodes as backup.
+        // Purely config-driven: opt in with <ThirdPersonRewrite>true</ThirdPersonRewrite>
+        // in the mascot's <Information> block (Paimon carries this in her own XML). No
+        // mascot name is hardcoded here — the rule lives with the mascot.
         final com.group_finity.mascot.config.Configuration cfg =
             Main.getInstance( ).getConfiguration( name );
         if( cfg != null )
@@ -1488,32 +1490,23 @@ public class Mascot
             if( "true".equalsIgnoreCase( flag ) )
                 return rewriteFirstPerson( s, name );
         }
-        // Hardcoded fallback so this works even if config lookup fails.
-        if( "Paimon".equals( name ) )
-            return rewriteFirstPerson( s, name );
         return s;
     }
 
     /**
      * Whether this mascot should get a live {@link com.group_finity.mascot.assistant.ConsoleReadout}
-     * (the faint console/log stream projected ahead of it). Opt-in per image set via
-     * {@code <ConsoleReadout>true</ConsoleReadout>} in its {@code <Information>} block;
-     * when the flag is present it wins (true OR false), so a mascot can both enable it
-     * and 2B can disable it. When absent, defaults to 2B alone (its original home) so
-     * existing setups are unchanged. Mirrors the ThirdPersonRewrite XML-flag-with-fallback
-     * shape above.
+     * (the faint console/log stream projected ahead of it). Purely config-driven: opt in per
+     * image set with {@code <ConsoleReadout>true</ConsoleReadout>} in the {@code <Information>}
+     * block (2B carries this in its own XML). No mascot is hardcoded here — the rule lives with
+     * the mascot, so adding the readout to any character is an XML edit, never a code change.
      */
     private boolean wantsConsoleReadout( )
     {
         final com.group_finity.mascot.config.Configuration cfg =
             Main.getInstance( ).getConfiguration( getImageSet( ) );
-        if( cfg != null )
-        {
-            final String flag = cfg.getInformation( "ConsoleReadout" );
-            if( flag != null && !flag.isBlank( ) )
-                return "true".equalsIgnoreCase( flag.trim( ) );
-        }
-        return "2B".equals( getImageSet( ) );   // default home when unspecified
+        if( cfg == null ) return false;
+        final String flag = cfg.getInformation( "ConsoleReadout" );
+        return flag != null && "true".equalsIgnoreCase( flag.trim( ) );
     }
 
     /**
