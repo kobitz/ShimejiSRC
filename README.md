@@ -76,7 +76,7 @@ Each mascot is just a folder under `img/<name>/` holding its sprite PNGs and the
 
 ## Current cast
 
-Hornet (Hollow Knight), Holo (Spice and Wolf), Paimon (Genshin Impact), 2B (NieR: Automata), Claude (Anthropic), plus an ambient ecosystem (Mosscreep/Mossfly colonies that Hornet hunts, CPU-reactive campfires). Each has a hand-tuned personality, speech rules, and voice trigger.
+Hornet (Hollow Knight), Holo (Spice and Wolf), Paimon (Genshin Impact), 2B (NieR: Automata), plus an ambient ecosystem (Mosscreep/Mossfly colonies that Hornet hunts, CPU-reactive campfires). Each has a hand-tuned personality, speech rules, and voice trigger.
 
 ## Requirements
 
