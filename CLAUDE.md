@@ -56,7 +56,7 @@ Public repo: **`github.com/kobitz/ShimejiSRC`**. The runnable app ships as a **G
 
 XML-driven: `conf/actions.xml` + `conf/behaviors.xml` (per-mascot overrides in `img/[name]/conf/`). Supports English and Japanese tag names. `${CONSTANT}` substitution.
 
-- **`<AnimationTemplate>`**: Reusable frame list. Actions reference with `<Animation Template="X" ImageAnchor="48,128" Velocity="-2,0" />` — per-action attributes override template values. Used by Paimon (~40 float variants from one template). Schema keys: `AnimationTemplate`, `Template`.
+- **`<AnimationTemplate>`**: Reusable frame list, defined as `<AnimationTemplate Name="X">…poses…</AnimationTemplate>`. Actions reference it with `<Animation Template="X" ImageAnchor="48,128" Velocity="-2,0" Duration="…" />` — the `ImageAnchor`/`Velocity`/`Duration` on the `<Animation>` override the template's per-pose values for that use (`AnimationBuilder` expands the template poses, passing those three as overrides; other pose attributes come from the template). Paimon is the heavy user: 3 templates (`PaimonFloat`/`PaimonFloatFast`/`PaimonFloatB`) reused across ~21 `<Animation Template=…>` instances in her float actions. Schema keys: `AnimationTemplate`, `Template`.
 
 ### Scripting
 
