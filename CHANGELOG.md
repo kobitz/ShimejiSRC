@@ -2,12 +2,18 @@
 
 Per-version release history for the Shimeji AI fork. The runnable app ships as a GitHub Release asset (`Shimeji-Install-Windows.zip`) at **github.com/kobitz/ShimejiSRC**; the README is intentionally version-agnostic, so this file + the GitHub release notes are the changelog of record. Release *mechanics* (how to cut one) live in `CLAUDE.md` → Distribution / Releases.
 
-## Unreleased (on `main`, ahead of v1.8)
+## v1.9 — June 26 2026
+
+The deepest companion update since the AI layer, plus two architectural performance fixes.
 
 - **Cross-signal fusion completed** — the shared `SituationModel` read is now injected into **every** unprompted reaction (peer, audio, vision, user-speech), not just direct replies + spontaneous. One shared `Mascot.situationBackground()` helper appends a labeled background-only clause so each reaction is informed by the whole picture of what the user is doing, not just its own trigger.
 - **Relationship layer (first cut)** — (1) a shared, persisted **daily-activity journal** (`relationship_journal.txt`, 14 days) in `SituationModel`, with a recent-days digest injected into direct replies so the companion can reference the arc of the week ("you've been deep in that all week"); (2) per-mascot **relationship age** (`MascotMemory.firstSeenEpochDay`) — the memory block now carries a "you and this user go back N days (M exchanges)" line so depth accumulates. New setting `RelationshipJournalEnabled` (default true).
-- **ConsoleReadout / ThirdPersonRewrite de-bespoked** — the 2B console readout is now an opt-in `<ConsoleReadout>` `<Information>` flag (2B carries it in its own XML); the Paimon third-person rewrite likewise reads its own `<ThirdPersonRewrite>` tag. No mascot name is hardcoded in Java for either.
+- **Performance — render dirty-check** — `Mascot.apply()` skips the layered-window composite when a mascot's frame + position are unchanged, so still mascots stop re-compositing 25×/sec. Removes the per-tick render pile-up that ballooned under GPU/CPU contention (e.g. an AI generation burst).
+- **Performance — decoupled window scan** — the per-tick `EnumWindows` walk now runs on its own `WindowScanner` daemon (immutable snapshot via one `volatile`), so a slow scan under a CPU spike + window churn (loading a wall of browser tabs) can never stall the animation tick. Mascots read ≤~40ms-stale window geometry; the scan is off the critical path.
+- **ConsoleReadout / ThirdPersonRewrite de-bespoked** — the 2B console readout is now an opt-in `<ConsoleReadout>` `<Information>` flag (2B carries it in its own XML; new `ConsoleReadout` schema key + whitelist entry); the Paimon third-person rewrite likewise reads its own `<ThirdPersonRewrite>` tag. No mascot name is hardcoded in Java for either.
 - **Mario-family hotkeys** moved from the global `conf/hotkeys.properties` into per-mascot `img/<name>/conf/hotkeys.properties` (Mario, Luigi, Big Mario, Big Luigi).
+- **Claude mascot** removed from the README cast (it was never in the shipped bundle); marked local-only.
+- **Dev tooling:** `memory_auditor.pyw` (repo-only) — audits `chat.log` convergence + `memory.json` health, and can prune memory / repair persona `<SpeechRule>`s. Not shipped in the release bundle.
 
 ## v1.8 — June 25 2026
 

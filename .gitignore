@@ -4,3 +4,5 @@ SensorReader/obj/
 .claude/
 *.log
 *.class
+__pycache__/
+*.pyc
