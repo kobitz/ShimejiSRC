@@ -614,6 +614,28 @@ public class WindowsEnvironment extends Environment
 
     // ── tickForMascot ─────────────────────────────────────────────────────────
 
+    /**
+     * The attached window's current IE-rect from the background snapshot — NO native call, so it
+     * can't block the tick on a hung/unresponsive window. (The per-mascot env-phase stall we saw:
+     * getIERect's GetWindowRect/GetWindowRgn on a frozen window — e.g. a browser tab mid-load —
+     * blocking ~1s on the manager thread, charged to whichever mascot was on that window.) The
+     * shared scan already publishes every visible window's IE-rect ~25Hz, so a lookup is exact and
+     * ≤~40ms stale, consistent with findNearestIEFromSnapshot. Returns null if the window is no
+     * longer in the snapshot (closed/minimized → mascot stops tracking it), matching getIERect's
+     * "window gone" semantics. Fresh Rectangle, so callers can't alias the snapshot's copy.
+     */
+    private static Rectangle rectFromSnapshot( final Pointer hwnd )
+    {
+        if( hwnd == null ) return null;
+        final Snapshot        snap = snapshot;
+        final List<Pointer>   h    = snap.handles;
+        final List<Rectangle> r    = snap.rects;
+        for( int i = 0; i < h.size( ); i++ )
+            if( hwnd.equals( h.get( i ) ) )
+                return new Rectangle( r.get( i ) );
+        return null;
+    }
+
     @Override
     public void tickForMascot( final Point mascotAnchor )
     {
@@ -624,7 +646,7 @@ public class WindowsEnvironment extends Environment
             if( activeIEobject != null )
             {
                 final com.sun.jna.Pointer SEN = com.sun.jna.Pointer.createConstant( -1L );
-                Rectangle r = SEN.equals( activeIEobject ) ? null : getIERect( activeIEobject );
+                Rectangle r = SEN.equals( activeIEobject ) ? null : rectFromSnapshot( activeIEobject );
                 if( r != null )
                 {
                     activeIE.setVisible( r.intersects( getScreen( ).toRectangle( ) ) );
@@ -673,7 +695,7 @@ public class WindowsEnvironment extends Environment
             }
             else
             {
-                r = getIERect( activeIEobject );
+                r = rectFromSnapshot( activeIEobject );
             }
             if( r == null )
             {
