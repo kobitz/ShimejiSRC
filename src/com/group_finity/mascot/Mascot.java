@@ -3637,10 +3637,24 @@ public class Mascot
      * A valid tone is 1-3 words, contains no banned pronouns as the entire value,
      * and contains at least one letter beyond a single word.
      */
-    /** Parse a "Name:tone" or "Name: tone" string and apply it to memory if valid. */
+    /** Parse a "Name:tone" or "Name: tone" string and apply it to memory if valid.
+     *  The model often crams every peer onto ONE line — "PEER_TONE:2B:neutral, Paimon:neutral,
+     *  Hornet:neutral" — so split on commas and process each "Name:tone" segment independently.
+     *  Without this the first peer absorbed the rest of the line as its tone ("neutral,
+     *  paimon:neutral, hornet:neutral"), which slipped past isValidTone's 3-word cap because the
+     *  comma-joined value happens to be exactly 3 whitespace tokens (observed June 2026, Frieren). */
     private void parsePeerToneLine( final String payload,
                                      final com.group_finity.mascot.assistant.MascotMemory memory )
     {
+        if( payload.indexOf( ',' ) >= 0 )
+        {
+            for( final String seg : payload.split( "," ) )
+            {
+                final String s = seg.trim();
+                if( !s.isEmpty() ) parsePeerToneLine( s, memory );
+            }
+            return;
+        }
         final int colon = payload.indexOf( ':' );
         if( colon <= 0 ) return;
         final String peerName = payload.substring( 0, colon ).trim();
@@ -3686,6 +3700,10 @@ public class Mascot
     {
         if( tone == null || tone.isBlank() ) return false;
         final String t = tone.trim().toLowerCase();
+        // A colon or comma never belongs in a real tone phrase ("wary respect") — its presence
+        // means a "Name:tone" pair or a multi-peer list leaked in. Reject outright as a backstop
+        // to the comma-splitting in parsePeerToneLine.
+        if( t.indexOf( ':' ) >= 0 || t.indexOf( ',' ) >= 0 ) return false;
         // Must be at least 2 words OR a single word that's clearly an adjective (>=5 chars)
         final String[] words = t.split( "\\s+" );
         if( words.length == 1 && words[0].length() < 5 ) return false;
