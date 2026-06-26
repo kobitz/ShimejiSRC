@@ -2,6 +2,7 @@ package com.group_finity.mascot.assistant;
 
 import com.group_finity.mascot.Main;
 import com.group_finity.mascot.Mascot;
+import com.group_finity.mascot.win.jna.User32;
 
 import java.awt.Color;
 import java.awt.Font;
@@ -61,6 +62,7 @@ public final class ConsoleReadout
     private float curX = -9999, curY = -9999;
     private final float[] vel = new float[2];          // smoothDamp velocity per axis (x, y)
     private boolean placed = false;
+    private boolean clickThroughApplied = false;       // WS_EX_TRANSPARENT set once peer exists
     private long lastSeenVersion = -1;
     private volatile int maxTextW = Integer.MAX_VALUE;  // width cap (2x sprite), set per tick
 
@@ -218,7 +220,29 @@ public final class ConsoleReadout
         window.setLocation( Math.round( curX ), Math.round( curY ) );
 
         if( !window.isVisible() ) window.setVisible( true );
+        applyClickThrough();   // pass mouse events straight through (idempotent)
         if( contentChanged || alphaMoving ) panel.repaint();
+    }
+
+    /** Make the readout window ignore the mouse (clicks reach whatever is beneath
+     *  it) by adding WS_EX_TRANSPARENT to its extended style. Requires the native
+     *  peer to exist, so it's applied lazily after the window is first shown and
+     *  only once. No-op if the HWND isn't available yet. */
+    private void applyClickThrough()
+    {
+        if( clickThroughApplied ) return;
+        try
+        {
+            final com.sun.jna.Pointer hWnd = com.sun.jna.Native.getComponentPointer( window );
+            if( hWnd == null ) return;   // peer not realised yet — retry next tick
+            final User32 u = User32.INSTANCE;
+            if( u.IsWindow( hWnd ) == 0 ) return;
+            final int ex = u.GetWindowLongW( hWnd, User32.GWL_EXSTYLE );
+            u.SetWindowLongW( hWnd, User32.GWL_EXSTYLE,
+                ex | User32.WS_EX_LAYERED | User32.WS_EX_TRANSPARENT );
+            clickThroughApplied = true;
+        }
+        catch( final Throwable ignored ) { }   // non-Windows / JNA issue — leave clickable
     }
 
     /** Critically-damped spring toward {@code target} (per-axis, no overshoot),

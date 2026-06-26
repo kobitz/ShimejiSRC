@@ -41,6 +41,7 @@ public interface User32 extends StdCallLibrary{
 
 	int WS_MAXIMIZE = 0x01000000;
 	int WS_EX_LAYERED = 0x00080000;
+	int WS_EX_TRANSPARENT = 0x00000020;
 
 	int IsIconic(Pointer hWnd);
 	int IsZoomed(Pointer hWnd);
