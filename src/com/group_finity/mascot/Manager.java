@@ -86,6 +86,19 @@ public class Manager {
 	public static final java.util.concurrent.atomic.AtomicLong globalSyncTick =
 		new java.util.concurrent.atomic.AtomicLong( 0L );
 
+	// ── Adaptive window-enumeration back-off ──────────────────────────────────
+	// The per-tick EnumWindows scan (WindowsEnvironment.beginTick) normally costs a
+	// few ms, but under a CPU spike + window churn (e.g. loading a wall of browser
+	// tabs) its native per-window calls stall — observed up to ~200ms, blowing the
+	// 40ms tick budget. When the LAST scan was that slow, skip the scan for up to
+	// MAX_ENUM_SKIPS ticks and let mascots read the previous window snapshot (window
+	// geometry is fine ~120ms stale). Self-limiting: a forced scan every few ticks
+	// re-measures, so full 25Hz tracking resumes the instant the spike passes.
+	// Normal operation never trips it (a fast scan keeps enumSkips at 0).
+	private static final long SLOW_ENUM_NS   = 30_000_000L;  // last scan >30ms => system thrashing
+	private static final int  MAX_ENUM_SKIPS = 2;            // never skip more than this in a row
+	private int enumSkips = 0;
+
 	private final List<Mascot> mascots = new ArrayList<Mascot>();
 
 	/**
@@ -208,7 +221,18 @@ public class Manager {
 			// Advance global sync counter once per tick for SyncedStay/AffordanceStay phase lock
 			globalSyncTick.incrementAndGet();
 			final long envStartNs = System.nanoTime();
-			com.group_finity.mascot.win.WindowsEnvironment.beginTick();
+			// Adaptive back-off: skip this tick's window scan when the last one was slow
+			// (system thrashing), up to MAX_ENUM_SKIPS in a row. Mascots then read the
+			// previous snapshot — briefly stale window geometry instead of a blown tick.
+			final boolean skipEnum =
+				com.group_finity.mascot.win.WindowsEnvironment.lastEnumWindowsNs > SLOW_ENUM_NS
+				&& enumSkips < MAX_ENUM_SKIPS;
+			if( skipEnum ) {
+				enumSkips++;
+			} else {
+				enumSkips = 0;
+				com.group_finity.mascot.win.WindowsEnvironment.beginTick();
+			}
 			envScanNs = System.nanoTime() - envStartNs;
 
 			// ── Flush add/remove queues ───────────────────────────────────────
