@@ -2587,7 +2587,7 @@ public class Mascot
             };
 
             if( hasScreen )
-                client.generateWithImage( system, prompt, capturedBase64, vModel, audioCb );
+                client.generateWithImage( system, prompt, capturedBase64, vModel, true, audioCb );
             else
                 client.generateDeferrable( system, prompt, audioCb );
         }, "audio-reaction" ).start();
@@ -2866,7 +2866,7 @@ public class Mascot
                     if( b != null ) assistantBubble.showThinking( b );
                 });
 
-                client.generateWithImage( system, prompt, base64, vModel,
+                client.generateWithImage( system, prompt, base64, vModel, true,
                     new OllamaClient.Callback()
                     {
                         @Override public void onResponse( final String raw )

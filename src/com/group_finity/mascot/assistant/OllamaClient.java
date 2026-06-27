@@ -405,36 +405,34 @@ public class OllamaClient
     }
 
     /**
-     * Like {@link #generate} but attaches a base64-encoded image and uses the
-     * specified vision model (e.g. "llava"). Bypasses the queue so the capture
-     * result isn't held behind pending text requests.
+     * Like {@link #generate} but attaches a base64-encoded image and uses the specified
+     * vision model. Routed through the SAME queue as text (June 2026), so vision requests
+     * obey the DISPATCH_INTERVAL_MS spacing instead of bypassing it — one generation at a
+     * time, spaced, whether it's text or vision. {@code deferrable}=false for direct user
+     * screen queries (spaced, but never CPU-gated or dropped); true for unprompted screen
+     * glances (also CPU-gated like the other unprompted reactions). Larger token cap
+     * (MAX_TOKENS*3) for descriptive vision output. {@link sendRequest} already handles the
+     * image + vision-model + keep-alive on the shared worker.
      */
+    public void generateWithImage( final String systemPrompt,
+                                   final String userMessage,
+                                   final String imageBase64,
+                                   final String visionModel,
+                                   final boolean deferrable,
+                                   final Callback callback )
+    {
+        enqueue( new Request( systemPrompt, userMessage, imageBase64, visionModel,
+                              MAX_TOKENS * 3, deferrable, callback ) );
+    }
+
+    /** Back-compat: non-deferrable vision (direct user screen query) — queued + spaced. */
     public void generateWithImage( final String systemPrompt,
                                    final String userMessage,
                                    final String imageBase64,
                                    final String visionModel,
                                    final Callback callback )
     {
-        final Request req = new Request( systemPrompt, userMessage,
-                                         imageBase64, visionModel,
-                                         MAX_TOKENS * 3, callback );
-        // Vision requests go straight to the front — they're always user-initiated
-        // and carry a large payload that shouldn't wait behind queued text calls.
-        final Thread t = new Thread( () ->
-        {
-            try
-            {
-                final String response = sendRequest(
-                    req.system, req.user, req.imageBase64, req.modelOverride, req.maxTokens );
-                req.callback.onResponse( response );
-            }
-            catch( final IOException e )
-            {
-                req.callback.onError( buildFriendlyError( e ) );
-            }
-        }, "ollama-vision-worker" );
-        t.setDaemon( true );
-        t.start();
+        generateWithImage( systemPrompt, userMessage, imageBase64, visionModel, false, callback );
     }
 
     // ── Private ──────────────────────────────────────────────────────────────
