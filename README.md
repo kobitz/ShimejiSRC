@@ -72,7 +72,59 @@ Everything stays on localhost; no page data leaves the machine. Load `shimeji-vi
 
 ## Making your own
 
-Each mascot is just a folder under `img/<name>/` holding its sprite PNGs and the XML that defines how it moves (`conf/actions.xml`, `conf/behaviors.xml`, or per-mascot overrides). Behaviors run on a Behavior→Action→Animation system with Nashorn JavaScript expressions for conditions, durations, and velocities — so you can script when a character climbs, how it reacts to the cursor or to system load, and what it does on screen edges, all without recompiling. Add a `<Personality>` block and it gains the AI assistant layer too.
+Each mascot is a folder under `img/<name>/` containing sprite PNGs and two XML files that define how it moves and speaks. No recompilation required for either.
+
+### Folder structure
+
+```
+img/
+└── YourMascot/
+    ├── conf/
+    │   ├── actions.xml       ← animations and physical behaviors
+    │   ├── behaviors.xml     ← when and how often each behavior fires
+    │   └── hotkeys.properties  ← optional per-mascot keybinds
+    └── *.png                 ← sprite sheets
+```
+
+Sprites are referenced by filename from within `actions.xml`. The engine handles rendering, physics, and window interaction — you only describe what the mascot does and when.
+
+### Movement and behaviors
+
+`actions.xml` defines animations (sequences of frames with velocities and durations) and the actions that play them — walking, climbing, sitting, jumping, and so on. `behaviors.xml` controls the decision layer: which actions run, how frequently, and under what conditions.
+
+Conditions and durations are Nashorn JavaScript expressions, so you can gate behaviors on environment variables like `mascot.environment.ceiling` (is there a ceiling above?) or `mascot.environment.cpuLoad` (current CPU usage). The full variable set is documented in the original `readme.txt` preserved in the repo root.
+
+### Adding the AI layer
+
+Drop a `<Personality>` block inside `<Information>` in `actions.xml`:
+
+```xml
+<Information>
+    <Name>YourMascot</Name>
+    <Personality>You are [character]. [Voice, tone, and behavioral rules.]</Personality>
+    <PersonalityBrief>~30-word essence for quick reactions.</PersonalityBrief>
+</Information>
+```
+
+`<Personality>` is used for direct replies, name-triggered responses, and peer reactions. `<PersonalityBrief>` is used for the lighter spontaneous/audio/vision reactions and cuts the prompt size by ~60–70%; falls back to the full personality if absent.
+
+To suppress unwanted speech patterns, add `<SpeechRule>` tags — injected as the first rule in every prompt and repeated as a final reminder. Write rules as instructions with wrong→right examples, but **never use a full example sentence as the RIGHT case** — the model will adopt it verbatim as a fallback phrase.
+
+```xml
+<SpeechRule>Never start with "Interesting." Wrong: "Interesting. That explains it."
+Right: open with your reaction to the specific detail.</SpeechRule>
+```
+
+Optional tags (all must be present in `loadInformation()`'s whitelist in `Configuration.java` to take effect):
+
+- **`<ThirdPersonRewrite>`** — rewrites first-person pronouns to the mascot's name post-generation (used by Paimon).
+- **`<ConsoleReadout>`** — set `true` to display a live console/log stream projected ahead of the mascot (used by 2B).
+
+### Enabling assistant mode
+
+Once your mascot folder is in place, launch Shimeji, right-click the mascot, and toggle **Assistant Mode** on. Per-character checkboxes let you enable or disable individual reaction types (spontaneous comments, audio reactions, peer reactions, screen glances, voice triggers) independently.
+
+Memory is stored per-mascot in `img/<name>/conf/memory.json` and accumulates automatically. If speech quality degrades over time, wipe `peerExchanges` (→ `[]`) in that file — the `memory_auditor.pyw` dev tool in the repo root automates this audit and prune loop.
 
 ## Current cast
 
