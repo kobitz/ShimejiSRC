@@ -608,7 +608,13 @@ public class OllamaClient
             if( load >= 0 ) idle = ( 100.0 - load ) / 100.0;
         }
         catch( final Exception ignored ) {}
-        final int cores = Runtime.getRuntime().availableProcessors();
+        // Cores actually available to Ollama, not the raw logical count — it's
+        // affinity-restricted away from the cores reserved for Shimeji (see
+        // ProcessPriorityUtil), so a thread count based on the full core
+        // count would oversubscribe its own smaller allotted set.
+        final int totalCores = Runtime.getRuntime().availableProcessors();
+        final int reserved   = com.group_finity.mascot.environment.ProcessPriorityUtil.reservedCoreCount();
+        final int cores       = Math.max( 1, totalCores - reserved );
         return Math.max( 1, (int) Math.round( cores * bucketQuarter( idle ) * cap ) );
     }
 

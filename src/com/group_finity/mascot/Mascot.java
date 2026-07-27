@@ -11,6 +11,10 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionListener;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.ArrayList;
@@ -109,6 +113,10 @@ public class Mascot
     private MascotImage lastScaledImage = null;
     private double lastDisplayScale = 0.0;
     private java.util.LinkedHashMap<MascotImage, com.group_finity.mascot.image.ScalableNativeImage> scalables = null;
+    // Frames still waiting to be rebuilt for the current roundedScale — drained a few
+    // per tick instead of all at once, so one scale-bucket change can't spike apply().
+    private java.util.ArrayDeque<MascotImage> pendingScaleBuild = null;
+    private static final int SCALE_BUILDS_PER_TICK = 2;
     // Source image dimensions (base image at globalScaling).
     // Used by renderCX/renderCY to compute anchor pixel offsets from actual displayed image size
     // instead of raw currentScale, avoiding a mismatch when the cache is stale.
@@ -146,6 +154,44 @@ public class Mascot
     // Scratch buffers for per-frame tint compositing — reused, reallocated only on image size change.
     private java.awt.image.BufferedImage tintScratchBuf = null;
     private com.group_finity.mascot.image.NativeImage tintScratchNative = null;
+
+    // Tint compositing (Java2D draw+fill on tintScratchBuf) is the expensive part of a
+    // tinted mascot's apply() — not the native blit, which is already off-thread. Moved
+    // here for the same reason: don't let one CPU-reactive mascot's re-composite stall
+    // the shared tick loop. Single-flight per mascot; stale requests are dropped, never
+    // queued, so a slow composite can't build a backlog.
+    // Sized off the cores actually reserved for this process (see
+    // ProcessPriorityUtil), not the system-wide core count. Once
+    // reserveCoresForSelf() pins the whole JVM to N cores, every thread in
+    // this process — including this pool — is confined there too; sizing
+    // against availableProcessors() would oversubscribe the real budget and
+    // cause exactly the self-contention this pool was meant to avoid.
+    private static int tintPoolSize()
+    {
+        final int reserved = com.group_finity.mascot.environment.ProcessPriorityUtil.reservedCoreCount();
+        if( reserved <= 0 )
+            return Math.max( 2, Math.min( 4, Runtime.getRuntime().availableProcessors() / 2 ) );
+        // Leave headroom for the tick thread + EDT + GC sharing the same reserved cores.
+        return Math.max( 1, reserved - 1 );
+    }
+
+    private static final ExecutorService TINT_POOL = Executors.newFixedThreadPool(
+        tintPoolSize(),
+        r -> { Thread t = new Thread( r, "mascot-tint" ); t.setDaemon( true ); return t; }
+    );
+
+    private static final class TintRequest {
+        final java.awt.image.BufferedImage src;
+        final java.awt.Color color;
+        final float opacity;
+        final java.awt.Rectangle bounds;
+        TintRequest( java.awt.image.BufferedImage s, java.awt.Color c, float o, java.awt.Rectangle b ) {
+            src = s; color = c; opacity = o; bounds = b;
+        }
+    }
+
+    private final AtomicBoolean tintRenderInFlight = new AtomicBoolean( false );
+    private final AtomicReference<TintRequest> pendingTintRequest = new AtomicReference<>();
 
     // Cached global Scaling setting — mirrors ActionBase.scalingConstant but as a double.
     private static double cachedGlobalScaling = Double.NaN;
@@ -3513,7 +3559,10 @@ public class Mascot
         }
     }
 
-    private void applyTintToScratch( java.awt.image.BufferedImage src )
+    // color/opacity are taken as explicit params (not read from the tintColor/tintCurrentOpacity
+    // fields) because this now runs on a TINT_POOL worker thread while the tick thread may be
+    // concurrently mutating those fields for the next frame — reading them here would race.
+    private void applyTintToScratch( java.awt.image.BufferedImage src, java.awt.Color color, float opacity )
     {
         int w = src.getWidth( );
         int h = src.getHeight( );
@@ -3529,8 +3578,8 @@ public class Mascot
             g.drawImage( src, 0, 0, null );
             g.setComposite( java.awt.AlphaComposite.SrcAtop );
             g.setColor( new java.awt.Color(
-                tintColor.getRed( ), tintColor.getGreen( ), tintColor.getBlue( ),
-                Math.max( 0, Math.min( 255, (int)( tintCurrentOpacity * 255 ) ) ) ) );
+                color.getRed( ), color.getGreen( ), color.getBlue( ),
+                Math.max( 0, Math.min( 255, (int)( opacity * 255 ) ) ) ) );
             g.fillRect( 0, 0, w, h );
         }
         finally
@@ -3538,6 +3587,34 @@ public class Mascot
             g.dispose( );
         }
         tintScratchNative.updatePixels( tintScratchBuf );
+    }
+
+    // Drains queued tint-composite requests for this mascot, one at a time. Single-flight
+    // per mascot (via tintRenderInFlight) so tintScratchBuf/tintScratchNative are never
+    // touched by two threads at once. Only the newest request matters — if the composite
+    // is falling behind, in-between frames are dropped rather than piling up a backlog.
+    private void drainTintQueue()
+    {
+        try
+        {
+            TintRequest req;
+            while ( ( req = pendingTintRequest.getAndSet( null ) ) != null )
+            {
+                applyTintToScratch( req.src, req.color, req.opacity );
+                getWindow().setImage( tintScratchNative );
+                getWindow().updateImage( req.bounds );
+            }
+        }
+        finally
+        {
+            tintRenderInFlight.set( false );
+            // Catch the race where a new request landed after the loop's last check but
+            // before tintRenderInFlight cleared.
+            if ( pendingTintRequest.get() != null && tintRenderInFlight.compareAndSet( false, true ) )
+            {
+                TINT_POOL.submit( this::drainTintQueue );
+            }
+        }
     }
 
     public void apply( )
@@ -3564,15 +3641,25 @@ public class Mascot
                         };
                     }
 
-                    // When rounded scale steps, kick off builds for ALL cached animation frames at
-                    // once. Without this, each frame builds lazily as it first becomes active,
-                    // so frames cycle through different scales for up to one full animation cycle.
+                    // When rounded scale steps, queue every cached frame for rebuild and drain a
+                    // small budget of it each tick, instead of blocking one tick on the whole set.
+                    // Frames not yet rebuilt fall back to lastScaledImage below (stale-but-correct),
+                    // the same path already used while a scale is "still building".
                     double roundedScale = Math.round( currentScale * 10.0 ) / 10.0;
                     if( roundedScale != lastDisplayScale )
                     {
-                        for( com.group_finity.mascot.image.ScalableNativeImage sni : scalables.values() )
-                            sni.get( roundedScale );
+                        pendingScaleBuild = new java.util.ArrayDeque<>( scalables.keySet() );
                         lastDisplayScale = roundedScale;
+                    }
+                    if( pendingScaleBuild != null )
+                    {
+                        for( int i = 0; i < SCALE_BUILDS_PER_TICK && !pendingScaleBuild.isEmpty(); i++ )
+                        {
+                            MascotImage frame = pendingScaleBuild.poll();
+                            com.group_finity.mascot.image.ScalableNativeImage sni = scalables.get( frame );
+                            if( sni != null ) sni.get( roundedScale );
+                        }
+                        if( pendingScaleBuild.isEmpty() ) pendingScaleBuild = null;
                     }
 
                     com.group_finity.mascot.image.ScalableNativeImage scalable =
@@ -3601,6 +3688,7 @@ public class Mascot
                 else
                 {
                     scalables = null;
+                    pendingScaleBuild = null;
                     lastScaledImage = null;
                     lastBaseImageHeight = -1;
                     lastBaseImageWidth  = -1;
@@ -3621,35 +3709,47 @@ public class Mascot
 
                 if( !unchanged )
                 {
+                    // Display visibility toggle stays synchronous — cheap, and shouldn't wait
+                    // on either async path below.
+                    if (!visible)
+                    {
+                        getWindow().asComponent().setVisible(true);
+                    }
+
+                    // Reposition immediately so hit-testing/collision (which reads the Swing
+                    // component's bounds) stays live with the tick loop even though the pixel
+                    // update for a tinted mascot may now lag by up to one composite cycle —
+                    // the same one-cycle tradeoff already accepted for the async blit below.
+                    getWindow().asComponent().setBounds(bounds);
+
                     // Set Images — apply tint overlay if active
                     if( tintActive )
                     {
                         java.awt.image.BufferedImage src = displayImage.getBufferedImage( );
                         if( src != null )
                         {
-                            applyTintToScratch( src );
-                            getWindow( ).setImage( tintScratchNative );
+                            // Tint compositing (Java2D draw+fill) is expensive and was the
+                            // actual bottleneck for CPU/sensor-reactive mascots — moved off
+                            // the tick thread. Snapshot color/opacity now since they're
+                            // mutated on the tick thread and would race if read later on
+                            // the worker.
+                            pendingTintRequest.set( new TintRequest( src, tintColor, tintCurrentOpacity, bounds ) );
+                            if ( tintRenderInFlight.compareAndSet( false, true ) )
+                            {
+                                TINT_POOL.submit( this::drainTintQueue );
+                            }
                         }
                         else
                         {
                             getWindow( ).setImage( displayImage.getImage( ) );
+                            getWindow().updateImage(bounds);
                         }
                     }
                     else
                     {
                         getWindow( ).setImage( displayImage.getImage( ) );
+                        getWindow().updateImage(bounds);
                     }
-
-                    // Display
-                    if (!visible)
-                    {
-                        getWindow().asComponent().setVisible(true);
-                    }
-
-                    // Reposition and redraw atomically — prevents one-frame glitch when ImageAnchor changes.
-                    // setBounds is called after so the Swing component stays in sync for layout/bounds queries.
-                    getWindow().updateImage(bounds);
-                    getWindow().asComponent().setBounds(bounds);
 
                     // Remember what we composited. A tinted frame is never cached (it animates
                     // every tick), so the next tick always re-composites it.

@@ -3,6 +3,10 @@ package com.group_finity.mascot.win;
 import java.awt.Graphics;
 import java.awt.Component;
 import java.awt.Rectangle;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.JWindow;
 
 import com.group_finity.mascot.image.NativeImage;
@@ -131,11 +135,59 @@ class WindowsTranslucentWindow extends JWindow implements TranslucentWindow {
 		this.alpha = alpha;
 	}
 
+	// Shared pool for the native GDI blit (UpdateLayeredWindow etc). Small and
+	// bounded — this work is syscall-bound, not CPU-bound, so a handful of
+	// threads covers even a large mascot population without oversubscribing.
+	// Sized off the cores actually reserved for this process (see
+	// ProcessPriorityUtil), not the system-wide core count — same reasoning
+	// as TINT_POOL in Mascot.java. Both pools share the reserved budget, so
+	// each gets a smaller slice to avoid the two pools alone saturating it.
+	private static int paintPoolSize() {
+		final int reserved = com.group_finity.mascot.environment.ProcessPriorityUtil.reservedCoreCount();
+		if ( reserved <= 0 )
+			return Math.max( 2, Math.min( 4, Runtime.getRuntime().availableProcessors() / 2 ) );
+		return Math.max( 1, reserved - 1 );
+	}
+
+	private static final ExecutorService PAINT_POOL = Executors.newFixedThreadPool(
+		paintPoolSize(),
+		r -> { Thread t = new Thread( r, "mascot-paint" ); t.setDaemon( true ); return t; }
+	);
+
+	private static final class PaintRequest {
+		final Pointer handle; final int alpha; final Rectangle bounds;
+		PaintRequest( Pointer h, int a, Rectangle b ) { handle = h; alpha = a; bounds = b; }
+	}
+
+	private final AtomicBoolean paintInFlight = new AtomicBoolean( false );
+	// Only the newest request matters — if the paint thread falls behind, older
+	// in-between frames are dropped rather than queued, so a slow blit can't
+	// build a backlog. Mirrors the dirty-check idea already used in Mascot.apply().
+	private final AtomicReference<PaintRequest> pendingPaint = new AtomicReference<>();
+
         @Override
 
 	public void updateImage( final java.awt.Rectangle bounds ) {
-		if (getImage() != null) {
-			paint(getImage().getHandle(), getAlpha(), bounds);
+		if (getImage() == null) return;
+		pendingPaint.set( new PaintRequest( getImage().getHandle(), getAlpha(), bounds ) );
+		if ( paintInFlight.compareAndSet( false, true ) ) {
+			PAINT_POOL.submit( this::drainPaintQueue );
+		}
+	}
+
+	private void drainPaintQueue() {
+		try {
+			PaintRequest req;
+			while ( ( req = pendingPaint.getAndSet( null ) ) != null ) {
+				paint( req.handle, req.alpha, req.bounds );
+			}
+		} finally {
+			paintInFlight.set( false );
+			// Catch the race where a new request landed after the loop's last
+			// check but before paintInFlight cleared.
+			if ( pendingPaint.get() != null && paintInFlight.compareAndSet( false, true ) ) {
+				PAINT_POOL.submit( this::drainPaintQueue );
+			}
 		}
 	}
 

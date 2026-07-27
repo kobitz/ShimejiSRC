@@ -50,6 +50,7 @@ public final class ProcessPriorityUtil
         int     GetPriorityClass( Pointer hProcess );
         Pointer OpenProcess( int dwDesiredAccess, boolean bInheritHandle, int dwProcessId );
         boolean CloseHandle( Pointer hObject );
+        boolean SetProcessAffinityMask( Pointer hProcess, long dwProcessAffinityMask );
         Pointer CreateToolhelp32Snapshot( int dwFlags, int th32ProcessID );
         boolean Process32FirstW( Pointer hSnapshot, PROCESSENTRY32W lppe );
         boolean Process32NextW( Pointer hSnapshot, PROCESSENTRY32W lppe );
@@ -210,6 +211,157 @@ public final class ProcessPriorityUtil
         finally
         {
             K32.INSTANCE.CloseHandle( h );
+        }
+    }
+
+    // ── Hard core reservation ────────────────────────────────────────────
+    //
+    // Priority classes only win *preemption* — under sustained near-100%
+    // load across every core, a lower-priority thread can still occupy a
+    // core for a full scheduling quantum before Windows swaps it out, and a
+    // burst of inference load can pin all cores simultaneously so there's
+    // nowhere for the tick thread to run until one frees up. That's visible
+    // as TickWatch apply=/tick= inflating even for code that's already been
+    // moved off the tick thread onto a pool — the handoff itself still needs
+    // a core to execute on.
+    //
+    // Affinity masking is a stronger guarantee than priority: reserve a
+    // small set of cores Shimeji alone may use, and forbid the inference
+    // processes from scheduling onto them at all. The tick thread then
+    // always has a free core the instant it wants one, independent of how
+    // saturated the rest of the machine is.
+    //
+    // Configurable via "ReservedCoresForSelf" (default 2). 0 disables hard
+    // reservation — priority-class separation above still applies on its own.
+
+    private static volatile int reservedCoresCache = -1;
+
+    private static int reservedCores()
+    {
+        if( reservedCoresCache >= 0 ) return reservedCoresCache;
+        try
+        {
+            final String v = com.group_finity.mascot.Main.getInstance()
+                .getProperties().getProperty( "ReservedCoresForSelf", "2" );
+            reservedCoresCache = Math.max( 0, Integer.parseInt( v.trim() ) );
+        }
+        catch( final Exception e )
+        {
+            reservedCoresCache = 2;
+        }
+        return reservedCoresCache;
+    }
+
+    /** Exposed so OllamaClient's thread-count math can avoid requesting more
+     *  threads than actually fit on the cores it's restricted to. */
+    public static int reservedCoreCount()
+    {
+        return reservedCores();
+    }
+
+    private static long maskRange( final int fromInclusive, final int toExclusive )
+    {
+        long mask = 0L;
+        for( int i = fromInclusive; i < toExclusive; i++ ) mask |= ( 1L << i );
+        return mask;
+    }
+
+    private static volatile boolean affinitySelfWarned = false;
+
+    /** Pin this JVM to the top N reserved cores. Call once at startup. */
+    public static void reserveCoresForSelf()
+    {
+        if( !WINDOWS ) return;
+        final int n = reservedCores();
+        if( n <= 0 ) return;
+        final int total = Runtime.getRuntime().availableProcessors();
+        if( total <= n )
+        {
+            log.warning( "[Affinity] Only " + total + " logical core(s) available — "
+                + "skipping reservation of " + n + "." );
+            return;
+        }
+        try
+        {
+            final long mask = maskRange( total - n, total ); // top n cores, self only
+            if( K32.INSTANCE.SetProcessAffinityMask( K32.INSTANCE.GetCurrentProcess(), mask ) )
+                log.info( "[Affinity] Shimeji pinned to " + n + " reserved core(s) of " + total + "." );
+            else if( !affinitySelfWarned )
+            {
+                affinitySelfWarned = true;
+                log.warning( "[Affinity] Could not set own affinity mask." );
+            }
+        }
+        catch( final Throwable t )
+        {
+            log.log( Level.WARNING, "[Affinity] reserveCoresForSelf failed", t );
+        }
+    }
+
+    /** Restrict a specific process (by pid) to every core EXCEPT the ones
+     *  reserved for Shimeji. Safe to call redundantly — cheap, idempotent. */
+    public static void restrictAffinity( final long pid )
+    {
+        if( !WINDOWS ) return;
+        final int n = reservedCores();
+        if( n <= 0 ) return;
+        final int total = Runtime.getRuntime().availableProcessors();
+        if( total <= n ) return;
+        try
+        {
+            final Pointer h = K32.INSTANCE.OpenProcess( PROCESS_SET_INFORMATION, false, (int) pid );
+            if( h == null ) return;
+            try
+            {
+                final long mask = maskRange( 0, total - n ); // everything but the reserved top n
+                K32.INSTANCE.SetProcessAffinityMask( h, mask );
+            }
+            finally
+            {
+                K32.INSTANCE.CloseHandle( h );
+            }
+        }
+        catch( final Throwable t )
+        {
+            log.log( Level.FINE, "[Affinity] restrictAffinity(" + pid + ") failed", t );
+        }
+    }
+
+    /** Same population scan as demoteByName, but restricts affinity instead
+     *  (or in addition). Called alongside demoteByName from the periodic
+     *  rescan so freshly spawned inference processes get caught. */
+    public static void restrictAffinityByName( final String... exeNames )
+    {
+        if( !WINDOWS ) return;
+        if( reservedCores() <= 0 ) return;
+        try
+        {
+            final Pointer snap = K32.INSTANCE.CreateToolhelp32Snapshot( TH32CS_SNAPPROCESS, 0 );
+            if( snap == null || Pointer.nativeValue( snap ) == -1L ) return;
+            try
+            {
+                final PROCESSENTRY32W pe = new PROCESSENTRY32W();
+                pe.dwSize = pe.size();
+                if( !K32.INSTANCE.Process32FirstW( snap, pe ) ) return;
+                do
+                {
+                    final String exe = Native.toString( pe.szExeFile );
+                    for( final String name : exeNames )
+                    {
+                        if( !exe.equalsIgnoreCase( name ) ) continue;
+                        restrictAffinity( pe.th32ProcessID );
+                        break;
+                    }
+                } while( K32.INSTANCE.Process32NextW( snap, pe ) );
+            }
+            finally
+            {
+                K32.INSTANCE.CloseHandle( snap );
+            }
+        }
+        catch( final Throwable t )
+        {
+            log.log( Level.FINE, "[Affinity] restrictAffinityByName failed", t );
         }
     }
 }

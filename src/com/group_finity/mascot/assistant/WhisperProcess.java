@@ -91,6 +91,11 @@ public class WhisperProcess
             // so it yields to the tick loop (and everything else interactive).
             com.group_finity.mascot.environment.ProcessPriorityUtil
                 .setBelowNormal( proc.pid() );
+            // Also forbid it from scheduling onto the cores reserved for
+            // Shimeji — priority alone can still lag a full quantum under
+            // sustained all-core load (see ProcessPriorityUtil for why).
+            com.group_finity.mascot.environment.ProcessPriorityUtil
+                .restrictAffinity( proc.pid() );
 
             stdin  = new BufferedWriter(
                 new OutputStreamWriter( proc.getOutputStream(),

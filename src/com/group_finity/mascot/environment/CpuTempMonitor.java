@@ -110,6 +110,12 @@ public class CpuTempMonitor
 
     private void start( )
     {
+        // Hard affinity reservation — set once. Priority-class demotion below
+        // still runs every 5s to catch freshly spawned inference processes,
+        // but self only needs pinning a single time.
+        try { ProcessPriorityUtil.reserveCoresForSelf( ); }
+        catch( Exception e ) { log.log( Level.FINE, "core reservation error", e ); }
+
         Thread fast = new Thread( this::fastPollLoop, "CpuTempMonitor-Fast" );
         fast.setDaemon( true );
         fast.setPriority( Thread.MIN_PRIORITY );
@@ -148,6 +154,10 @@ public class CpuTempMonitor
             // can't starve the tick loop. ollama.exe demoted => future
             // llama-server children inherit the class; the 5s rescan catches
             // strays (already-demoted processes are skipped, so this is ~1ms).
+            // Affinity restriction is layered on top: priority only wins
+            // preemption, which can still lag under sustained all-core load;
+            // forbidding these processes from scheduling on the cores
+            // reserved for Shimeji closes that gap.
             if( --demoteCountdown <= 0 )
             {
                 demoteCountdown = 5;
@@ -155,6 +165,7 @@ public class CpuTempMonitor
                 {
                     ProcessPriorityUtil.ensureSelfAboveNormal( );
                     ProcessPriorityUtil.demoteByName( "ollama.exe", "llama-server.exe" );
+                    ProcessPriorityUtil.restrictAffinityByName( "ollama.exe", "llama-server.exe" );
                 }
                 catch( Exception e ) { log.log( Level.FINE, "priority demote error", e ); }
             }
