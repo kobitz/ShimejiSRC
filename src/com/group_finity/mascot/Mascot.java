@@ -112,10 +112,30 @@ public class Mascot
     private double currentScale = 1.0;
     private MascotImage lastScaledImage = null;
     private double lastDisplayScale = 0.0;
-    private java.util.LinkedHashMap<MascotImage, com.group_finity.mascot.image.ScalableNativeImage> scalables = null;
+    // SHARED across every mascot instance, not per-clone — a scaled bitmap for a given
+    // source frame is identical no matter which mascot is displaying it, so clones of
+    // the same character (or any two mascots reusing a frame) reuse one built
+    // ScalableNativeImage instead of each clone rebuilding and holding its own copy.
+    // Bounded LRU; always accessed from the tick thread today (scale building isn't
+    // offloaded to a pool), so a synchronized wrapper is enough — no need for a full
+    // concurrent map. Cap raised from the old per-instance 16 to 128 since this now
+    // covers every scaled frame across the whole mascot population, not just one clone's.
+    private static final java.util.Map<MascotImage, com.group_finity.mascot.image.ScalableNativeImage> scalables =
+        java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<MascotImage, com.group_finity.mascot.image.ScalableNativeImage>( 128, 0.75f, true )
+            {
+                protected boolean removeEldestEntry( java.util.Map.Entry<MascotImage, com.group_finity.mascot.image.ScalableNativeImage> eldest )
+                { return size() > 128; }
+            } );
     // Frames still waiting to be rebuilt for the current roundedScale — drained a few
     // per tick instead of all at once, so one scale-bucket change can't spike apply().
+    // Stays per-instance: different mascots can be mid-transition on different frames
+    // even though the built ScalableNativeImage objects themselves are now shared.
     private java.util.ArrayDeque<MascotImage> pendingScaleBuild = null;
+    // Every frame THIS mascot instance has displayed while scaled — small, bounded by
+    // the character's own animation set. Used only to scope pendingScaleBuild to this
+    // mascot's own frames now that scalables itself is a shared, population-wide map.
+    private final java.util.LinkedHashSet<MascotImage> myScaledFrames = new java.util.LinkedHashSet<>();
     private static final int SCALE_BUILDS_PER_TICK = 2;
     // Source image dimensions (base image at globalScaling).
     // Used by renderCX/renderCY to compute anchor pixel offsets from actual displayed image size
@@ -151,15 +171,20 @@ public class Mascot
     private float tintCurrentR = 255f; private float tintTargetR = 255f;
     private float tintCurrentG = 0f;   private float tintTargetG = 0f;
     private float tintCurrentB = 0f;   private float tintTargetB = 0f;
-    // Scratch buffers for per-frame tint compositing — reused, reallocated only on image size change.
-    private java.awt.image.BufferedImage tintScratchBuf = null;
-    private com.group_finity.mascot.image.NativeImage tintScratchNative = null;
 
-    // Tint compositing (Java2D draw+fill on tintScratchBuf) is the expensive part of a
-    // tinted mascot's apply() — not the native blit, which is already off-thread. Moved
-    // here for the same reason: don't let one CPU-reactive mascot's re-composite stall
-    // the shared tick loop. Single-flight per mascot; stale requests are dropped, never
-    // queued, so a slow composite can't build a backlog.
+    // Tint compositing (Java2D draw+fill) is the expensive part of a tinted mascot's
+    // apply() — not the native blit, which is already off-thread. Composited results
+    // are now cached SHARED across every mascot instance (see tintCache below), not
+    // held per-instance — clones reacting to the same sensor-driven tint (e.g. every
+    // campfire clone tracking the same CPU-load value) converge on nearly identical
+    // color/opacity, so the composite is computed once and reused instead of every
+    // clone separately re-running Java2D each tick.
+
+    // Tint compositing is the expensive part of a tinted mascot's apply() — not the
+    // native blit, which is already off-thread. Moved here for the same reason: don't
+    // let one CPU-reactive mascot's re-composite stall the shared tick loop. Single-
+    // flight per mascot; stale requests are dropped, never queued, so a slow composite
+    // can't build a backlog.
     // Sized off the cores actually reserved for this process (see
     // ProcessPriorityUtil), not the system-wide core count. Once
     // reserveCoresForSelf() pins the whole JVM to N cores, every thread in
@@ -179,6 +204,82 @@ public class Mascot
         tintPoolSize(),
         r -> { Thread t = new Thread( r, "mascot-tint" ); t.setDaemon( true ); return t; }
     );
+
+    // Cache key for a composited tint result: source frame identity + quantized
+    // color/opacity. Color and opacity are lerped independently per mascot instance,
+    // so two clones converging on "the same" sensor-driven tint will rarely land on
+    // bit-identical floats — quantizing (nearest 8 per color channel, nearest 4 alpha
+    // step out of 255) trades an imperceptible banding risk for a much higher cache-hit
+    // rate across clones. Composites cached this way are immutable once built — never
+    // mutated in place — which is what makes sharing them across mascots safe.
+    private static final class TintKey
+    {
+        final java.awt.image.BufferedImage src;
+        final int colorBucket;
+        final int alphaBucket;
+
+        TintKey( java.awt.image.BufferedImage s, java.awt.Color c, float opacity )
+        {
+            src = s;
+            final int r = Math.round( c.getRed( )   / 8f ) * 8;
+            final int g = Math.round( c.getGreen( ) / 8f ) * 8;
+            final int b = Math.round( c.getBlue( )  / 8f ) * 8;
+            colorBucket = ( r << 16 ) | ( g << 8 ) | b;
+            final int alpha = Math.max( 0, Math.min( 255, Math.round( opacity * 255 ) ) );
+            alphaBucket = ( alpha / 4 ) * 4;
+        }
+
+        @Override
+        public boolean equals( Object o )
+        {
+            if( !( o instanceof TintKey ) ) return false;
+            TintKey k = (TintKey) o;
+            return src == k.src && colorBucket == k.colorBucket && alphaBucket == k.alphaBucket;
+        }
+
+        @Override
+        public int hashCode( )
+        {
+            return ( System.identityHashCode( src ) * 31 + colorBucket ) * 31 + alphaBucket;
+        }
+    }
+
+    // SHARED across every mascot instance. ConcurrentHashMap because, unlike scalables,
+    // this IS touched from multiple TINT_POOL worker threads concurrently — computeIfAbsent
+    // is atomic per-key here, so two clones racing on the same quantized tint state build
+    // it once, not twice. Bounded with a crude full-clear instead of true LRU: simpler to
+    // keep correct under concurrent writers, and a clear only costs one recompute cycle
+    // for whatever was evicted, not a correctness problem.
+    private static final int TINT_CACHE_CAP = 200;
+    private static final java.util.concurrent.ConcurrentHashMap<TintKey, com.group_finity.mascot.image.NativeImage> tintCache =
+        new java.util.concurrent.ConcurrentHashMap<>( );
+
+    private static com.group_finity.mascot.image.NativeImage buildTintComposite(
+        final java.awt.image.BufferedImage src, final java.awt.Color color, final float opacity )
+    {
+        final int w = src.getWidth( );
+        final int h = src.getHeight( );
+        final java.awt.image.BufferedImage buf =
+            new java.awt.image.BufferedImage( w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB_PRE );
+        final java.awt.Graphics2D g = buf.createGraphics( );
+        try
+        {
+            g.setComposite( java.awt.AlphaComposite.Src );
+            g.drawImage( src, 0, 0, null );
+            g.setComposite( java.awt.AlphaComposite.SrcAtop );
+            g.setColor( new java.awt.Color(
+                color.getRed( ), color.getGreen( ), color.getBlue( ),
+                Math.max( 0, Math.min( 255, (int)( opacity * 255 ) ) ) ) );
+            g.fillRect( 0, 0, w, h );
+        }
+        finally
+        {
+            g.dispose( );
+        }
+        final com.group_finity.mascot.image.NativeImage nativeImg = NativeFactory.getInstance( ).newNativeImage( buf );
+        nativeImg.updatePixels( buf );
+        return nativeImg;
+    }
 
     private static final class TintRequest {
         final java.awt.image.BufferedImage src;
@@ -2028,7 +2129,7 @@ public class Mascot
             + "\n- No greetings, no sign-offs, no filler words."
             + "\n- Speak your response directly — do not wrap it in quotation marks."
             + "\n- When asked about time or weather: you MUST state the actual values from context (e.g. the real temperature, the real time). Express them in your character voice, but the real numbers must appear in your answer. Do not replace them with metaphor or fictional equivalents."
-            + "\n- To set a timer: append [TIMER:VALUE:reminder text]. VALUE = whole minutes for durations ([TIMER:15:check laundry]), OR the exact clock time the user stated for specific times ([TIMER:5:30pm:alarm] when user says 'at 5:30pm'). For clock times: write the time EXACTLY as the user said it — do NOT convert to minutes, do NOT compute anything. Java handles the math."
+            + "\n- Only when the user explicitly asks you to set a timer, reminder, or alarm in THIS message — never on your own initiative, never because a topic reminded you of one: append [TIMER:VALUE:reminder text]. VALUE = whole minutes for durations, e.g. [TIMER:15:reminder text], OR the exact clock time the user stated for specific times, e.g. [TIMER:5:30pm:reminder text] when the user says 'at 5:30pm'. For clock times: write the time EXACTLY as the user said it — do NOT convert to minutes, do NOT compute anything. Java handles the math. The reminder text must be drawn from what the user actually said, never invented."
             + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent — not spoken. Omit it when nothing fits naturally."
             + "\n- To save something permanently for future conversations: append [REMEMBER:keyword1,keyword2|the fact to remember]. Use short, specific keywords the user is likely to mention again. The tag is silent."
             + windowContext
@@ -2322,7 +2423,7 @@ public class Mascot
             + "\n- The user just called your name — respond to them directly."
             + "\n- Be brief and in-character. No greetings, no filler."
             + "\n- Speak your response directly — do not wrap it in quotation marks."
-            + "\n- To set a timer: append [TIMER:VALUE:reminder text]. VALUE = whole minutes ([TIMER:15:check laundry]) or the exact clock time the user said ([TIMER:5:30pm:alarm] for 'at 5:30pm'). For clock times: copy it exactly, do NOT convert to minutes."
+            + "\n- Only when the user explicitly asks you to set a timer, reminder, or alarm in THIS message — never on your own initiative: append [TIMER:VALUE:reminder text]. VALUE = whole minutes for durations, e.g. [TIMER:15:reminder text], or the exact clock time the user said, e.g. [TIMER:5:30pm:reminder text] for 'at 5:30pm'. For clock times: copy it exactly, do NOT convert to minutes. The reminder text must be drawn from what the user actually said, never invented."
             + "\n- When asked about time or weather: you MUST state the actual values from context (e.g. the real temperature, the real time). Express them in your character voice, but the real numbers must appear in your answer. Do not replace them with metaphor or fictional equivalents."
             + "\n---", ntSpeechRule );
 
@@ -3559,40 +3660,13 @@ public class Mascot
         }
     }
 
-    // color/opacity are taken as explicit params (not read from the tintColor/tintCurrentOpacity
-    // fields) because this now runs on a TINT_POOL worker thread while the tick thread may be
-    // concurrently mutating those fields for the next frame — reading them here would race.
-    private void applyTintToScratch( java.awt.image.BufferedImage src, java.awt.Color color, float opacity )
-    {
-        int w = src.getWidth( );
-        int h = src.getHeight( );
-        if( tintScratchBuf == null || tintScratchBuf.getWidth( ) != w || tintScratchBuf.getHeight( ) != h )
-        {
-            tintScratchBuf    = new java.awt.image.BufferedImage( w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB_PRE );
-            tintScratchNative = NativeFactory.getInstance( ).newNativeImage( tintScratchBuf );
-        }
-        java.awt.Graphics2D g = tintScratchBuf.createGraphics( );
-        try
-        {
-            g.setComposite( java.awt.AlphaComposite.Src );
-            g.drawImage( src, 0, 0, null );
-            g.setComposite( java.awt.AlphaComposite.SrcAtop );
-            g.setColor( new java.awt.Color(
-                color.getRed( ), color.getGreen( ), color.getBlue( ),
-                Math.max( 0, Math.min( 255, (int)( opacity * 255 ) ) ) ) );
-            g.fillRect( 0, 0, w, h );
-        }
-        finally
-        {
-            g.dispose( );
-        }
-        tintScratchNative.updatePixels( tintScratchBuf );
-    }
-
-    // Drains queued tint-composite requests for this mascot, one at a time. Single-flight
-    // per mascot (via tintRenderInFlight) so tintScratchBuf/tintScratchNative are never
-    // touched by two threads at once. Only the newest request matters — if the composite
-    // is falling behind, in-between frames are dropped rather than piling up a backlog.
+    // Drains queued tint-composite requests for this mascot, one at a time. Checks the
+    // shared tintCache before doing any Java2D work — if another mascot (very often a
+    // clone of this same character reacting to the same sensor value) already built a
+    // composite for this quantized (frame, color, opacity) combination, this is just a
+    // hashmap lookup, not a re-composite. Single-flight per mascot via tintRenderInFlight
+    // so this mascot's own dispatch never overlaps itself; only the newest request
+    // matters — if falling behind, in-between frames are dropped rather than queued.
     private void drainTintQueue()
     {
         try
@@ -3600,9 +3674,13 @@ public class Mascot
             TintRequest req;
             while ( ( req = pendingTintRequest.getAndSet( null ) ) != null )
             {
-                applyTintToScratch( req.src, req.color, req.opacity );
-                getWindow().setImage( tintScratchNative );
-                getWindow().updateImage( req.bounds );
+                final TintRequest r = req;
+                if( tintCache.size() > TINT_CACHE_CAP ) tintCache.clear();
+                com.group_finity.mascot.image.NativeImage composited = tintCache.computeIfAbsent(
+                    new TintKey( r.src, r.color, r.opacity ),
+                    k -> buildTintComposite( r.src, r.color, r.opacity ) );
+                getWindow().setImage( composited );
+                getWindow().updateImage( r.bounds );
             }
         }
         finally
@@ -3631,24 +3709,20 @@ public class Mascot
 
                 if( Math.abs( currentScale - 1.0 ) > 0.005 )
                 {
-                    if( scalables == null )
-                    {
-                        // Cap at 16 frames to bound memory use
-                        scalables = new java.util.LinkedHashMap<MascotImage, com.group_finity.mascot.image.ScalableNativeImage>( 16, 0.75f, true )
-                        {
-                            protected boolean removeEldestEntry( java.util.Map.Entry<MascotImage, com.group_finity.mascot.image.ScalableNativeImage> eldest )
-                            { return size() > 16; }
-                        };
-                    }
+                    myScaledFrames.add( getImage() );
 
-                    // When rounded scale steps, queue every cached frame for rebuild and drain a
-                    // small budget of it each tick, instead of blocking one tick on the whole set.
-                    // Frames not yet rebuilt fall back to lastScaledImage below (stale-but-correct),
-                    // the same path already used while a scale is "still building".
+                    // When rounded scale steps, queue every frame THIS mascot has used for
+                    // rebuild and drain a small budget of it each tick, instead of blocking
+                    // one tick on the whole set. Deliberately scoped to myScaledFrames, not
+                    // scalables.keySet() — scalables is now shared across every mascot, so
+                    // its full keyset would include frames belonging to other characters
+                    // entirely. Frames not yet rebuilt fall back to lastScaledImage below
+                    // (stale-but-correct), the same path already used while a scale is
+                    // "still building".
                     double roundedScale = Math.round( currentScale * 10.0 ) / 10.0;
                     if( roundedScale != lastDisplayScale )
                     {
-                        pendingScaleBuild = new java.util.ArrayDeque<>( scalables.keySet() );
+                        pendingScaleBuild = new java.util.ArrayDeque<>( myScaledFrames );
                         lastDisplayScale = roundedScale;
                     }
                     if( pendingScaleBuild != null )
@@ -3687,8 +3761,12 @@ public class Mascot
                 }
                 else
                 {
-                    scalables = null;
+                    // scalables itself is shared now — do NOT null it here, other mascots
+                    // (including other clones of this same character) may still be using
+                    // the cached ScalableNativeImage entries it holds. Only this instance's
+                    // own tracking state resets.
                     pendingScaleBuild = null;
+                    myScaledFrames.clear();
                     lastScaledImage = null;
                     lastBaseImageHeight = -1;
                     lastBaseImageWidth  = -1;
@@ -4712,8 +4790,6 @@ public class Mascot
         tintCurrentR = 255f; tintTargetR = 255f;
         tintCurrentG = 0f;   tintTargetG = 0f;
         tintCurrentB = 0f;   tintTargetB = 0f;
-        tintScratchBuf     = null;
-        tintScratchNative  = null;
     }
 
     public float getTintCurrentOpacity( ) { return tintCurrentOpacity; }
