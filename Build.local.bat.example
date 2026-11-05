@@ -1,0 +1,10 @@
+@echo off
+:: Copy this file to Build.local.bat (gitignored) and edit for your machine.
+:: Build.bat calls it before building. Only LAUNCH4J + configs are needed for exe wrapping;
+:: INSTALL_DIR is only used for the "launch after build" prompt.
+
+:: set "WORKSPACE=D:\Downloads\Shimeji Workspace\Stable"
+set "INSTALL_DIR=C:\Users\ko\Desktop\Mario Install Testing"
+set "LAUNCH4J=D:\Downloads\Shimeji Workspace\exe builder launch4j\launch4j\launch4jc.exe"
+set "CONFIG_RELEASE=D:\Downloads\Shimeji Workspace\exe builder launch4j\config.xml"
+set "CONFIG_TEST=D:\Downloads\Shimeji Workspace\exe builder launch4j\configTest.xml"

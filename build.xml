@@ -1,7 +1,7 @@
-<?xml version="1.0" encoding="Windows-31J" ?>
-<project name="Shimeji-ee" basedir="." default="zip">
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="Shimeji-ee" basedir="." default="jar">
 
-	<property name="version" value="1.0.9" />
+	<property name="version" value="1.9" />
 
 	<target name="clean">
 		<delete dir="target" />
@@ -22,68 +22,14 @@
 	</target>
 
 	<target name="jar" depends="compile">
-		<!-- Fat jar: merge all lib jars + compiled classes into one jar -->
+		<!-- Fat jar: merges EVERY jar in lib/ into the output, so only keep jars the code actually uses. -->
 		<jar destfile="target/Shimeji-ee.jar" manifest="MANIFEST.MF">
 			<fileset dir="target/classes" />
 			<zipgroupfileset dir="lib" includes="*.jar" />
 		</jar>
 	</target>
 
-	<target name="zip" depends="jar">
-		<zip destfile="target/src.zip">
-			<fileset dir=".">
-				<include name="**/*" />
-				<exclude name="target/**/*" />
-				<exclude name="target" />
-				<exclude name="bin/**/*" />
-				<exclude name="bin" />
-				<exclude name=".settings/**" />
-				<exclude name=".settings" />
-				<exclude name=".classpath" />
-				<exclude name=".project" />
-				<exclude name="*.log" />
-			</fileset>
-		</zip>
-
-		<ant target="zip_package">
-			<property name="edition" value="Calm" />
-		</ant>
-		<ant target="zip_package">
-			<property name="edition" value="Professional" />
-		</ant>
-		<ant target="zip_package">
-			<property name="edition" value="Mischievous" />
-		</ant>
-	</target>
-
-	<target name="zip_package">
-		<zip destfile="target/Shimeji-ee_${version}_${edition}.zip">
-			<fileset dir="target">
-				<include name="Shimeji-ee.jar" />
-				<include name="src.zip" />
-			</fileset>
-			<mappedresources>
-				<fileset dir="conf">
-					<include name="${edition}Behavior.xml" />
-				</fileset>
-				<globmapper from="*.xml" to="conf/behaviors.xml" />
-			</mappedresources>
-			<fileset dir=".">
-				<include name="Shimeji-ee.exe" />
-				<include name="Shimeji-ee.bat" />
-				<include name="ShimejiHomePage.url" />
-				<include name="Shimeji-eeHomePage.url" />
-				<include name="originallicence.txt" />
-				<include name="originalreadme.txt" />
-				<include name="licence.txt" />
-				<include name="readme.txt" />
-				<include name="changelog.txt" />
-				<include name="img/**/*" />
-				<include name="conf/**/*" />
-				<exclude name="conf/behaviors.xml" />
-				<exclude name="conf/*Behavior.xml" />
-				<!-- lib/ excluded — dependencies are bundled in the jar -->
-			</fileset>
-		</zip>
-	</target>
+	<!-- The upstream Shimeji-ee "zip" / "zip_package" (Calm/Professional/Mischievous) targets were removed:
+	     they referenced files that no longer exist and predate this fork. Release bundles are assembled
+	     by allowlist from the install folder (see CLAUDE.md > Distribution / Releases). -->
 </project>

@@ -2,6 +2,10 @@
 
 Per-version release history for the Shimeji AI fork. The runnable app ships as a GitHub Release asset (`Shimeji-Install-Windows.zip`) at **github.com/kobitz/ShimejiSRC**; the README is intentionally version-agnostic, so this file + the GitHub release notes are the changelog of record. Release *mechanics* (how to cut one) live in `CLAUDE.md` → Distribution / Releases.
 
+## Unreleased
+
+- **Build cleanup** — removed the unused 25 MB `vosk` jar (it was being merged into the fat jar); `build.xml` now defaults to `jar`, drops the broken upstream `zip`/`zip_package` targets, declares UTF-8, and is versioned 1.9; `MANIFEST.MF` Class-Path case fixed (`jnativehook-2.2.2.jar`) and newline-terminated; `Build.bat` reads machine-specific paths from a gitignored `Build.local.bat`; `.gitattributes` keeps `*.bat` CRLF.
+
 ## v1.9 — June 26 2026
 
 The deepest companion update since the AI layer, plus two architectural performance fixes.

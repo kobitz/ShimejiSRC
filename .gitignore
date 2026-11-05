@@ -6,3 +6,4 @@ SensorReader/obj/
 *.class
 __pycache__/
 *.pyc
+Build.local.bat

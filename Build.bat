@@ -1,16 +1,18 @@
 @echo off
 setlocal
 
-set WORKSPACE=D:\Downloads\Shimeji Workspace\Stable
-set INSTALL_DIR=C:\Users\ko\Desktop\Mario Install Testing
-set LAUNCH4J=D:\Downloads\Shimeji Workspace\exe builder launch4j\launch4j\launch4jc.exe
-set CONFIG_RELEASE=D:\Downloads\Shimeji Workspace\exe builder launch4j\config.xml
-set CONFIG_TEST=D:\Downloads\Shimeji Workspace\exe builder launch4j\configTest.xml
+:: Machine-specific paths live in Build.local.bat (gitignored).
+:: Copy Build.local.bat.example to Build.local.bat and edit it for your machine.
+if exist "%~dp0Build.local.bat" call "%~dp0Build.local.bat"
 
-:: Verify paths exist (silent unless something is missing)
-if not exist "%LAUNCH4J%" echo WARNING: launch4jc.exe not found at: %LAUNCH4J%
-if not exist "%CONFIG_TEST%" echo WARNING: configTest.xml not found at: %CONFIG_TEST%
-if not exist "%CONFIG_RELEASE%" echo WARNING: config.xml not found at: %CONFIG_RELEASE%
+:: Defaults when not set by Build.local.bat (or the environment).
+:: WORKSPACE defaults to the folder this script lives in.
+if not defined WORKSPACE set "WORKSPACE=%~dp0"
+
+:: Verify configured paths exist (silent unless something is missing)
+if defined LAUNCH4J if not exist "%LAUNCH4J%" echo WARNING: launch4jc.exe not found at: %LAUNCH4J%
+if defined CONFIG_TEST if not exist "%CONFIG_TEST%" echo WARNING: configTest.xml not found at: %CONFIG_TEST%
+if defined CONFIG_RELEASE if not exist "%CONFIG_RELEASE%" echo WARNING: config.xml not found at: %CONFIG_RELEASE%
 
 :: Ask which build
 echo ================================
@@ -44,12 +46,26 @@ if "%CHOICE%"=="3" (
     exit /b 0
 )
 
+if not defined LAUNCH4J (
+    echo.
+    echo LAUNCH4J is not set - skipping exe wrapping. See Build.local.bat.example.
+    pause
+    exit /b 0
+)
+
 if "%CHOICE%"=="1" (
     set CONFIG=%CONFIG_RELEASE%
     echo Running launch4j with RELEASE config...
 ) else (
     set CONFIG=%CONFIG_TEST%
     echo Running launch4j with TEST config...
+)
+
+if not defined CONFIG (
+    echo.
+    echo *** Launch4j config path is not set. See Build.local.bat.example. ***
+    pause
+    exit /b 1
 )
 
 "%LAUNCH4J%" "%CONFIG%"
@@ -70,6 +86,8 @@ if "%CHOICE%"=="1" (
 ) else (
     set EXE_NAME=ShimejiTest.exe
 )
+
+if not defined INSTALL_DIR exit /b 0
 
 set /p RUNCHOICE=Press 1 to launch %EXE_NAME%, or Enter to close:
 if "%RUNCHOICE%"=="1" (
