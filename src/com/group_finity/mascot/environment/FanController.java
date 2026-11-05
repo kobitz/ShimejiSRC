@@ -100,7 +100,11 @@ public class FanController
         lastSendMs = now;
         try
         {
-            final Process p = new ProcessBuilder( "TempSensor.exe", "boost", on ? "on" : "off" )
+            // Absolute path from the install folder -- never a bare name (see InstallFiles).
+            final java.io.File exe = InstallFiles.find( "TempSensor.exe" );
+            if( exe == null ) throw new java.io.FileNotFoundException( "TempSensor.exe not found next to the application" );
+            final Process p = new ProcessBuilder( exe.getAbsolutePath( ), "boost", on ? "on" : "off" )
+                .directory( exe.getParentFile( ) )
                 .redirectOutput( ProcessBuilder.Redirect.DISCARD )
                 .redirectError( ProcessBuilder.Redirect.DISCARD )
                 .start( );

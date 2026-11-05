@@ -290,7 +290,11 @@ public class CpuTempMonitor
     // Spawns TempSensor.exe and reads "cpuTemp=XX.X" lines until the process exits.
     private void runTempSensor( ) throws Exception
     {
-        ProcessBuilder pb = new ProcessBuilder( "TempSensor.exe" );
+        // Absolute path from the install folder -- never a bare name (see InstallFiles).
+        final java.io.File exe = InstallFiles.find( "TempSensor.exe" );
+        if( exe == null ) throw new java.io.FileNotFoundException( "TempSensor.exe not found next to the application" );
+        ProcessBuilder pb = new ProcessBuilder( exe.getAbsolutePath( ) );
+        pb.directory( exe.getParentFile( ) );
         pb.redirectErrorStream( false );
         Process process = pb.start( );
         tempProcess = process;
