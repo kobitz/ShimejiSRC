@@ -4,6 +4,8 @@ import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.*;
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.awt.Rectangle;
 import java.util.*;
 import java.util.concurrent.*;
@@ -13,6 +15,19 @@ public class VideoAreaServer
 {
     private static final Logger log = Logger.getLogger( VideoAreaServer.class.getName() );
     private static final int PORT = 41221;
+
+    /** Largest request body accepted (the real payloads are ~40 bytes). */
+    private static final int MAX_BODY_BYTES = 2048;
+    /** Caps on registered ids so a misbehaving client cannot grow the maps without bound. */
+    private static final int MAX_IDS    = 64;
+    private static final int MAX_ID_LEN = 64;
+    /**
+     * Sites whose pages may talk to this server (the shimeji-video-tracker content script runs
+     * inside these pages, so requests carry the page's Origin). Browser-extension origins are
+     * always allowed. Override with the comma-separated {@code VideoAreaAllowedHosts} setting
+     * (host suffixes, e.g. "youtube.com,twitch.tv,netflix.com"); read once at startup.
+     */
+    private static final String DEFAULT_ALLOWED_HOSTS = "youtube.com,twitch.tv";
 
     private static VideoAreaServer instance;
     public  static VideoAreaServer getInstance() { return instance; }
@@ -27,10 +42,25 @@ public class VideoAreaServer
 
     public static void start()
     {
+        start( null );
+    }
+
+    /**
+     * @param allowedHostsCsv value of the {@code VideoAreaAllowedHosts} setting (comma-separated
+     *                        host suffixes), or null/blank for the defaults. Read once here so the
+     *                        request threads never depend on {@code Main}; changing it needs a restart.
+     */
+    public static void start( String allowedHostsCsv )
+    {
         if( instance != null ) return;
         instance = new VideoAreaServer();
+        if( allowedHostsCsv != null && !allowedHostsCsv.trim().isEmpty() )
+            instance.allowedHosts = parseHosts( allowedHostsCsv );
         instance.startServer();
     }
+
+    /** Host suffixes (lower-case) whose pages may call this server; see DEFAULT_ALLOWED_HOSTS. */
+    private volatile String[] allowedHosts = parseHosts( DEFAULT_ALLOWED_HOSTS );
 
     private void startServer()
     {
@@ -57,6 +87,7 @@ public class VideoAreaServer
 
     private void handleVideo( HttpExchange ex ) throws IOException
     {
+        if( !checkOrigin( ex ) ) return;
         addCors( ex );
         String method = ex.getRequestMethod();
 
@@ -76,11 +107,13 @@ public class VideoAreaServer
         }
         else if( "POST".equals( method ) )
         {
-            String body = new String( ex.getRequestBody().readAllBytes() );
+            String body = readBody( ex );
+            if( body == null ) { ex.sendResponseHeaders( 413, -1 ); ex.getResponseBody().close(); return; }
             Map<String,String> p = parseForm( body );
             try
             {
                 String id = p.getOrDefault( "id", "video" );
+                if( !idOk( id, areas ) ) throw new IllegalArgumentException( "bad id" );
                 int x = Integer.parseInt( p.get( "x" ) );
                 int y = Integer.parseInt( p.get( "y" ) );
                 int w = Integer.parseInt( p.get( "w" ) );
@@ -128,6 +161,7 @@ public class VideoAreaServer
      */
     private void handleFullscreen( HttpExchange ex ) throws IOException
     {
+        if( !checkOrigin( ex ) ) return;
         addCors( ex );
         String method = ex.getRequestMethod();
 
@@ -138,11 +172,13 @@ public class VideoAreaServer
 
         if( "POST".equals( method ) )
         {
-            String body = new String( ex.getRequestBody().readAllBytes() );
+            String body = readBody( ex );
+            if( body == null ) { ex.sendResponseHeaders( 413, -1 ); ex.getResponseBody().close(); return; }
             Map<String,String> p = parseForm( body );
             try
             {
                 String id = p.getOrDefault( "id", "browser" );
+                if( !idOk( id, fullscreenAreas ) ) throw new IllegalArgumentException( "bad id" );
                 int x = Integer.parseInt( p.get( "x" ) );
                 int y = Integer.parseInt( p.get( "y" ) );
                 int w = Integer.parseInt( p.get( "w" ) );
@@ -178,9 +214,73 @@ public class VideoAreaServer
 
     private void addCors( HttpExchange ex )
     {
-        ex.getResponseHeaders().add( "Access-Control-Allow-Origin",  "*" );
+        // Only reached after checkOrigin() passed, so echoing the Origin back is safe.
+        final String origin = ex.getRequestHeaders().getFirst( "Origin" );
+        if( origin != null )
+        {
+            ex.getResponseHeaders().add( "Access-Control-Allow-Origin", origin );
+            ex.getResponseHeaders().add( "Vary", "Origin" );
+        }
         ex.getResponseHeaders().add( "Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS" );
         ex.getResponseHeaders().add( "Access-Control-Allow-Headers", "Content-Type" );
+    }
+
+    /**
+     * Rejects (403) requests from web pages that are not on the allowlist, so an arbitrary site
+     * open in the browser cannot register fake video/fullscreen areas. Requests with no Origin
+     * header (curl, local tools) are allowed: any local process can already do worse, and the
+     * socket is bound to loopback only. Returns true if the handler should continue.
+     */
+    private boolean checkOrigin( HttpExchange ex ) throws IOException
+    {
+        if( originAllowed( ex.getRequestHeaders().getFirst( "Origin" ) ) ) return true;
+        System.err.println( "[Shimeji] VideoAreaServer rejected origin: " + ex.getRequestHeaders().getFirst( "Origin" ) );
+        ex.sendResponseHeaders( 403, -1 );
+        ex.getResponseBody().close();
+        return false;
+    }
+
+    boolean originAllowed( String origin )
+    {
+        if( origin == null || origin.isEmpty() ) return true;
+        final URI u;
+        try { u = URI.create( origin ); }
+        catch( IllegalArgumentException e ) { return false; }   // includes the literal "null" origin
+        final String scheme = u.getScheme();
+        final String host   = u.getHost();
+        if( scheme == null ) return false;
+        if( scheme.equals( "moz-extension" ) || scheme.equals( "chrome-extension" )
+                || scheme.equals( "safari-web-extension" ) ) return true;
+        if( host == null || !( scheme.equals( "http" ) || scheme.equals( "https" ) ) ) return false;
+        final String h = host.toLowerCase( Locale.ROOT );
+        for( String suffix : allowedHosts )
+            if( h.equals( suffix ) || h.endsWith( "." + suffix ) ) return true;
+        return false;
+    }
+
+    private static String[] parseHosts( String csv )
+    {
+        final List<String> out = new ArrayList<>();
+        for( String t : csv.split( "," ) )
+        {
+            final String v = t.trim().toLowerCase( Locale.ROOT );
+            if( !v.isEmpty() ) out.add( v );
+        }
+        return out.toArray( new String[0] );
+    }
+
+    /** Reads the request body, or returns null if it exceeds MAX_BODY_BYTES. */
+    private static String readBody( HttpExchange ex ) throws IOException
+    {
+        final byte[] b = ex.getRequestBody().readNBytes( MAX_BODY_BYTES + 1 );
+        if( b.length > MAX_BODY_BYTES ) return null;
+        return new String( b, StandardCharsets.UTF_8 );
+    }
+
+    private static boolean idOk( String id, Map<String,?> existing )
+    {
+        if( id == null || id.isEmpty() || id.length() > MAX_ID_LEN ) return false;
+        return existing.containsKey( id ) || existing.size() < MAX_IDS;
     }
 
     private void rebuildSnapshot()         { snapshot           = List.copyOf( areas.values() );           }

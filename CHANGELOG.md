@@ -5,6 +5,7 @@ Per-version release history for the Shimeji AI fork. The runnable app ships as a
 ## Unreleased
 
 - **Build cleanup** — removed the unused 25 MB `vosk` jar (it was being merged into the fat jar); `build.xml` now defaults to `jar`, drops the broken upstream `zip`/`zip_package` targets, declares UTF-8, and is versioned 1.9; `MANIFEST.MF` Class-Path case fixed (`jnativehook-2.2.2.jar`) and newline-terminated; `Build.bat` reads machine-specific paths from a gitignored `Build.local.bat`; `.gitattributes` keeps `*.bat` CRLF.
+- **VideoAreaServer hardening** — web origins are now allowlisted (`VideoAreaAllowedHosts`, default `youtube.com,twitch.tv`; extension origins and Origin-less local requests still work) instead of `Access-Control-Allow-Origin: *`; request bodies capped at 2 KB; registered ids capped (64 entries / 64 chars). **If you extend the browser extension to more sites, add them to `VideoAreaAllowedHosts`.**
 
 ## v1.9 — June 26 2026
 
