@@ -4218,6 +4218,10 @@ public class Mascot
     private String weatherContext( final String userText )
     {
         if( !isWeatherQuery( userText ) ) return "";
+        // Weather is the one feature that contacts outside services (open-meteo, plus an IP
+        // geolocation service for WeatherLocation=auto), so it has an off switch.
+        if( "false".equalsIgnoreCase( Main.getInstance().getProperties()
+                .getProperty( "WeatherEnabled", "true" ) ) ) return "";
         final String location = Main.getInstance().getProperties()
             .getProperty( "WeatherLocation", "auto" );
         // Run fetch on a daemon thread with a hard cap so HTTPS hangs never block the Ollama call.

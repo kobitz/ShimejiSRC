@@ -2,7 +2,7 @@
 
 A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an English edition of Group Finity's original Shimeji) — Java desktop mascots for Windows — with a fully local AI assistant layer added on top. You get the complete classic Shimeji experience *and* mascots that perceive your environment and react in character: what's on screen, what's playing through the speakers, what you say (to them or near them), system load, the weather, even the contents of local drives.
 
-**Everything runs locally.** No cloud APIs, no subscriptions, no telemetry. LLM inference via [Ollama](https://ollama.com), speech-to-text via [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU.
+**Your data stays local.** No subscriptions, no accounts, no telemetry — LLM inference runs through [Ollama](https://ollama.com) and speech-to-text through [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU, and nothing about your screen, voice, files, or chats leaves the machine. The one exception is the weather lookup: when you ask a mascot about the weather, it contacts `api.open-meteo.com` — and with the default `WeatherLocation=auto`, also `ip-api.com` (falling back to `ipapi.co`), which sees your public IP to guess your city. Set `WeatherLocation` to a city name to skip the IP lookup, or `WeatherEnabled=false` to turn weather off entirely.
 
 **▶ [Download from the releases page](https://github.com/kobitz/ShimejiSRC/releases)** — grab `Shimeji-Install-Windows.zip`, extract anywhere, run `Setup.bat` once (installs Ollama + the local models), then launch `Shimeji.exe` (or `Admin.bat` for fan control and CPU-temperature features).
 

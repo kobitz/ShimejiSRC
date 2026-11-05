@@ -208,7 +208,8 @@ VAD on, `no_speech_threshold=0.7`, `temperature=0.0`, `compression_ratio_thresho
 | `WhisperModel` | "tiny" | tiny/base/small/medium. Restart required. |
 | `WhisperThreads` | availableProcessors/2 | Restart required. |
 | `VoicePollMs` | 6000 | 1000–10000ms. Restart required. |
-| `WeatherLocation` | "auto" | IP geolocation or city name |
+| `WeatherLocation` | "auto" | IP geolocation (`ip-api.com` over plain HTTP, fallback `ipapi.co`) or a city name (open-meteo geocoding only — no IP lookup) |
+| `WeatherEnabled` | true | `false` disables the weather lookup entirely (it is the only feature that contacts outside services). Checked in `Mascot.weatherContext()` |
 | `VisionModel` | "gemma4:e2b-it-qat" | Must support multimodal. Code fallback when property absent: `DEFAULT_VISION_MODEL` in Mascot.java (gemma4:e2b-it-qat) |
 | `DriveIndexEnabled` | true | Background drive indexer for file-aware replies |
 | `DriveIndexDepth` | 4 | Directory levels indexed per drive root |
