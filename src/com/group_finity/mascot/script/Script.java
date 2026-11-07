@@ -16,8 +16,31 @@ import com.group_finity.mascot.exception.VariableException;
 
 public class Script extends Variable {
 
-	private static final ThreadLocal<ScriptEngine> engine = ThreadLocal.withInitial(
-		( ) -> new NashornScriptEngineFactory( ).getScriptEngine( new ScriptFilter( ) ) );
+	private static final ThreadLocal<ScriptEngine> engine = ThreadLocal.withInitial( Script::newEngine );
+
+	/**
+	 * Globals Nashorn gives every script that bypass the class filter: load() reads local files and
+	 * URLs and runs them as script, loadWithNewGlobal() does the same in a fresh global, and
+	 * exit()/quit() terminate the whole JVM. Mascot XML has no use for any of them.
+	 *
+	 * Nashorn evaluates against a NEW global created per VariableMap (not the engine's default
+	 * global), so deleting these once on the engine would not reach the scripts that actually run.
+	 * They are therefore removed at the start of every compiled script. The prefix stays on the
+	 * same line as the source (no line-number shift) and its value is void, so the script's own
+	 * result is unaffected.
+	 */
+	private static final String SANDBOX_PREFIX =
+		"void (delete this.load, delete this.loadWithNewGlobal, delete this.exit, delete this.quit);";
+
+	private static String guarded(final String source) {
+		return SANDBOX_PREFIX + source;
+	}
+
+	private static ScriptEngine newEngine() {
+		final Main main = Main.getInstance();
+		final String csv = main == null ? "" : main.getProperties().getProperty("ScriptAllowedClasses", "");
+		return new NashornScriptEngineFactory().getScriptEngine(new ScriptFilter(ScriptFilter.parseAllowed(csv)));
+	}
 
 	/**
 	 * Per-thread cache of compiled scripts, keyed by source text. CompiledScript
@@ -42,7 +65,7 @@ public class Script extends Variable {
 		this.clearAtInitFrame = clearAtInitFrame;
 		// Validate syntax by compiling on the current thread's engine
 		try {
-			((Compilable) engine.get()).compile(this.source);
+			((Compilable) engine.get()).compile(guarded(this.source));
 		} catch (final ScriptException e) {
 			throw new VariableException( Main.getInstance( ).getLanguageBundle( ).getString( "ScriptCompilationErrorMessage" ) + ": "+this.source, e);
 		}
@@ -76,7 +99,7 @@ public class Script extends Variable {
 			final java.util.Map<String, CompiledScript> cache = compiledCache.get();
 			CompiledScript compiled = cache.get(this.source);
 			if (compiled == null) {
-				compiled = ((Compilable) engine.get()).compile(this.source);
+				compiled = ((Compilable) engine.get()).compile(guarded(this.source));
 				cache.put(this.source, compiled);
 			}
 			setValue(compiled.eval(variables));
