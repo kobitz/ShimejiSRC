@@ -10,6 +10,9 @@ Per-version release history for the Shimeji AI fork. The runnable app ships as a
 - **Weather privacy** — new `WeatherEnabled` setting (default true; `false` = no outside lookups at all). README no longer claims "no cloud APIs": it now states that weather questions contact open-meteo (+ `ip-api.com`/`ipapi.co` for `WeatherLocation=auto`) and how to avoid it.
 - **Mascot-script sandbox tightened** — mascot XML scripts can no longer name any Java class (`ScriptFilter` used to expose all of `com.group_finity.mascot.*`, which let a script from an untrusted mascot pack rewrite settings like `OllamaEndpoint` or reach `FanController`/`WhisperProcess`), and Nashorn's `load`/`loadWithNewGlobal`/`exit`/`quit` built-ins are removed (they could read files/URLs and kill the app). New `ScriptAllowedClasses` setting (exact class names) for a trusted script that really needs one; blocked attempts log a `[Script] … blocked` warning naming the class. **If a custom mascot stops behaving after updating, check ShimejieeLog for that warning.**
 
+- **`Mascot.java` split, step 1** — 16 pure static text helpers (reply cleanup, timer/action-tag parsing, persona pronoun rewrite, query classifiers) moved to `assistant/ReplyText`; `Mascot.java` 5085 -> ~4700 lines. No behavior change (old vs new outputs byte-identical over ~30k test inputs).
+- **Script sandbox follow-up** — mascot scripts that fired behaviors on other mascots via `com.group_finity.mascot.Main` (Mario/Luigi stomp, block hit, mushroom) now use `mascot.manager.triggerBehavior(o, 'Name')`; see CLAUDE.md -> Scripting.
+
 ## v1.9 — June 26 2026
 
 The deepest companion update since the AI layer, plus two architectural performance fixes.
