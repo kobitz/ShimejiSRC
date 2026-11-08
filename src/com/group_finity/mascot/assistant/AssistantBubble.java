@@ -180,6 +180,15 @@ public class AssistantBubble
     private float   curX           = -9999f;
     private float   curY           = -9999f;
     private float   smoothMascotCX = -9999f;
+
+    // Stable horizontal reference (the mascot's anchor x, which does NOT move when the sprite frame
+    // gets wider or narrower) + facing, pushed by Mascot every tick via setMascotRef().
+    // MIN_VALUE = never set -> fall back to centering on the sprite bounds.
+    private int     refX            = Integer.MIN_VALUE;
+    private boolean refFacingRight  = true;
+    private float   smoothRefH      = -1f;     // slow-moving sprite height used to scale the offset
+    private int     lastTailX       = Integer.MIN_VALUE; // x the tail points at (anchor, else center)
+    private float   offsetFrac      = 0.5f;    // BubbleOffset setting: fraction of sprite height, in front of anchor
     private boolean everPositioned = false;
     private volatile int     targetX     = 0;
     private volatile int     targetY     = 0;
@@ -580,6 +589,9 @@ public class AssistantBubble
         fontName       = p.getProperty( "BubbleFontName", "" );
         if( fontName != null && fontName.isEmpty() ) fontName = null;
         showBubbleBg   = Boolean.parseBoolean( p.getProperty( "BubbleBackground", "false" ) );
+        try { offsetFrac = Math.max( -1f, Math.min( 1.5f,
+                  Integer.parseInt( p.getProperty( "BubbleOffset", "50" ).trim() ) / 100f ) ); }
+        catch( final NumberFormatException e ) { offsetFrac = 0.5f; }
         if( panel != null )
         {
             panel.maxWidth = bubbleWidth;
@@ -883,6 +895,17 @@ public class AssistantBubble
     // Last layout dimensions — skip full layout in reposition() when size is stable.
     private int lastLayoutW = -1;
     private int lastLayoutH = -1;
+
+    /**
+     * Tell the bubble where the mascot's anchor is and which way it faces. Call before
+     * {@link #reposition} each tick. The anchor is constant across sprite frames, so the bubble
+     * keeps a steady distance from the mascot while its frame width changes.
+     */
+    public void setMascotRef( final int anchorX, final boolean facingRight )
+    {
+        refX           = anchorX;
+        refFacingRight = facingRight;
+    }
 
     public void reposition( final Rectangle mascotBounds )
     {
@@ -1485,7 +1508,22 @@ public class AssistantBubble
         final int mascotCY      = mascotBounds.y + mascotBounds.height / 2;
         lastMascotCX            = mascotCX;
         lastMascotCY            = mascotCY;
-        int winX = mascotCX - w / 2;
+        // Horizontal placement: offset IN FRONT of the mascot's anchor by BubbleOffset x its (smoothed)
+        // height. Falls back to the old centre-on-bounds when no anchor has been supplied.
+        final int bubbleCX;
+        if( refX != Integer.MIN_VALUE )
+        {
+            smoothRefH = smoothRefH < 0f ? mascotBounds.height
+                                         : smoothRefH + ( mascotBounds.height - smoothRefH ) * 0.02f;
+            bubbleCX     = refX + Math.round( ( refFacingRight ? 1 : -1 ) * offsetFrac * smoothRefH );
+            lastTailX    = refX;
+        }
+        else
+        {
+            bubbleCX  = mascotCX;
+            lastTailX = mascotCX;
+        }
+        int winX = bubbleCX - w / 2;
         int winY = mascotBounds.y - h - Y_GAP;
         bubbleAbove = true;
         if( winY < screen.y )
@@ -1619,7 +1657,7 @@ public class AssistantBubble
         {
             everPositioned = true;
             curX = winX; curY = winY;
-            smoothMascotCX = mascotCX;
+            smoothMascotCX = lastTailX;
             window.setLocation( winX, winY );
             window.setVisible( true );
             window.setLocation( winX, winY ); // re-apply after native peer creation
@@ -1639,14 +1677,14 @@ public class AssistantBubble
         if( Math.abs(dx) < SNAP_PX && Math.abs(dy) < SNAP_PX )
         {
             curX = targetX; curY = targetY;
-            smoothMascotCX = lastMascotCX;
+            smoothMascotCX = lastTailX;
             needsMove = false;
             window.setLocation( targetX, targetY );
             return false;
         }
         curX += dx * LERP;
         curY += dy * LERP;
-        smoothMascotCX += ( lastMascotCX - smoothMascotCX ) * LERP_TAIL;
+        smoothMascotCX += ( lastTailX - smoothMascotCX ) * LERP_TAIL;
         final int newX = Math.round( curX );
         final int newY = Math.round( curY );
         if( newX != window.getX() || newY != window.getY() )

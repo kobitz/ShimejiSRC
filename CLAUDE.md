@@ -187,6 +187,7 @@ VAD on, `no_speech_threshold=0.7`, `temperature=0.0`, `compression_ratio_thresho
 
 ### AssistantBubble Key Details
 
+- **Horizontal placement (Nov 2026):** the bubble is placed relative to the mascot's **anchor x** (`Mascot.getAnchor().x`, constant across sprite frames), NOT the center of the current frame's bounds — frame width changes (some actions) used to drag a bounds-centered bubble sideways. `Mascot` calls `setMascotRef( anchorX, lookRight )` then `reposition()` each tick; `positionWindow` puts the bubble center at `anchor ± BubbleOffset% x smoothedHeight` (EMA of sprite height, alpha 0.02/tick, so sitting/crouching doesn't slide it), and the tail points at the anchor. No ref supplied -> old centre-on-bounds fallback. Proximity checks between sibling bubbles still use `lastMascotCX` (bounds centre).
 - **Movement:** Lerp (`LERP=0.2`). `setLocation()` called before AND after `setVisible(true)` — OS peer-creation centers the window otherwise.
 - **Resize jump fix:** After `window.setSize()` on a visible window, call `window.setLocation()` immediately — any size change causes a 1-frame jump without it.
 - **`getTargetBounds()`** — Fresh `Rectangle` allocation each call. Shared `cachedBounds` caused Manager/EDT race (4 non-atomic writes) → extreme Y jumps.
@@ -201,6 +202,7 @@ VAD on, `no_speech_threshold=0.7`, `temperature=0.0`, `compression_ratio_thresho
 |-----|---------|-------|
 | `BubbleWidth` | 180 | |
 | `BubbleFontSize` | 14 | |
+| `BubbleOffset` | 50 | Horizontal bubble offset, % of the mascot's (smoothed) height, **in front of** its anchor in the facing direction (0 = centered over it, negative = behind; slider range -100..150 in Settings -> Chat Bubbles). Still clamped to the screen and pushed by sibling-bubble collisions |
 | `BubbleFontName` | "" | Ubuntu R |
 | `BubbleBackground` | false | Enables Path2D bubble with tail |
 | `OllamaModel` | "gemma4:e2b-it-qat" | Code fallback `OllamaClient.DEFAULT_MODEL`. gemma4:e4b-it-qat for higher quality on 8 GB+ |

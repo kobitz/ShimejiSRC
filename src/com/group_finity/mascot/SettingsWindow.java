@@ -82,6 +82,7 @@ public class SettingsWindow extends javax.swing.JDialog
     // Chat bubble settings
     private int    bubbleWidth    = 180;
     private int    bubbleFontSize = 14;
+    private int    bubbleOffset   = 50;   // percent of mascot height, in front of its anchor
     private String bubbleFontName = "";
     private boolean bubbleBg      = false;
     private String ollamaModel    = "gemma4:e2b-it-qat";
@@ -152,6 +153,8 @@ public class SettingsWindow extends javax.swing.JDialog
         
         bubbleWidth    = Integer.parseInt( properties.getProperty( "BubbleWidth",    "180" ) );
         bubbleFontSize = Integer.parseInt( properties.getProperty( "BubbleFontSize", "14"  ) );
+        try { bubbleOffset = Math.max( -100, Math.min( 150, Integer.parseInt( properties.getProperty( "BubbleOffset", "50" ).trim() ) ) ); }
+        catch( final NumberFormatException ex ) { bubbleOffset = 50; }
         bubbleFontName = properties.getProperty( "BubbleFontName", "" );
         bubbleBg       = Boolean.parseBoolean( properties.getProperty( "BubbleBackground", "false" ) );
         ollamaModel    = properties.getProperty( "OllamaModel",   "gemma4:e2b-it-qat" );
@@ -346,6 +349,17 @@ public class SettingsWindow extends javax.swing.JDialog
             lblFontSize.setText("Font Size: " + bubbleFontSize + "pt");
         });
 
+        final javax.swing.JLabel lblOffset = new javax.swing.JLabel("Horizontal Offset: " + bubbleOffset + "% of mascot height (in front)");
+        lblOffset.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        lblOffset.setToolTipText("Where the bubble sits relative to the mascot: 0 = centered over it, positive = in front of it, negative = behind it.");
+        final javax.swing.JSlider sldBubbleOffset = new javax.swing.JSlider(-100, 150, bubbleOffset);
+        sldBubbleOffset.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        sldBubbleOffset.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 40));
+        sldBubbleOffset.addChangeListener(e -> {
+            bubbleOffset = sldBubbleOffset.getValue();
+            lblOffset.setText("Horizontal Offset: " + bubbleOffset + "% of mascot height (in front)");
+        });
+
         final javax.swing.JLabel lblFont = new javax.swing.JLabel("Font:");
         lblFont.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         final String[] availFonts = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getAvailableFontFamilyNames();
@@ -372,6 +386,10 @@ public class SettingsWindow extends javax.swing.JDialog
         pnlChatBubbles.add(lblFontSize);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
         pnlChatBubbles.add(sldBubbleFontSize);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(10));
+        pnlChatBubbles.add(lblOffset);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(sldBubbleOffset);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(10));
         pnlChatBubbles.add(lblFont);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
@@ -2185,6 +2203,7 @@ public class SettingsWindow extends javax.swing.JDialog
                 
                 properties.setProperty( "BubbleWidth",    String.valueOf( bubbleWidth ) );
                 properties.setProperty( "BubbleFontSize", String.valueOf( bubbleFontSize ) );
+                properties.setProperty( "BubbleOffset",   String.valueOf( bubbleOffset ) );
                 properties.setProperty( "BubbleFontName", bubbleFontName );
                 properties.setProperty( "BubbleBackground", String.valueOf( bubbleBg ) );
                 properties.setProperty( "OllamaModel",  ollamaModel );

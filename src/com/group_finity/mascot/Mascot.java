@@ -1228,7 +1228,10 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
                         dead.add( b );
                     }
                     else
+                    {
+                        b.setMascotRef( getAnchor( ).x, isLookRight( ) );
                         b.reposition( ab );
+                    }
                 }
                 if( dead != null )
                 {
