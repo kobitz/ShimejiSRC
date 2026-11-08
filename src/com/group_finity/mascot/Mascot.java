@@ -1684,20 +1684,9 @@ public class Mascot
         ollamaClient = null;
     }
 
-    /**
-     * Ensure assistantBubble is ready for a new Thinking/response cycle.
-     * Must be called on the EDT. Creates a fresh bubble when the current one
-     * already has a visible AI response so each exchange gets its own window
-     * and its own chronological timestamp for inter-mascot vertical stacking.
-     */
-    void ensureFreshBubble()
+    void ensureFreshBubble( )
     {
-        if( assistantBubble == null || assistantBubble.hasActiveResponse() )
-        {
-            assistantBubble = new com.group_finity.mascot.assistant.AssistantBubble(
-                this::handleReply, getImageSet() );
-            activeBubbles.add( assistantBubble );
-        }
+        new AssistantSupport( this ).ensureFreshBubble( );
     }
 
     String weatherContext( final String userText )
@@ -1705,48 +1694,9 @@ public class Mascot
         return new AssistantPrompts( this ).weatherContext( userText );
     }
 
-    /** Capture the primary screen, scale to max 1024px wide, return base64-encoded PNG. */
-    static String captureScreenBase64() throws java.awt.AWTException, java.io.IOException
+    static String captureScreenBase64( ) throws java.awt.AWTException, java.io.IOException
     {
-        // Capture + downscale + PNG-encode is a CPU spike that competes with the 40ms
-        // tick loop — a screen glance is the heaviest unprompted reaction, and the
-        // TickWatch breakdown traced the multi-second whole-program crawls to exactly
-        // these vision bursts (cpu pegged, every mascot tick + EnumWindows starved
-        // together). Drop this (dedicated, short-lived) thread's priority for the
-        // duration so the loop keeps moving, then restore it for the HTTP/inference wait.
-        final Thread me = Thread.currentThread();
-        final int prevPriority = me.getPriority();
-        me.setPriority( Thread.MIN_PRIORITY );
-        try
-        {
-            final java.awt.Rectangle screen = new java.awt.Rectangle(
-                java.awt.Toolkit.getDefaultToolkit().getScreenSize() );
-            final java.awt.image.BufferedImage full =
-                new java.awt.Robot().createScreenCapture( screen );
-
-            // 768-wide cap (was 1024): fewer vision tokens => less model preprocessing
-            // and inference (the part that pegs the CPU) plus a smaller/faster encode.
-            // Raise back toward 1024 if the vision model's screen-text legibility suffers.
-            final int maxW = 768;
-            java.awt.image.BufferedImage img = full;
-            if( full.getWidth() > maxW )
-            {
-                final int h = (int)( full.getHeight() * (double) maxW / full.getWidth() );
-                img = new java.awt.image.BufferedImage( maxW, h,
-                    java.awt.image.BufferedImage.TYPE_INT_RGB );
-                final java.awt.Graphics2D g = img.createGraphics();
-                g.drawImage( full, 0, 0, maxW, h, null );
-                g.dispose();
-            }
-
-            final java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            javax.imageio.ImageIO.write( img, "png", baos );
-            return java.util.Base64.getEncoder().encodeToString( baos.toByteArray() );
-        }
-        finally
-        {
-            me.setPriority( prevPriority );
-        }
+        return AssistantSupport.captureScreenBase64( );
     }
 
     void handleScreenQuery( final String userText, final String system, final OllamaClient client )
@@ -1759,14 +1709,9 @@ public class Mascot
         return AssistantPrompts.audioSnapshotContext( );
     }
 
-    /** Create OllamaClient using the model selected in Settings. */
-    static OllamaClient createOllamaClient()
+    static OllamaClient createOllamaClient( )
     {
-        final String model = Main.getInstance().getProperties()
-            .getProperty( "OllamaModel", OllamaClient.DEFAULT_MODEL );
-        final String endpoint = Main.getInstance().getProperties()
-            .getProperty( "OllamaEndpoint", "http://localhost:11434/api/generate" );
-        return new OllamaClient( endpoint, model );
+        return AssistantSupport.createOllamaClient( );
     }
 
     public void say( final String text )
