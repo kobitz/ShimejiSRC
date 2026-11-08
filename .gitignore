@@ -7,3 +7,9 @@ SensorReader/obj/
 __pycache__/
 *.pyc
 Build.local.bat
+
+# Per-user assistant data: plain text on purpose (users can read and edit it), never committed
+relationship_journal.txt
+memory.json
+driveindex.txt
+driveembed.txt
