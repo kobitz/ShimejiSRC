@@ -1,5 +1,13 @@
 package com.group_finity.mascot;
 
+import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_SPONTANEOUS_COOLDOWN_MS;
+import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_AUDIO_COOLDOWN_MS;
+import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_VISION_COOLDOWN_MS;
+import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_USER_SPEECH_COOLDOWN_MS;
+import static com.group_finity.mascot.assistant.ReactionCooldowns.globalSpontaneousLastFiredMs;
+import static com.group_finity.mascot.assistant.ReactionCooldowns.globalAudioLastFiredMs;
+import static com.group_finity.mascot.assistant.ReactionCooldowns.globalVisionLastFiredMs;
+import static com.group_finity.mascot.assistant.ReactionCooldowns.globalUserSpeechLastFiredMs;
 import static com.group_finity.mascot.assistant.ReplyText.isAudioTranscriptDuplicate;
 import static com.group_finity.mascot.assistant.ReplyText.stripActionTag;
 import static com.group_finity.mascot.assistant.ReplyText.rewriteFirstPerson;
@@ -421,21 +429,6 @@ public class Mascot
     private static final int VISION_MAX_TICKS  = 18_000; // ~7.5min ceiling
     private int  visionTickCounter  = 0;
     private int  visionNextTrigger  = -1; // -1 = randomize on first tick
-
-    // Global cross-mascot cooldowns — when any mascot fires a type, all others skip that
-    // type until the cooldown elapses. Each type is independent; peer reactions excluded.
-    private static final long GLOBAL_SPONTANEOUS_COOLDOWN_MS = 120_000L; // 2 min
-    private static final long GLOBAL_AUDIO_COOLDOWN_MS       =  90_000L; // 90 s
-    private static final long GLOBAL_VISION_COOLDOWN_MS      = 180_000L; // 3 min
-    private static final long GLOBAL_USER_SPEECH_COOLDOWN_MS = 120_000L; // 2 min
-    private static final java.util.concurrent.atomic.AtomicLong globalSpontaneousLastFiredMs =
-        new java.util.concurrent.atomic.AtomicLong( 0L );
-    private static final java.util.concurrent.atomic.AtomicLong globalAudioLastFiredMs =
-        new java.util.concurrent.atomic.AtomicLong( 0L );
-    private static final java.util.concurrent.atomic.AtomicLong globalVisionLastFiredMs =
-        new java.util.concurrent.atomic.AtomicLong( 0L );
-    private static final java.util.concurrent.atomic.AtomicLong globalUserSpeechLastFiredMs =
-        new java.util.concurrent.atomic.AtomicLong( 0L );
 
     /** Fallback when the VisionModel property is absent — matches the documented
      *  default (shared multimodal model), NOT a separate vision-only model. */
