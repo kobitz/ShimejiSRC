@@ -86,9 +86,9 @@ public class Mascot
 
     private static AtomicInteger lastId = new AtomicInteger( );
 
-    private final int id;
+    final int id;
 
-    private String imageSet = "";
+    String imageSet = "";
     /**
      * A window that displays the mascot.
      */
@@ -338,7 +338,7 @@ public class Mascot
      * Whether this mascot's location (and behavior) is pinned and will be
      * restored on the next program launch.
      */
-    private boolean pinnedLocation = false;
+    boolean pinnedLocation = false;
 
     // ── General-purpose script scratchpad ────────────────────────────────────────
     // Allows XML/JS scripts to store transient per-mascot values (e.g. jump target block X).
@@ -359,25 +359,25 @@ public class Mascot
 
     // ── Manual-only mode ──────────────────────────────────────────────────────
     // When true, buildNextBehavior only allows Fall/Dragged/Thrown/Stand/GrabWall.
-    private boolean manualOnly = false;
+    boolean manualOnly = false;
 
     // ── Assistant mode ─────────────────────────────────────────────────────────
     // When true, left-clicking the mascot opens a chat input box instead of
     // triggering the normal drag behavior. Responses come from a local Ollama LLM.
-    private boolean assistantMode = false;
-    private com.group_finity.mascot.assistant.AssistantBubble assistantBubble = null;
+    boolean assistantMode = false;
+    com.group_finity.mascot.assistant.AssistantBubble assistantBubble = null;
     // 2B-only live system readout (console/log stream projected ahead of her).
     // Null for every other image set and whenever assistant mode is off.
-    private com.group_finity.mascot.assistant.ConsoleReadout consoleReadout = null;
+    com.group_finity.mascot.assistant.ConsoleReadout consoleReadout = null;
     // Dedicated bubble for the active countdown timer / fired reminder. Separate from
     // assistantBubble so it can maintain its fixed stacking position independently.
-    private volatile com.group_finity.mascot.assistant.AssistantBubble timerBubble = null;
+    volatile com.group_finity.mascot.assistant.AssistantBubble timerBubble = null;
     // All bubbles this mascot has ever created — each AI response gets its own entry so
     // the chronological stacking system can weave them between other mascots' messages.
     // CopyOnWriteArrayList: Manager thread iterates for reposition, EDT adds entries.
-    private final java.util.concurrent.CopyOnWriteArrayList<com.group_finity.mascot.assistant.AssistantBubble>
+    final java.util.concurrent.CopyOnWriteArrayList<com.group_finity.mascot.assistant.AssistantBubble>
         activeBubbles = new java.util.concurrent.CopyOnWriteArrayList<>();
-    private com.group_finity.mascot.assistant.AssistantInputDialog activeDialog = null;
+    com.group_finity.mascot.assistant.AssistantInputDialog activeDialog = null;
     // Strong reference — the registry only holds a WeakReference, so without this the listener gets GC'd
     private com.group_finity.mascot.assistant.MascotSpeechRegistry.PeerListener peerListener = null;
     private static com.group_finity.mascot.assistant.OllamaClient ollamaClient = null; // shared across all mascots
@@ -453,13 +453,13 @@ public class Mascot
 
     // ── Floor collision ────────────────────────────────────────────────────────
     // When false, workarea bottom is not treated as a floor for this mascot.
-    private boolean floorEnabled = true;
+    boolean floorEnabled = true;
 
     // ── Behavior tooltip overlay ──────────────────────────────────────────────
     // When true, a small floating label above this mascot shows its current
     // behavior name and remaining action timer ticks.
-    private boolean tooltipEnabled = false;
-    private MascotTooltip mascotTooltip = null;
+    boolean tooltipEnabled = false;
+    MascotTooltip mascotTooltip = null;
     // The property key under which this mascot's location is saved.
     // Set at save time and carried across restarts so removePinnedLocation()
     // always deletes the right key regardless of the current runtime id.
@@ -489,12 +489,12 @@ public class Mascot
     
     protected DebugWindow debugWindow = null;
 
-    private JPopupMenu activePopup = null;
+    JPopupMenu activePopup = null;
     // Screen bounds of the open popup, captured on show. The global native-mouse dismiss
     // listener uses this to ignore presses INSIDE the popup (so the volume slider and menu
     // items work) and only force-close on presses outside it.
-    private volatile java.awt.Rectangle activePopupBounds = null;
-    private NativeMouseListener popupDismissListener = null;
+    volatile java.awt.Rectangle activePopupBounds = null;
+    NativeMouseListener popupDismissListener = null;
     
     private ArrayList<String> affordances = new ArrayList( 5 );
     
@@ -724,7 +724,7 @@ public class Mascot
                 @Override
                 public void run( )
                 {
-                    showPopup( event.getX( ), event.getY( ) );
+                    new MascotPopupMenu( Mascot.this ).show( event.getX( ), event.getY( ) );
                 }
             } );
             return;
@@ -776,630 +776,6 @@ public class Mascot
                 }
             }
         }
-    }
-
-    private void showPopup( final int x, final int y )
-    {
-        final JPopupMenu popup = new JPopupMenu( );
-        final ResourceBundle languageBundle = Main.getInstance( ).getLanguageBundle( );
-
-        popup.addPopupMenuListener( new PopupMenuListener( )
-        {
-            @Override
-            public void popupMenuCanceled( final PopupMenuEvent e )
-            {
-            }
-
-            @Override
-            public void popupMenuWillBecomeInvisible( final PopupMenuEvent e )
-            {
-                setAnimating( true );
-                activePopup = null;
-                activePopupBounds = null;
-                if( popupDismissListener != null )
-                {
-                    GlobalScreen.removeNativeMouseListener( popupDismissListener );
-                    popupDismissListener = null;
-                }
-            }
-
-            @Override
-            public void popupMenuWillBecomeVisible( final PopupMenuEvent e )
-            {
-                setAnimating( false );
-            }
-        } );
-
-        // "Another One!" menu item
-        final JMenuItem increaseMenu = new JMenuItem( languageBundle.getString( "CallAnother" ) );
-        increaseMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent event )
-            {
-                Main.getInstance( ).createMascot( imageSet );
-            }
-        } );
-
-        // "Bye Bye!" menu item
-        final JMenuItem disposeMenu = new JMenuItem( languageBundle.getString( "Dismiss" ) );
-        disposeMenu.addActionListener( new ActionListener( )
-        {
-            @Override
-            public void actionPerformed( final ActionEvent e )
-            {
-                // Clear any saved pin so a dismissed mascot doesn't respawn next launch.
-                if( pinnedLocation )
-                    removePinnedLocation( );
-                dispose( );
-            }
-        } );
-
-        // "Follow Mouse!" Menu item
-        final JMenuItem gatherMenu = new JMenuItem( languageBundle.getString( "FollowCursor" ) );
-        gatherMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent event )
-            {
-                getManager( ).setBehaviorAll( Main.getInstance( ).getConfiguration(imageSet), Main.BEHAVIOR_GATHER, imageSet );
-            }
-        } );
-
-        // "Reduce to One!" menu item
-        final JMenuItem oneMenu = new JMenuItem( languageBundle.getString( "DismissOthers" ) );
-        oneMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent event )
-            {
-                getManager( ).remainOne( imageSet );
-            }
-        } );
-
-        // "Reduce to One!" menu item
-        final JMenuItem onlyOneMenu = new JMenuItem( languageBundle.getString( "DismissAllOthers" ) );
-        onlyOneMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent event )
-            {
-                getManager( ).remainOne( Mascot.this );
-            }
-        } );
-
-        // "Restore IE!" menu item
-        final JMenuItem restoreMenu = new JMenuItem( languageBundle.getString( "RestoreWindows" ) );
-        restoreMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent event )
-            {
-                NativeFactory.getInstance( ).getEnvironment( ).restoreIE( );
-            }
-        } );
-
-        // Debug menu item
-        final JMenuItem debugMenu = new JMenuItem( languageBundle.getString( "RevealStatistics" ) );
-        debugMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent event )
-            {
-                if( debugWindow == null )
-                {
-                    debugWindow = new DebugWindow( );
-                    //debugWindow.setIcon
-                }
-                debugWindow.setAlwaysOnTop( Boolean.parseBoolean( Main.getInstance( ).getProperties( ).getProperty( "AlwaysOnTopDebugWindow", "false" ) ) );
-                debugWindow.setVisible( true );
-            }
-        } );
-        
-        // "Bye Everyone!" menu item
-        final JMenuItem closeMenu = new JMenuItem( languageBundle.getString( "DismissAll" ) );
-        closeMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent e )
-            {
-                Main.getInstance( ).exit( );
-            }
-        } );
-
-        // "Save Location" checkbox — pins this mascot's current position and behavior
-        // so it is restored at the same spot on next launch.
-        final JCheckBoxMenuItem saveLocationMenu = new JCheckBoxMenuItem(
-            languageBundle.getString( "SaveLocation" ), pinnedLocation );
-        saveLocationMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                pinnedLocation = saveLocationMenu.isSelected( );
-                if( pinnedLocation )
-                    savePinnedLocation( );
-                else
-                    removePinnedLocation( );
-            }
-        } );
-
-        // "Manual Only" checkbox — restricts autonomous behavior to Stand/Fall/Dragged/Thrown/GrabWall.
-        // All other behaviors can still be triggered manually via hotkey or right-click menu.
-        final JCheckBoxMenuItem manualOnlyMenu = new JCheckBoxMenuItem( "Manual Only", manualOnly );
-        manualOnlyMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                manualOnly = manualOnlyMenu.isSelected( );
-                Main.getInstance( ).getProperties( ).setProperty( "ManualOnly.mascot" + id, String.valueOf( manualOnly ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        // "Paused" Menu item
-        final JMenuItem pauseMenu = new JMenuItem( isAnimating( ) ? languageBundle.getString( "PauseAnimations" ) : languageBundle.getString( "ResumeAnimations" ) );
-        pauseMenu.addActionListener( new ActionListener( )
-        {
-            public void actionPerformed( final ActionEvent event )
-            {
-                Mascot.this.setPaused( !Mascot.this.isPaused( ) );
-            }
-        } );
-
-        // Add the Behaviors submenu.  Currently slightly buggy, sometimes the menu ghosts.
-        JLongMenu submenu = new JLongMenu( languageBundle.getString( "SetBehaviour" ), 30 );
-        JLongMenu allowedSubmenu = new JLongMenu( languageBundle.getString( "PersonalBehaviours" ), 30 );
-        // The MenuScroller would look better than the JLongMenu, but the initial positioning is not working correctly.
-        //MenuScroller.setScrollerFor(submenu, 30, 125);
-        submenu.setAutoscrolls( true );
-        JMenuItem item;
-        JCheckBoxMenuItem toggleItem;
-        final com.group_finity.mascot.config.Configuration config = Main.getInstance( ).getConfiguration( getImageSet( ) );
-        for( String behaviorName : config.getBehaviorNames( ) )
-        {
-            final String command = behaviorName;
-            try
-            {
-                if( !config.isBehaviorHidden( command ) )
-                {
-                    String caption = behaviorName.replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " );
-                    if( config.isBehaviorEnabled( command, Mascot.this ) && !command.contains( "/" ) && !config.isBehaviorToggleable( command ) )
-                    {
-                        item = new JMenuItem( languageBundle.containsKey( behaviorName ) ? 
-                                              languageBundle.getString( behaviorName ) : 
-                                              caption );
-                        item.addActionListener( new ActionListener( )
-                        {
-                            @Override
-                            public void actionPerformed( final ActionEvent e )
-                            {
-                                try
-                                {	
-                                    if( isCurrentActionInterruptable( ) )
-                                        setBehavior( config.buildBehavior( command ) );
-                                }
-                                catch( Exception err )
-                                {
-                                    log.log( Level.SEVERE, "Error ({0})", this );
-                                    Main.showError( languageBundle.getString( "CouldNotSetBehaviourErrorMessage" ), err );
-                                }
-                            }
-                        } );
-                        submenu.add( item );
-                    }
-                    
-                    if( config.isBehaviorToggleable( command ) && !command.contains( "/" ) )
-                    {
-                        toggleItem = new JCheckBoxMenuItem( caption, config.isBehaviorEnabled( command, Mascot.this ) );
-                        toggleItem.addItemListener( new ItemListener( )
-                        {
-                            public void itemStateChanged( final ItemEvent e )
-                            {
-                                final boolean nowEnabled = !config.isBehaviorEnabled( command, Mascot.this );
-                                Main.getInstance( ).setMascotBehaviorEnabled( command, Mascot.this, nowEnabled );
-                                if( config.isBehaviorClearTintOnDisable( command ) )
-                                {
-                                    if( nowEnabled )
-                                    {
-                                        try { setBehavior( config.buildBehavior( command ) ); }
-                                        catch( Exception ignored ) {}
-                                    }
-                                    else
-                                    {
-                                        snapClearTint( );
-                                        // Break out of the running Loop=true behavior so it cannot
-                                        // re-call Tint.init() and re-register the color expression.
-                                        try
-                                        {
-                                            setBehavior( config.buildNextBehavior( command, Mascot.this ) );
-                                        }
-                                        catch( Exception ignored ) {}
-                                    }
-                                }
-                            }
-                        } );
-                        allowedSubmenu.add( toggleItem );
-                    }
-                }
-            }
-            catch( Exception err )
-            {
-                // just skip if something goes wrong
-            }
-        }
-
-        // Per-mascot universal behavior toggles
-        final String mascotKey = "mascot" + id;
-        final java.util.Properties props = Main.getInstance( ).getProperties( );
-
-        final JCheckBoxMenuItem breedingMenu = new JCheckBoxMenuItem( languageBundle.getString( "BreedingCloning" ),
-            ( props.getProperty( "Breeding.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Breeding.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Breeding", "true" ) ) ) );
-        breedingMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                props.setProperty( "Breeding.imageset." + getImageSet( ), String.valueOf( breedingMenu.isSelected( ) ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem transientMenu = new JCheckBoxMenuItem( languageBundle.getString( "BreedingTransient" ),
-            ( props.getProperty( "Transients.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transients.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transients", "true" ) ) ) );
-        transientMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                props.setProperty( "Transients.imageset." + getImageSet( ), String.valueOf( transientMenu.isSelected( ) ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem transformationMenu = new JCheckBoxMenuItem( languageBundle.getString( "Transformation" ),
-            ( props.getProperty( "Transformation.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Transformation.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Transformation", "true" ) ) ) );
-        transformationMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                props.setProperty( "Transformation.imageset." + getImageSet( ), String.valueOf( transformationMenu.isSelected( ) ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem throwingMenu = new JCheckBoxMenuItem( languageBundle.getString( "ThrowingWindows" ),
-            ( props.getProperty( "Throwing.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Throwing.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Throwing", "true" ) ) ) );
-        throwingMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                props.setProperty( "Throwing.imageset." + getImageSet( ), String.valueOf( throwingMenu.isSelected( ) ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem soundsMenu = new JCheckBoxMenuItem( languageBundle.getString( "SoundEffects" ),
-            ( props.getProperty( "Sounds.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Sounds.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Sounds", "true" ) ) ) );
-        soundsMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                props.setProperty( "Sounds.imageset." + getImageSet( ), String.valueOf( soundsMenu.isSelected( ) ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem multiscreenMenu = new JCheckBoxMenuItem( languageBundle.getString( "Multiscreen" ),
-            ( props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Multiscreen.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Multiscreen", "true" ) ) ) );
-        multiscreenMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                props.setProperty( "Multiscreen.imageset." + getImageSet( ), String.valueOf( multiscreenMenu.isSelected( ) ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem screenLoopMenu = new JCheckBoxMenuItem( languageBundle.getString( "ScreenLoop" ),
-            ( props.getProperty( "ScreenLoop.imageset." + getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "ScreenLoop.imageset." + getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "ScreenLoop", "false" ) ) ) );
-        screenLoopMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                props.setProperty( "ScreenLoop.imageset." + getImageSet( ), String.valueOf( screenLoopMenu.isSelected( ) ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem floorMenu = new JCheckBoxMenuItem( "Floor Collision", floorEnabled );
-        floorMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                floorEnabled = floorMenu.isSelected( );
-                Main.getInstance( ).getProperties( ).setProperty( "FloorEnabled.mascot" + id, String.valueOf( floorEnabled ) );
-                Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-
-        final JCheckBoxMenuItem tooltipMenu = new JCheckBoxMenuItem( "Tooltip", tooltipEnabled );
-        tooltipMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                tooltipEnabled = tooltipMenu.isSelected( );
-                Main.getInstance( ).getProperties( ).setProperty( "Tooltip.mascot" + id, String.valueOf( tooltipEnabled ) );
-                Main.getInstance( ).updateConfigFile( );
-                if( !tooltipEnabled && mascotTooltip != null )
-                {
-                    mascotTooltip.dispose( );
-                    mascotTooltip = null;
-                }
-            }
-        } );
-
-        JLongMenu universalSubmenu = new JLongMenu( languageBundle.getString( "UniversalBehaviours" ), 30 );
-        universalSubmenu.add( breedingMenu );
-        universalSubmenu.add( transientMenu );
-        universalSubmenu.add( transformationMenu );
-        universalSubmenu.add( throwingMenu );
-        universalSubmenu.add( soundsMenu );
-        universalSubmenu.add( multiscreenMenu );
-        universalSubmenu.add( screenLoopMenu );
-        universalSubmenu.add( floorMenu );
-
-        // Personal Filter submenu — lets users override the global filter for this imageSet
-        final String imageSetFilterKey = "Filter.imageset." + getImageSet( );
-        final String globalFilter = props.getProperty( "Filter", "false" );
-        final String currentFilter = props.getProperty( imageSetFilterKey, globalFilter );
-
-        final JCheckBoxMenuItem filterNearestMenu = new JCheckBoxMenuItem(
-            languageBundle.getString( "PersonalFilterNearest" ),
-            currentFilter.equalsIgnoreCase( "false" ) || currentFilter.equalsIgnoreCase( "nearest" ) );
-        final JCheckBoxMenuItem filterBicubicMenu = new JCheckBoxMenuItem(
-            languageBundle.getString( "PersonalFilterBicubic" ),
-            currentFilter.equalsIgnoreCase( "bicubic" ) );
-        final JCheckBoxMenuItem filterHqxMenu = new JCheckBoxMenuItem(
-            languageBundle.getString( "PersonalFilterHqx" ),
-            currentFilter.equalsIgnoreCase( "true" ) || currentFilter.equalsIgnoreCase( "hqx" ) );
-
-        final Runnable applyPersonalFilter = new Runnable( )
-        {
-            public void run( )
-            {
-                // Determine which filter is now selected
-                String chosen;
-                if( filterBicubicMenu.isSelected( ) )
-                    chosen = "bicubic";
-                else if( filterHqxMenu.isSelected( ) )
-                    chosen = "hqx";
-                else
-                    chosen = "false";
-
-                props.setProperty( imageSetFilterKey, chosen );
-
-                // Clear cached images for this imageSet so they reload with the new filter
-                ImagePairs.removeAll( getImageSet( ) );
-
-                // Reload configuration and respawn
-                final String imageSet = getImageSet( );
-                final boolean isExit = Main.getInstance( ).getManager( ).isExitOnLastRemoved( );
-                Main.getInstance( ).getManager( ).setExitOnLastRemoved( false );
-                dispose( );
-                Main.getInstance( ).loadConfiguration( imageSet );
-                Main.getInstance( ).createMascot( imageSet );
-                Main.getInstance( ).getManager( ).setExitOnLastRemoved( isExit );
-            }
-        };
-
-        filterNearestMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                if( filterNearestMenu.isSelected( ) )
-                {
-                    filterBicubicMenu.setSelected( false );
-                    filterHqxMenu.setSelected( false );
-                    applyPersonalFilter.run( );
-                }
-                else if( !filterBicubicMenu.isSelected( ) && !filterHqxMenu.isSelected( ) )
-                    filterNearestMenu.setSelected( true );
-            }
-        } );
-        filterBicubicMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                if( filterBicubicMenu.isSelected( ) )
-                {
-                    filterNearestMenu.setSelected( false );
-                    filterHqxMenu.setSelected( false );
-                    applyPersonalFilter.run( );
-                }
-                else if( !filterNearestMenu.isSelected( ) && !filterHqxMenu.isSelected( ) )
-                    filterBicubicMenu.setSelected( true );
-            }
-        } );
-        filterHqxMenu.addItemListener( new ItemListener( )
-        {
-            public void itemStateChanged( final ItemEvent e )
-            {
-                if( filterHqxMenu.isSelected( ) )
-                {
-                    filterNearestMenu.setSelected( false );
-                    filterBicubicMenu.setSelected( false );
-                    applyPersonalFilter.run( );
-                }
-                else if( !filterNearestMenu.isSelected( ) && !filterBicubicMenu.isSelected( ) )
-                    filterHqxMenu.setSelected( true );
-            }
-        } );
-
-        JLongMenu personalFilterSubmenu = new JLongMenu( languageBundle.getString( "PersonalFilter" ), 30 );
-        personalFilterSubmenu.add( filterNearestMenu );
-        personalFilterSubmenu.add( filterBicubicMenu );
-        personalFilterSubmenu.add( filterHqxMenu );
-
-        popup.add( increaseMenu );
-        popup.add( new JSeparator( ) );
-        popup.add( gatherMenu );
-        popup.add( restoreMenu );
-        popup.add( debugMenu );
-        popup.add( tooltipMenu );
-        // Per-image-set sound-effect volume (0-100%) in the main menu, under the tooltip toggle.
-        // Persisted as Volume.imageset.<name>. Uses MenuSlider so dragging it does not dismiss the
-        // popup. Applied live at playback; written to disk only when the drag settles.
-        int initVolPct;
-        try { initVolPct = Math.max( 0, Math.min( 100, Integer.parseInt(
-            props.getProperty( "Volume.imageset." + getImageSet( ), "100" ).trim( ) ) ) ); }
-        catch( final Exception ex ) { initVolPct = 100; }
-        final javax.swing.JSlider volumeSlider = new javax.swing.JSlider( 0, 100, initVolPct );
-        // The "Volume: X%" label is a real (non-activating) menu item — LabelMenuItem — so the L&F
-        // positions its text in EXACTLY the same column as every other item, with no hand-computed
-        // gutter offset to get wrong. The slider sits on its own row below (SliderMenuItem). A titled
-        // border was avoided earlier because a framed box reads as a nested sub-category.
-        final LabelMenuItem volumeLabel = new LabelMenuItem( "Volume: " + initVolPct + "%" );
-        volumeSlider.setOpaque( false );
-        volumeSlider.setToolTipText( "Sound effect volume for " + getImageSet( ) );
-        final java.awt.Dimension volPref = volumeSlider.getPreferredSize( );
-        volumeSlider.setPreferredSize( new java.awt.Dimension( 130, volPref.height ) );
-        volumeSlider.addChangeListener( new javax.swing.event.ChangeListener( )
-        {
-            @Override
-            public void stateChanged( final javax.swing.event.ChangeEvent e )
-            {
-                final int v = volumeSlider.getValue( );
-                volumeLabel.setText( "Volume: " + v + "%" );
-                props.setProperty( "Volume.imageset." + getImageSet( ), String.valueOf( v ) );
-                if( !volumeSlider.getValueIsAdjusting( ) )
-                    Main.getInstance( ).updateConfigFile( );
-            }
-        } );
-        popup.add( volumeLabel );
-        popup.add( new SliderMenuItem( volumeSlider ) );
-        popup.add( new JSeparator( ) );
-        if( submenu.getMenuComponentCount( ) > 0 )
-            popup.add( submenu );
-        popup.add( universalSubmenu );
-        if( allowedSubmenu.getMenuComponentCount( ) > 0 )
-            popup.add( allowedSubmenu );
-        popup.add( personalFilterSubmenu );
-        popup.add( new JSeparator( ) );
-        popup.add( saveLocationMenu );
-        popup.add( manualOnlyMenu );
-        // Assistant mode toggle — lets the mascot respond to left-clicks via local LLM
-        final JCheckBoxMenuItem assistantModeMenu = new JCheckBoxMenuItem( "Assistant Mode", assistantMode );
-        assistantModeMenu.addItemListener( new ItemListener( )
-        {
-            @Override
-            public void itemStateChanged( final ItemEvent e )
-            {
-                assistantMode = assistantModeMenu.isSelected( );
-                Main.getInstance( ).getProperties( ).setProperty(
-                    "AssistantMode." + getImageSet(), String.valueOf( assistantMode ) );
-                if( assistantMode )
-                    registerVoiceCommand();
-                else
-                    unregisterVoiceCommand();
-                // Dismiss all open bubbles when turning off
-                if( !assistantMode )
-                {
-                    for( final com.group_finity.mascot.assistant.AssistantBubble b : activeBubbles )
-                        b.dismiss();
-                    assistantBubble = null;
-                    timerBubble     = null;
-                }
-                // The console readout follows assistant mode on/off (for any mascot
-                // that wants one — see wantsConsoleReadout()).
-                if( !assistantMode )
-                {
-                    if( consoleReadout != null ) { consoleReadout.dispose(); consoleReadout = null; }
-                }
-                else if( consoleReadout == null && wantsConsoleReadout() )
-                {
-                    consoleReadout = new com.group_finity.mascot.assistant.ConsoleReadout( Mascot.this );
-                }
-                if( !assistantMode && activeDialog != null )
-                {
-                    activeDialog.close( );
-                    activeDialog = null;
-                }
-            }
-        } );
-        popup.add( assistantModeMenu );
-        popup.add( pauseMenu );
-
-        final boolean currentAlwaysOnTop = Boolean.parseBoolean(
-            props.getProperty( "AlwaysOnTop.imageset." + getImageSet( ), "true" ) );
-        final JCheckBoxMenuItem alwaysOnTopMenu = new JCheckBoxMenuItem(
-            ( languageBundle.containsKey( "AlwaysOnTop" ) ? languageBundle.getString( "AlwaysOnTop" ) : "Always On Top" ), currentAlwaysOnTop );
-        alwaysOnTopMenu.addItemListener( new ItemListener( )
-        {
-            @Override
-            public void itemStateChanged( final ItemEvent e )
-            {
-                final boolean onTop = alwaysOnTopMenu.isSelected( );
-                props.setProperty( "AlwaysOnTop.imageset." + getImageSet( ), String.valueOf( onTop ) );
-                applyAlwaysOnTop( );
-            }
-        } );
-        popup.add( alwaysOnTopMenu );
-        popup.add( new JSeparator( ) );
-        popup.add( disposeMenu );
-        popup.add( oneMenu );
-        popup.add( onlyOneMenu );
-        popup.add( closeMenu );
-
-        getWindow( ).asComponent( ).requestFocus( );
-
-        // lightweight popups expect the shimeji window to draw them if they fall inside the shimeji window boundary
-        // as the shimeji window can't support this we need to set them to heavyweight
-        popup.setLightWeightPopupEnabled( false );
-        activePopup = popup;
-
-        // jnativehook intercepts native mouse events OS-wide, so this fires for clicks
-        // on the desktop or other windows where Java's AWTEventListener cannot reach.
-        // The Timer delay lets Swing process any menu-item ActionListener first before
-        // we force-close the popup, ensuring menu actions are never swallowed.
-        popupDismissListener = new NativeMouseListener( )
-        {
-            @Override
-            public void nativeMousePressed( final NativeMouseEvent e )
-            {
-                // Ignore presses INSIDE the popup — Swing handles those (menu-item clicks
-                // close it; the volume slider interacts with it). Only outside presses
-                // (desktop / other windows) should force-close the menu.
-                final java.awt.Rectangle b = activePopupBounds;
-                if( b != null && b.contains( e.getX( ), e.getY( ) ) )
-                    return;
-
-                if( activePopup != null )
-                {
-                    SwingUtilities.invokeLater( new Runnable( )
-                    {
-                        @Override
-                        public void run( )
-                        {
-                            javax.swing.Timer t = new javax.swing.Timer( 150, new ActionListener( )
-                            {
-                                @Override
-                                public void actionPerformed( ActionEvent ae )
-                                {
-                                    if( activePopup != null )
-                                        activePopup.setVisible( false );
-                                }
-                            } );
-                            t.setRepeats( false );
-                            t.start( );
-                        }
-                    } );
-                }
-            }
-            @Override public void nativeMouseReleased( NativeMouseEvent e ) { }
-            @Override public void nativeMouseClicked( NativeMouseEvent e )  { }
-        };
-        GlobalScreen.addNativeMouseListener( popupDismissListener );
-
-        popup.show( getWindow( ).asComponent( ), x, y );
-        // Capture the popup's screen rectangle so the native dismiss listener can tell
-        // inside-clicks (slider/menu items, handled by Swing) from outside-clicks.
-        try
-        {
-            if( popup.isShowing( ) )
-                activePopupBounds = new java.awt.Rectangle( popup.getLocationOnScreen( ), popup.getSize( ) );
-        }
-        catch( final Exception ex ) { activePopupBounds = null; }
     }
 
     // ── Assistant mode ────────────────────────────────────────────────────────
@@ -1636,7 +1012,7 @@ public class Mascot
      * block (2B carries this in its own XML). No mascot is hardcoded here — the rule lives with
      * the mascot, so adding the readout to any character is an XML edit, never a code change.
      */
-    private boolean wantsConsoleReadout( )
+    boolean wantsConsoleReadout( )
     {
         final com.group_finity.mascot.config.Configuration cfg =
             Main.getInstance( ).getConfiguration( getImageSet( ) );
@@ -2137,7 +1513,7 @@ public class Mascot
         });
     }
 
-    private void registerVoiceCommand()
+    void registerVoiceCommand()
     {
         final com.group_finity.mascot.assistant.VoiceCommandListener vcl =
             com.group_finity.mascot.assistant.VoiceCommandListener.getInstance();
@@ -2147,7 +1523,7 @@ public class Mascot
         vcl.registerSpeechListener( getPersonalityName(), this::fireUserSpeechReaction );
     }
 
-    private void unregisterVoiceCommand()
+    void unregisterVoiceCommand()
     {
         final com.group_finity.mascot.assistant.VoiceCommandListener vcl =
             com.group_finity.mascot.assistant.VoiceCommandListener.getInstance();
@@ -4360,12 +3736,12 @@ public class Mascot
         return animating && !paused;
     }
 
-    private void setAnimating( final boolean animating )
+    void setAnimating( final boolean animating )
     {
         this.animating = animating;
     }
 
-    private TranslucentWindow getWindow( )
+    TranslucentWindow getWindow( )
     {
         return this.window;
     }
@@ -4581,104 +3957,6 @@ public class Mascot
             gain.setValue( db );
         }
         catch( final Exception e ) { /* leave gain unchanged on any control issue */ }
-    }
-
-    /**
-     * Hosts a JSlider inside a JPopupMenu without the popup closing on click. A JMenuItem is
-     * fully recognized by the popup's mouse grabber as part of the menu (so the grabber won't
-     * cancel the popup), while we override its event handling to (a) forward every mouse event
-     * to the embedded slider so the thumb tracks, and (b) never arm/activate the item, since
-     * activation is what calls clearSelectedPath() and closes the menu. menuSelectionChanged is
-     * a no-op so the item never highlights or auto-closes.
-     */
-    private static final class SliderMenuItem extends javax.swing.JMenuItem
-    {
-        private final javax.swing.JSlider slider;
-
-        SliderMenuItem( final javax.swing.JSlider slider )
-        {
-            this.slider = slider;
-
-            // Indent past the L&F's check-icon gutter so the slider's track lines up under the menu
-            // items' text column rather than bleeding into the checkbox column. Robust via UIManager,
-            // with a sane fallback.
-            int checkGutter = 22;
-            try
-            {
-                final javax.swing.Icon checkIcon = javax.swing.UIManager.getIcon( "CheckBoxMenuItem.checkIcon" );
-                final Object gap = javax.swing.UIManager.get( "MenuItem.textIconGap" );
-                if( checkIcon != null )
-                    checkGutter = checkIcon.getIconWidth( ) + ( gap instanceof Integer ? (Integer) gap : 4 );
-            }
-            catch( final Exception ignore ) { }
-
-            // KEEP the default JMenuItem border (its left inset is where every item's content starts)
-            // and add the check-icon gutter ON TOP.
-            final javax.swing.border.Border base = getBorder( );
-            final java.awt.Insets bi = base != null ? base.getBorderInsets( this )
-                                                    : new java.awt.Insets( 0, 0, 0, 0 );
-            setBorder( javax.swing.BorderFactory.createCompoundBorder(
-                base, javax.swing.BorderFactory.createEmptyBorder( 0, checkGutter, 2, 6 ) ) );
-
-            setLayout( new java.awt.BorderLayout( ) );
-            add( slider, java.awt.BorderLayout.CENTER );
-            setOpaque( false );
-
-            // JMenuItem's UI sizes from text/icon, ignoring our child layout, so set it explicitly.
-            final java.awt.Dimension sp = slider.getPreferredSize( );
-            setPreferredSize( new java.awt.Dimension(
-                bi.left + checkGutter + sp.width + 6 + bi.right,
-                bi.top + sp.height + 2 + bi.bottom ) );
-        }
-
-        @Override
-        public void processMouseEvent( final java.awt.event.MouseEvent e,
-                                       final javax.swing.MenuElement[] path,
-                                       final javax.swing.MenuSelectionManager manager )
-        {
-            // Redirect the interaction to the slider (with coordinates converted into the
-            // slider's space); deliberately do NOT call super, so the item never activates/closes.
-            final java.awt.Point p = javax.swing.SwingUtilities.convertPoint( this, e.getPoint( ), slider );
-            slider.dispatchEvent( new java.awt.event.MouseEvent(
-                slider, e.getID( ), e.getWhen( ), e.getModifiersEx( ),
-                p.x, p.y, e.getClickCount( ), e.isPopupTrigger( ), e.getButton( ) ) );
-        }
-
-        @Override
-        public void processKeyEvent( final java.awt.event.KeyEvent e,
-                                     final javax.swing.MenuElement[] path,
-                                     final javax.swing.MenuSelectionManager manager ) { }
-
-        @Override
-        public void menuSelectionChanged( final boolean isIncluded ) { }
-    }
-
-    /**
-     * A non-interactive text row inside a JPopupMenu. It is a real JMenuItem, so the L&F renders
-     * its text in the exact same column as every other menu item — no hand-computed gutter offset
-     * to get wrong (that guesswork is what kept the volume label misaligned). Event handling is
-     * overridden so it never activates/highlights/closes the popup; it's purely a label.
-     */
-    private static final class LabelMenuItem extends javax.swing.JMenuItem
-    {
-        LabelMenuItem( final String text )
-        {
-            super( text );
-            setOpaque( false );
-        }
-
-        @Override
-        public void processMouseEvent( final java.awt.event.MouseEvent e,
-                                       final javax.swing.MenuElement[] path,
-                                       final javax.swing.MenuSelectionManager manager ) { }
-
-        @Override
-        public void processKeyEvent( final java.awt.event.KeyEvent e,
-                                     final javax.swing.MenuElement[] path,
-                                     final javax.swing.MenuSelectionManager manager ) { }
-
-        @Override
-        public void menuSelectionChanged( final boolean isIncluded ) { }
     }
 
     public boolean isPaused( )
