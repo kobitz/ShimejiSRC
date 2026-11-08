@@ -677,7 +677,19 @@ final class MascotPopupMenu
                                 public void actionPerformed( ActionEvent ae )
                                 {
                                     if( m.activePopup != null )
-                                        m.activePopup.setVisible( false );
+                                    {
+                                        try
+                                        {
+                                            m.activePopup.setVisible( false );
+                                        }
+                                        catch( final java.awt.IllegalComponentStateException ex )
+                                        {
+                                            // The popup was already closing (e.g. a menu item was just
+                                            // clicked); the NimROD look-and-feel then asks for the screen
+                                            // position of a component that is no longer showing. Harmless.
+                                            log.log( java.util.logging.Level.FINE, "Popup already hidden", ex );
+                                        }
+                                    }
                                 }
                             } );
                             t.setRepeats( false );
