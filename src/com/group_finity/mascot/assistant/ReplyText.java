@@ -383,4 +383,10 @@ public final class ReplyText
             || ( t.contains( "outside" ) && ( t.contains( "like" )
                 || t.contains( "cold" ) || t.contains( "hot" ) || t.contains( "warm" ) ) );
     }
+
+    /** Matches [REMEMBER:kw1,kw2|content text] — pipe separates keywords from content. */
+    public static final java.util.regex.Pattern REMEMBER_TAG =
+        java.util.regex.Pattern.compile(
+            "\\[REMEMBER:([^|\\]]+)\\|([^\\]]+)\\]",
+            java.util.regex.Pattern.CASE_INSENSITIVE );
 }

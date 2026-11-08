@@ -1,73 +1,14 @@
-package com.group_finity.mascot;
+package com.group_finity.mascot.assistant;
 
-import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_SPONTANEOUS_COOLDOWN_MS;
-import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_AUDIO_COOLDOWN_MS;
-import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_VISION_COOLDOWN_MS;
-import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_USER_SPEECH_COOLDOWN_MS;
-import static com.group_finity.mascot.assistant.ReactionCooldowns.globalSpontaneousLastFiredMs;
-import static com.group_finity.mascot.assistant.ReactionCooldowns.globalAudioLastFiredMs;
-import static com.group_finity.mascot.assistant.ReactionCooldowns.globalVisionLastFiredMs;
-import static com.group_finity.mascot.assistant.ReactionCooldowns.globalUserSpeechLastFiredMs;
-import static com.group_finity.mascot.assistant.ReplyText.isAudioTranscriptDuplicate;
-import static com.group_finity.mascot.assistant.ReplyText.stripActionTag;
-import static com.group_finity.mascot.assistant.ReplyText.rewriteFirstPerson;
 import static com.group_finity.mascot.assistant.ReplyText.extractTimerTag;
 import static com.group_finity.mascot.assistant.ReplyText.parseTimerDurationMs;
-import static com.group_finity.mascot.assistant.ReplyText.sanitizeResponse;
 import static com.group_finity.mascot.assistant.ReplyText.editDistance;
-import static com.group_finity.mascot.assistant.ReplyText.trimToFirstSentence;
-import static com.group_finity.mascot.assistant.ReplyText.isTrivialAcknowledgement;
-import static com.group_finity.mascot.assistant.ReplyText.polishUtterance;
-import static com.group_finity.mascot.assistant.ReplyText.isIncompleteUtterance;
-import static com.group_finity.mascot.assistant.ReplyText.isEphemeralQuery;
-import static com.group_finity.mascot.assistant.ReplyText.isScreenQuery;
-import static com.group_finity.mascot.assistant.ReplyText.isWeatherQuery;
-import static com.group_finity.mascot.assistant.ReplyText.isValidTone;
-import java.awt.Cursor;
-import java.awt.Point;
-import java.awt.Rectangle;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.ItemEvent;
-import java.awt.event.ItemListener;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionListener;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.ArrayList;
-import java.util.ResourceBundle;
-import javax.swing.JCheckBoxMenuItem;
-import javax.swing.JMenuItem;
-import javax.swing.JPopupMenu;
-import javax.swing.JSeparator;
 import javax.swing.SwingUtilities;
-import javax.swing.event.PopupMenuEvent;
-import javax.swing.event.PopupMenuListener;
-import javax.sound.sampled.Clip;
 import com.group_finity.mascot.behavior.Behavior;
-import com.group_finity.mascot.environment.Area;
-import com.group_finity.mascot.environment.MascotEnvironment;
 import com.group_finity.mascot.exception.CantBeAliveException;
-import com.group_finity.mascot.hotspot.Hotspot;
-import com.group_finity.mascot.image.ImagePairs;
-import com.group_finity.mascot.image.MascotImage;
-import com.group_finity.mascot.image.NativeImage;
-import com.group_finity.mascot.image.TranslucentWindow;
-import com.group_finity.mascot.menu.JLongMenu;
-import com.group_finity.mascot.assistant.AssistantBubble;
-import com.group_finity.mascot.assistant.AssistantInputDialog;
-import com.group_finity.mascot.assistant.OllamaClient;
-import com.group_finity.mascot.script.VariableMap;
-import com.group_finity.mascot.sound.Sounds;
-import com.github.kwhat.jnativehook.GlobalScreen;
-import com.github.kwhat.jnativehook.mouse.NativeMouseEvent;
-import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
 
 /**
  * Turning an LLM reply into mascot behavior: the {@code [ACTION:...]}/{@code [TIMER:...]}/
@@ -76,24 +17,24 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
  * {@code host.} (instance members) or {@code Mascot.} (statics); the timer bubble's
  * {@code this::handleReply} callback is now {@code host::handleReply} (same target).
  */
-final class AssistantActions
+public final class AssistantActions
 {
-    private static final Logger log = Logger.getLogger( Mascot.class.getName( ) );
+    private static final Logger log = Logger.getLogger( com.group_finity.mascot.Mascot.class.getName( ) );
 
-    private final Mascot host;
+    private final AssistantHost host;
 
-    AssistantActions( final Mascot host )
+    public AssistantActions( final AssistantHost host )
     {
         this.host = host;
     }
 
-    void fireActionFromResponse( final String raw )
+    public void fireActionFromResponse( final String raw )
     {
         final String behaviorName = extractActionTag( raw );
         if( behaviorName != null )
         {
             final com.group_finity.mascot.config.Configuration cfg =
-                Main.getInstance().getConfiguration( host.getImageSet() );
+                host.getConfiguration( );
             if( cfg != null )
                 javax.swing.SwingUtilities.invokeLater( () -> tryRunBehavior( behaviorName, cfg ) );
         }
@@ -107,7 +48,7 @@ final class AssistantActions
         if( raw != null )
         {
             final com.group_finity.mascot.config.Configuration bareCfg =
-                Main.getInstance().getConfiguration( host.getImageSet() );
+                host.getConfiguration( );
             if( bareCfg != null )
             {
                 final java.util.regex.Matcher bm =
@@ -130,7 +71,7 @@ final class AssistantActions
         // Parse any [REMEMBER:kw1,kw2|content] tags and persist them permanently.
         if( raw != null )
         {
-            final java.util.regex.Matcher rm = Mascot.REMEMBER_TAG.matcher( raw );
+            final java.util.regex.Matcher rm = ReplyText.REMEMBER_TAG.matcher( raw );
             while( rm.find() )
             {
                 final String[] kwParts = rm.group(1).split( "[,\\s]+" );
@@ -154,7 +95,7 @@ final class AssistantActions
      * words overlap with the user's input words (case-insensitive).
      * Ignores hidden behaviors and sub-behaviors (those containing "/").
      */
-    String findActionByKeyword( final String userText,
+    public String findActionByKeyword( final String userText,
                                         final com.group_finity.mascot.config.Configuration cfg )
     {
         final String[] inputWords = userText.toLowerCase( ).split( "[^a-z0-9]+" );
@@ -194,7 +135,7 @@ final class AssistantActions
      * conditions are intentionally bypassed for direct/manual invocation.
      * Returns null on success, or a user-facing message on failure.
      */
-    String tryRunBehavior( final String name,
+    public String tryRunBehavior( final String name,
                                    final com.group_finity.mascot.config.Configuration cfg )
     {
         log.info( "tryRunBehavior: " + name );
@@ -213,20 +154,14 @@ final class AssistantActions
         }
     }
 
-    void setMascotTimer( final String timeValue, final String reminder )
+    public void setMascotTimer( final String timeValue, final String reminder )
     {
         final long durationMs = parseTimerDurationMs( timeValue );
         if( durationMs <= 0 ) return;
         final long endMs = System.currentTimeMillis() + durationMs;
         javax.swing.SwingUtilities.invokeLater( () ->
         {
-            if( host.timerBubble == null )
-            {
-                host.timerBubble = new com.group_finity.mascot.assistant.AssistantBubble(
-                    host::handleReply, host.getImageSet() );
-                host.activeBubbles.add( host.timerBubble );
-            }
-            host.timerBubble.showCountdown( endMs, reminder, host.getBounds() );
+            host.timerBubble().showCountdown( endMs, reminder, host.getBounds() );
         });
     }
 
@@ -235,14 +170,14 @@ final class AssistantActions
      * Returns the behavior name string, or null if no tag is present.
      * Validates that the behavior actually exists in the mascot's config.
      */
-    String extractActionTag( final String response )
+    public String extractActionTag( final String response )
     {
         final java.util.regex.Matcher m =
             java.util.regex.Pattern.compile( "\\[ACTION:([^\\]]+)\\]" ).matcher( response );
         if( !m.find( ) ) return null;
         final String name = m.group( 1 ).trim( );
         final com.group_finity.mascot.config.Configuration cfg =
-            Main.getInstance( ).getConfiguration( host.getImageSet( ) );
+            host.getConfiguration( );
         if( cfg == null ) return null;
         // Exact match first
         if( cfg.hasBehavior( name ) ) return name;

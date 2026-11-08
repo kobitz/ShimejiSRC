@@ -86,7 +86,7 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
  * Original Author: Yuki Yamada of Group Finity (http://www.group-finity.com/Shimeji/)
  * Currently developed by Shimeji-ee Group.
  */
-public class Mascot
+public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 {
     private static final long serialVersionUID = 1L;
 
@@ -805,35 +805,30 @@ public class Mascot
         return flag != null && "true".equalsIgnoreCase( flag.trim( ) );
     }
 
-    // Matches [REMEMBER:kw1,kw2|content text] — pipe separates keywords from content
-    static final java.util.regex.Pattern REMEMBER_TAG =
-        java.util.regex.Pattern.compile(
-            "\\[REMEMBER:([^|\\]]+)\\|([^\\]]+)\\]",
-            java.util.regex.Pattern.CASE_INSENSITIVE );
 
     private void setMascotTimer( final String timeValue, final String reminder )
     {
-        new AssistantActions( this ).setMascotTimer( timeValue, reminder );
+        new com.group_finity.mascot.assistant.AssistantActions( this ).setMascotTimer( timeValue, reminder );
     }
 
     String findActionByKeyword( final String userText, final com.group_finity.mascot.config.Configuration cfg )
     {
-        return new AssistantActions( this ).findActionByKeyword( userText, cfg );
+        return new com.group_finity.mascot.assistant.AssistantActions( this ).findActionByKeyword( userText, cfg );
     }
 
     private String extractActionTag( final String response )
     {
-        return new AssistantActions( this ).extractActionTag( response );
+        return new com.group_finity.mascot.assistant.AssistantActions( this ).extractActionTag( response );
     }
 
     void fireActionFromResponse( final String raw )
     {
-        new AssistantActions( this ).fireActionFromResponse( raw );
+        new com.group_finity.mascot.assistant.AssistantActions( this ).fireActionFromResponse( raw );
     }
 
     String tryRunBehavior( final String name, final com.group_finity.mascot.config.Configuration cfg )
     {
-        return new AssistantActions( this ).tryRunBehavior( name, cfg );
+        return new com.group_finity.mascot.assistant.AssistantActions( this ).tryRunBehavior( name, cfg );
     }
 
     String buildUserMessage( final String userText )
@@ -1924,6 +1919,7 @@ public class Mascot
         return (int) Math.round( renderAnchorY * getGlobalScaling( ) * currentScale );
     }
 
+    @Override
     public Rectangle getBounds( )
     {
         if( getImage( ) != null )
@@ -2029,6 +2025,7 @@ public class Mascot
         return behaviorHistory.isEmpty( ) ? null : behaviorHistory.peekLast( );
     }
 
+    @Override
     public void setBehavior( final Behavior behavior ) throws CantBeAliveException
     {
         if( behavior == null )
@@ -2236,6 +2233,27 @@ public class Mascot
         imageSet = set;
     }
 
+    // AssistantHost: configuration of this mascot's image set (same lookup the assistant classes used inline)
+    @Override
+    public com.group_finity.mascot.config.Configuration getConfiguration( )
+    {
+        return Main.getInstance( ).getConfiguration( getImageSet( ) );
+    }
+
+    // AssistantHost: countdown bubble, created and registered on first use
+    @Override
+    public com.group_finity.mascot.assistant.AssistantBubble timerBubble( )
+    {
+        if( timerBubble == null )
+        {
+            timerBubble = new com.group_finity.mascot.assistant.AssistantBubble(
+                this::handleReply, getImageSet( ) );
+            activeBubbles.add( timerBubble );
+        }
+        return timerBubble;
+    }
+
+    @Override
     public String getImageSet( )
     {
         return imageSet;
