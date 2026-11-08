@@ -1,5 +1,6 @@
-package com.group_finity.mascot;
+package com.group_finity.mascot.assistant;
 
+import com.group_finity.mascot.Main;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_SPONTANEOUS_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_AUDIO_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_VISION_COOLDOWN_MS;
@@ -77,13 +78,13 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
  * delegates of the same names, so its call sites and the {@code this::handleNameTrigger}
  * registrations do not change.
  */
-final class AssistantReplies
+public final class AssistantReplies
 {
-    private static final Logger log = Logger.getLogger( Mascot.class.getName( ) );
+    private static final Logger log = Logger.getLogger( com.group_finity.mascot.Mascot.class.getName( ) );
 
-    private final Mascot m;
+    private final AssistantHost m;
 
-    AssistantReplies( final Mascot m )
+    public AssistantReplies( final AssistantHost m )
     {
         this.m = m;
     }
@@ -93,7 +94,7 @@ final class AssistantReplies
      * Called on the peer-reaction scheduler thread; dispatches Ollama async.
      * chainDepth controls how far along the exchange chain we are.
      */
-    void firePeerReaction( final String speakerName,
+    public void firePeerReaction( final String speakerName,
                                    final String speakerImageSet,
                                    final String speakerText,
                                    final int chainDepth )
@@ -102,7 +103,7 @@ final class AssistantReplies
             Main.getInstance().getConfiguration( m.getImageSet() );
         final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
             ? cfg.getInformation( "Name" ) : m.getImageSet();
-        final String personality = m.getPersonality( cfg, mascotName );
+        final String personality = new AssistantPrompts( m ).getPersonality( cfg, mascotName );
 
         final com.group_finity.mascot.assistant.MascotMemory memory =
             com.group_finity.mascot.assistant.MascotMemory.forImageSet( m.getImageSet() );
@@ -113,14 +114,14 @@ final class AssistantReplies
         // No peerCtx here: quoted peer lines act as style examples the 4B model
         // imitates, dragging every character into the same register. The speaker's
         // line (in the user prompt) is the only context a reply needs.
-        final String peerSpeechRule = Mascot.getSpeechRule( cfg );
-        final String system = Mascot.withSpeechReminder( personality
+        final String peerSpeechRule = AssistantPrompts.getSpeechRule( cfg );
+        final String system = AssistantPrompts.withSpeechReminder( personality
             + memory.buildLightMemoryBlock( speakerName )
             + "\n\n---"
             + "\nRULES (override everything else):"
             + ( peerSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + peerSpeechRule )
             + "\n- Reply in ONE sentence. 15 words maximum."
-            + Mascot.QUICK_REACTION_STYLE_RULES
+            + AssistantShared.QUICK_REACTION_STYLE_RULES
             + "\n- You are reacting to something another mascot just said to you."
             + "\n- Reply in YOUR OWN voice. Do not borrow " + speakerName + "'s vocabulary, phrasing, or sentence shape — if they speak formally, you still answer the way YOU speak."
             + "\n- Address " + speakerName + " only as \"" + speakerName + "\" — no other names or nicknames for them."
@@ -136,16 +137,16 @@ final class AssistantReplies
 
         final String prompt = speakerName + " just said: \""
             + speakerText + "\". Reply to them in one sentence, in a tone that is " + peerTone + "."
-            + Mascot.situationBackground( );
+            + AssistantPrompts.situationBackground( );
 
-        if( Mascot.ollamaClient == null ) Mascot.ollamaClient = Mascot.createOllamaClient();
-        final OllamaClient client = Mascot.ollamaClient;
+        if( AssistantShared.ollamaClient == null ) AssistantShared.ollamaClient = AssistantSupport.createOllamaClient();
+        final OllamaClient client = AssistantShared.ollamaClient;
 
         javax.swing.SwingUtilities.invokeLater( () ->
         {
-            m.ensureFreshBubble();
+            new AssistantSupport( m ).ensureFreshBubble();
             final java.awt.Rectangle b = m.getBounds();
-            if( b != null ) m.assistantBubble.showThinking( b );
+            if( b != null ) m.assistantBubble().showThinking( b );
         });
 
         final String ctx = "[Reacting to " + speakerName + "] " + speakerText;
@@ -154,34 +155,34 @@ final class AssistantReplies
         {
             @Override public void onResponse( final String raw )
             {
-                m.fireActionFromResponse( raw );
-                final String text = trimToFirstSentence( m.applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
+                new AssistantActions( m ).fireActionFromResponse( raw );
+                final String text = trimToFirstSentence( new AssistantPrompts( m ).applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
                 if( isTrivialAcknowledgement( text ) || isIncompleteUtterance( text ) )
                 {
                     javax.swing.SwingUtilities.invokeLater( () ->
                     {
-                        if( m.assistantBubble != null ) m.assistantBubble.dismiss();
+                        if( m.assistantBubble() != null ) m.assistantBubble().dismiss();
                     });
                     return;
                 }
                 com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + speakerName + ")", text );
                 com.group_finity.mascot.assistant.MascotMemory.forImageSet( m.getImageSet() )
                     .recordPeerExchange( speakerName, speakerText, text );
-                m.maybeSummarizeMemory();
+                new AssistantMemory( m ).maybeSummarizeMemory();
                 com.group_finity.mascot.assistant.MascotSpeechRegistry
                     .record( m.getImageSet(), mascotName, text, chainDepth );
                 javax.swing.SwingUtilities.invokeLater( () ->
                 {
                     final java.awt.Rectangle b = m.getBounds();
-                    if( b != null && m.assistantBubble != null )
-                        m.assistantBubble.showResponse( text, ctx, b );
+                    if( b != null && m.assistantBubble() != null )
+                        m.assistantBubble().showResponse( text, ctx, b );
                 });
             }
             @Override public void onError( final String error )
             {
                 javax.swing.SwingUtilities.invokeLater( () ->
                 {
-                    if( m.assistantBubble != null ) m.assistantBubble.dismiss();
+                    if( m.assistantBubble() != null ) m.assistantBubble().dismiss();
                 });
             }
         });
@@ -192,31 +193,31 @@ final class AssistantReplies
      * Receives the VCL transcript so the mic does not need to be re-transcribed.
      * Transcribes system audio separately for context, then calls Ollama.
      */
-    void handleNameTrigger( final String vclTranscript )
+    public void handleNameTrigger( final String vclTranscript )
     {
         log.info( "[Voice] Name trigger fired for " + m.getImageSet() );
 
         // Ensure the shared audio buffer is running
-        synchronized( Mascot.AUDIO_LOCK )
+        synchronized( AssistantShared.AUDIO_LOCK )
         {
-            if( Mascot.audioBuffer == null )
+            if( AssistantShared.audioBuffer == null )
             {
-                Mascot.audioBuffer = new com.group_finity.mascot.assistant.AudioTranscriptBuffer();
-                if( !Mascot.audioBuffer.start() )
+                AssistantShared.audioBuffer = new com.group_finity.mascot.assistant.AudioTranscriptBuffer();
+                if( !AssistantShared.audioBuffer.start() )
                 {
                     log.warning( "[Voice] Failed to start audio buffer for name trigger." );
-                    Mascot.audioBuffer = null;
+                    AssistantShared.audioBuffer = null;
                 }
             }
         }
 
-        final com.group_finity.mascot.assistant.AudioTranscriptBuffer buf = Mascot.audioBuffer;
+        final com.group_finity.mascot.assistant.AudioTranscriptBuffer buf = AssistantShared.audioBuffer;
         final com.group_finity.mascot.config.Configuration cfg =
             Main.getInstance().getConfiguration( m.getImageSet() );
         final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
             ? cfg.getInformation( "Name" ) : m.getImageSet();
-        final String personality = m.getPersonality( cfg, mascotName );
-        final String ntSpeechRule = Mascot.getSpeechRule( cfg );
+        final String personality = new AssistantPrompts( m ).getPersonality( cfg, mascotName );
+        final String ntSpeechRule = AssistantPrompts.getSpeechRule( cfg );
 
         final java.text.SimpleDateFormat ntSdf =
             new java.text.SimpleDateFormat( "EEEE, MMMM d yyyy 'at' h:mm a" );
@@ -229,7 +230,7 @@ final class AssistantReplies
             + ( ntPlace   != null ? "\n[User location: " + ntPlace + ".]"       : "" )
             + ( ntCachedWx != null ? "\n[Current weather: " + ntCachedWx + ".]" : "" );
 
-        final String system = Mascot.withSpeechReminder( personality
+        final String system = AssistantPrompts.withSpeechReminder( personality
             + ntEnvCtx
             + "\n\n---"
             + "\nRULES (override everything else):"
@@ -242,8 +243,8 @@ final class AssistantReplies
             + "\n- When asked about time or weather: you MUST state the actual values from context (e.g. the real temperature, the real time). Express them in your character voice, but the real numbers must appear in your answer. Do not replace them with metaphor or fictional equivalents."
             + "\n---", ntSpeechRule );
 
-        if( Mascot.ollamaClient == null ) Mascot.ollamaClient = Mascot.createOllamaClient();
-        final OllamaClient client = Mascot.ollamaClient;
+        if( AssistantShared.ollamaClient == null ) AssistantShared.ollamaClient = AssistantSupport.createOllamaClient();
+        final OllamaClient client = AssistantShared.ollamaClient;
 
         new Thread( () ->
         {
@@ -255,12 +256,12 @@ final class AssistantReplies
             final boolean[] behaviorDispatched = { false };
             if( trigCfg != null )
             {
-                final String behaviorMatch = m.findActionByKeyword( vclTranscript, trigCfg );
+                final String behaviorMatch = new AssistantActions( m ).findActionByKeyword( vclTranscript, trigCfg );
                 if( behaviorMatch != null )
                 {
                     behaviorDispatched[0] = true;
                     javax.swing.SwingUtilities.invokeLater(
-                        () -> m.tryRunBehavior( behaviorMatch, trigCfg ) );
+                        () -> new AssistantActions( m ).tryRunBehavior( behaviorMatch, trigCfg ) );
                 }
             }
 
@@ -321,9 +322,9 @@ final class AssistantReplies
 
             javax.swing.SwingUtilities.invokeLater( () ->
             {
-                m.ensureFreshBubble();
+                new AssistantSupport( m ).ensureFreshBubble();
                 final java.awt.Rectangle b = m.getBounds();
-                if( b != null ) m.assistantBubble.showThinking( b );
+                if( b != null ) m.assistantBubble().showThinking( b );
             });
 
             if( hasUser && isScreenQuery( cleanUser ) )
@@ -335,30 +336,30 @@ final class AssistantReplies
 
             com.group_finity.mascot.assistant.ChatLog.append( "User(voice)",
                 hasUser ? cleanUser : "[name trigger]" );
-            final String wxCtx = m.weatherContext( cleanUser != null ? cleanUser : "" );
+            final String wxCtx = new AssistantPrompts( m ).weatherContext( cleanUser != null ? cleanUser : "" );
             client.generate( system, userPrompt + wxCtx, new OllamaClient.Callback()
             {
                 @Override public void onResponse( final String raw )
                 {
-                    m.fireActionFromResponse( raw );
-                    final String text = m.applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) );
+                    new AssistantActions( m ).fireActionFromResponse( raw );
+                    final String text = new AssistantPrompts( m ).applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) );
                     com.group_finity.mascot.assistant.ChatLog.append( mascotName, text );
                     if( !isEphemeralQuery( memoryContext ) )
                         com.group_finity.mascot.assistant.MascotMemory.forImageSet( m.getImageSet() )
                             .recordUserExchange( "[Called by name] " + memoryContext, text );
-                    m.maybeSummarizeMemory();
+                    new AssistantMemory( m ).maybeSummarizeMemory();
                     javax.swing.SwingUtilities.invokeLater( () ->
                     {
                         final java.awt.Rectangle b = m.getBounds();
-                        if( b != null && m.assistantBubble != null )
-                            m.assistantBubble.showResponse( text, memoryContext, b );
+                        if( b != null && m.assistantBubble() != null )
+                            m.assistantBubble().showResponse( text, memoryContext, b );
                     });
                 }
                 @Override public void onError( final String error )
                 {
                     javax.swing.SwingUtilities.invokeLater( () ->
                     {
-                        if( m.assistantBubble != null ) m.assistantBubble.dismiss();
+                        if( m.assistantBubble() != null ) m.assistantBubble().dismiss();
                     });
                 }
             });
@@ -370,18 +371,18 @@ final class AssistantReplies
      * vision model (llava by default), and shows the response in the bubble.
      * Must be called after thinking is already showing.
      */
-    void handleScreenQuery( final String userText,
+    public void handleScreenQuery( final String userText,
                                     final String system,
                                     final OllamaClient client )
     {
         final String visionModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", Mascot.DEFAULT_VISION_MODEL );
+            .getProperty( "VisionModel", AssistantShared.DEFAULT_VISION_MODEL );
         new Thread( () ->
         {
             try
             {
-                final String base64 = Mascot.captureScreenBase64();
-                final String audioCtxVision = Mascot.audioSnapshotContext();
+                final String base64 = AssistantSupport.captureScreenBase64();
+                final String audioCtxVision = AssistantPrompts.audioSnapshotContext();
                 final String enrichedUserText = userText
                     + ( audioCtxVision.isEmpty() ? "" : "\n" + audioCtxVision );
                 client.generateWithImage( system, enrichedUserText, base64, visionModel,
@@ -390,12 +391,12 @@ final class AssistantReplies
                         @Override
                         public void onResponse( final String raw )
                         {
-                            final String display = m.applyPersonaRewrites( polishUtterance( stripActionTag( sanitizeResponse( raw ) ) ) );
+                            final String display = new AssistantPrompts( m ).applyPersonaRewrites( polishUtterance( stripActionTag( sanitizeResponse( raw ) ) ) );
                             com.group_finity.mascot.assistant.ChatLog.append( m.getImageSet() + "(screen glance)", display );
                             SwingUtilities.invokeLater( () ->
                             {
-                                if( m.assistantBubble != null )
-                                    m.assistantBubble.showResponse( display, m.getBounds() );
+                                if( m.assistantBubble() != null )
+                                    m.assistantBubble().showResponse( display, m.getBounds() );
                             });
                         }
 
@@ -404,8 +405,8 @@ final class AssistantReplies
                         {
                             SwingUtilities.invokeLater( () ->
                             {
-                                if( m.assistantBubble != null )
-                                    m.assistantBubble.showError( message, m.getBounds() );
+                                if( m.assistantBubble() != null )
+                                    m.assistantBubble().showError( message, m.getBounds() );
                             });
                         }
                     });
@@ -415,8 +416,8 @@ final class AssistantReplies
                 log.warning( "[Vision] Screen capture failed: " + e.getMessage() );
                 SwingUtilities.invokeLater( () ->
                 {
-                    if( m.assistantBubble != null )
-                        m.assistantBubble.showError( "Screen capture failed.", m.getBounds() );
+                    if( m.assistantBubble() != null )
+                        m.assistantBubble().showError( "Screen capture failed.", m.getBounds() );
                 });
             }
         }, "screen-capture-thread" ).start();

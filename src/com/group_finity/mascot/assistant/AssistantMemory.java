@@ -1,5 +1,6 @@
-package com.group_finity.mascot;
+package com.group_finity.mascot.assistant;
 
+import com.group_finity.mascot.Main;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_SPONTANEOUS_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_AUDIO_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_VISION_COOLDOWN_MS;
@@ -75,18 +76,18 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
  * lines. Extracted from {@code Mascot}; method bodies are unchanged apart from reaching the mascot
  * through {@code m.} (instance members) or {@code Mascot.} (statics).
  */
-final class AssistantMemory
+public final class AssistantMemory
 {
-    private static final Logger log = Logger.getLogger( Mascot.class.getName( ) );
+    private static final Logger log = Logger.getLogger( com.group_finity.mascot.Mascot.class.getName( ) );
 
-    private final Mascot m;
+    private final AssistantHost m;
 
-    AssistantMemory( final Mascot m )
+    public AssistantMemory( final AssistantHost m )
     {
         this.m = m;
     }
 
-    void maybeSummarizeMemory()
+    public void maybeSummarizeMemory()
     {
         final com.group_finity.mascot.assistant.MascotMemory memory =
             com.group_finity.mascot.assistant.MascotMemory.forImageSet( m.getImageSet() );
@@ -106,8 +107,8 @@ final class AssistantMemory
         final String personalitySnip = personality.isEmpty() ? ""
             : personality.substring( 0, Math.min( 300, personality.length() ) );
 
-        if( Mascot.ollamaClient == null ) Mascot.ollamaClient = Mascot.createOllamaClient();
-        final OllamaClient client = Mascot.ollamaClient;
+        if( AssistantShared.ollamaClient == null ) AssistantShared.ollamaClient = AssistantSupport.createOllamaClient();
+        final OllamaClient client = AssistantShared.ollamaClient;
 
         new Thread( () ->
         {
@@ -280,7 +281,7 @@ final class AssistantMemory
      *  Without this the first peer absorbed the rest of the line as its tone ("neutral,
      *  paimon:neutral, hornet:neutral"), which slipped past isValidTone's 3-word cap because the
      *  comma-joined value happens to be exactly 3 whitespace tokens (observed June 2026, Frieren). */
-    void parsePeerToneLine( final String payload,
+    public void parsePeerToneLine( final String payload,
                                      final com.group_finity.mascot.assistant.MascotMemory memory )
     {
         if( payload.indexOf( ',' ) >= 0 )
@@ -298,7 +299,7 @@ final class AssistantMemory
         final String peerTone = payload.substring( colon + 1 ).trim().toLowerCase();
         if( peerName.isEmpty() ) return;
         if( peerName.equalsIgnoreCase( m.getImageSet() ) ) return;
-        if( !Mascot.isKnownImageSet( peerName ) )
+        if( !AssistantShared.isKnownImageSet( peerName ) )
         {
             // The summarizer occasionally hallucinates a peer name ("Holantype") or
             // names a mascot that isn't an actual loaded image set. Only real image

@@ -1,5 +1,6 @@
-package com.group_finity.mascot;
+package com.group_finity.mascot.assistant;
 
+import com.group_finity.mascot.Main;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_SPONTANEOUS_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_AUDIO_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_VISION_COOLDOWN_MS;
@@ -76,13 +77,13 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
  * one-line delegates of the same names. Instance members of the mascot are reached
  * as {@code m.x}, statics as {@code Mascot.X}.
  */
-final class AssistantPrompts
+public final class AssistantPrompts
 {
-    private static final Logger log = Logger.getLogger( Mascot.class.getName( ) );
+    private static final Logger log = Logger.getLogger( com.group_finity.mascot.Mascot.class.getName( ) );
 
-    private final Mascot m;
+    private final AssistantHost m;
 
-    AssistantPrompts( final Mascot m )
+    public AssistantPrompts( final AssistantHost m )
     {
         this.m = m;
     }
@@ -92,7 +93,7 @@ final class AssistantPrompts
      * When the question is about the active window, appends the window title
      * directly into the user turn so the model can answer concretely.
      */
-    String buildUserMessage( final String userText )
+    public String buildUserMessage( final String userText )
     {
         final String trimmed = userText.trim();
         final String lower   = trimmed.toLowerCase();
@@ -105,11 +106,11 @@ final class AssistantPrompts
             lower.contains( "looking at" );
 
         log.info( "[Assistant] buildUserMessage — asksAboutWindow=" + asksAboutWindow
-            + " lastActiveWindowTitle=\"" + m.lastActiveWindowTitle + "\"" );
-        if( asksAboutWindow && m.lastActiveWindowTitle != null && !m.lastActiveWindowTitle.isEmpty() )
+            + " lastActiveWindowTitle=\"" + m.lastActiveWindowTitle() + "\"" );
+        if( asksAboutWindow && m.lastActiveWindowTitle() != null && !m.lastActiveWindowTitle().isEmpty() )
         {
             return "“" + trimmed + "”"
-                + " [The active window title is: \"" + m.lastActiveWindowTitle + "\"."
+                + " [The active window title is: \"" + m.lastActiveWindowTitle() + "\"."
                 + " Use this to infer what the user is watching, playing, or doing"
                 + " and answer their question naturally. Do not repeat the raw title.]";
         }
@@ -117,7 +118,7 @@ final class AssistantPrompts
         return "“" + trimmed + "”";
     }
 
-    String buildSystemPrompt( final com.group_finity.mascot.config.Configuration cfg,
+    public String buildSystemPrompt( final com.group_finity.mascot.config.Configuration cfg,
                                       final String mascotName,
                                       final String userText )
     {
@@ -125,7 +126,7 @@ final class AssistantPrompts
 
         // Use the pre-dialog snapshot — by the time we build the prompt the
         // input dialog has focus and getActiveWindowTitle() would return itself.
-        final String activeTitle = m.lastActiveWindowTitle;
+        final String activeTitle = m.lastActiveWindowTitle();
         final String windowContext = ( activeTitle != null && !activeTitle.isEmpty( ) )
             ? "\nThe user's foreground window title is: \"" + activeTitle + "\". "
               + "Use this to infer what the user is doing or watching — "
@@ -146,7 +147,7 @@ final class AssistantPrompts
             com.group_finity.mascot.assistant.WeatherTool.getCachedPlaceName();
         final String cachedWx =
             com.group_finity.mascot.assistant.WeatherTool.getCachedResult();
-        final String sitCtx = Mascot.situationContext( );
+        final String sitCtx = AssistantShared.situationContext( );
         final String envCtx = "\n[Current time: " + timeStr + ".]"
             + ( cachedPlace != null ? "\n[User location: " + cachedPlace + ".]" : "" )
             + ( cachedWx   != null ? "\n[Current weather: " + cachedWx + ".]" : "" )
@@ -191,7 +192,7 @@ final class AssistantPrompts
         return withSpeechReminder( result, speechRule );
     }
 
-    String getPersonality( final com.group_finity.mascot.config.Configuration cfg,
+    public String getPersonality( final com.group_finity.mascot.config.Configuration cfg,
                                    final String mascotName )
     {
         if( cfg != null )
@@ -205,7 +206,7 @@ final class AssistantPrompts
              + "You are aware that you are a tiny animated character on their desktop.";
     }
 
-    String getPersonalityQuick( final com.group_finity.mascot.config.Configuration cfg,
+    public String getPersonalityQuick( final com.group_finity.mascot.config.Configuration cfg,
                                         final String mascotName )
     {
         if( cfg != null )
@@ -223,7 +224,7 @@ final class AssistantPrompts
      * falls back to a generic desktop-assistant prompt.
      */
     /** Returns the SpeechRule line for injection into RULES, or empty string if not set. */
-    static String getSpeechRule( final com.group_finity.mascot.config.Configuration cfg )
+    public static String getSpeechRule( final com.group_finity.mascot.config.Configuration cfg )
     {
         if( cfg == null ) return "";
         final String r = cfg.getInformation( "SpeechRule" );
@@ -231,7 +232,7 @@ final class AssistantPrompts
     }
 
     /** Appends a speech rule reminder after the closing --- for recency reinforcement. */
-    static String withSpeechReminder( final String system, final String speechRule )
+    public static String withSpeechReminder( final String system, final String speechRule )
     {
         if( speechRule.isEmpty() ) return system;
         return system + "\nFinal reminder: " + speechRule;
@@ -246,14 +247,14 @@ final class AssistantPrompts
      * the cross-signal fusion: every reaction is informed by the one shared picture of what the
      * user is doing, not just its own triggering signal.
      */
-    static String situationBackground( )
+    public static String situationBackground( )
     {
-        final String s = Mascot.situationContext( );
+        final String s = AssistantShared.situationContext( );
         return s.isEmpty( ) ? "" : " [Background — " + s + "]";
     }
 
     /** Returns a weather context string to append to the user message, or "" if not applicable. */
-    String weatherContext( final String userText )
+    public String weatherContext( final String userText )
     {
         if( !isWeatherQuery( userText ) ) return "";
         // Weather is the one feature that contacts outside services (open-meteo, plus an IP
@@ -288,7 +289,7 @@ final class AssistantPrompts
      * transcript is available, otherwise returns an empty string.
      * Non-blocking — reads the volatile field populated by fireAudioReaction.
      */
-    static String audioSnapshotContext()
+    public static String audioSnapshotContext()
     {
         final String t = com.group_finity.mascot.assistant.AudioTranscriptBuffer.lastSysTranscript;
         return ( t != null && !t.isBlank() ) ? "[Audio context: " + t.trim() + "]" : "";
@@ -299,7 +300,7 @@ final class AssistantPrompts
      * when the speech rule contains a third-person self-reference constraint.
      * Gated by: assistantMode on, non-empty speech rule, mascot name in the rule.
      */
-    String applyPersonaRewrites( final String text )
+    public String applyPersonaRewrites( final String text )
     {
         if( text == null ) return text;
         final String name = m.getImageSet( );

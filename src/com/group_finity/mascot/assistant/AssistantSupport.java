@@ -1,5 +1,6 @@
-package com.group_finity.mascot;
+package com.group_finity.mascot.assistant;
 
+import com.group_finity.mascot.Main;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_SPONTANEOUS_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_AUDIO_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_VISION_COOLDOWN_MS;
@@ -75,19 +76,19 @@ import com.github.kwhat.jnativehook.mouse.NativeMouseListener;
  * of the split); {@code Mascot} keeps one-line delegates. The bubble's
  * {@code this::handleReply} is now {@code m::handleReply} (same target).
  */
-final class AssistantSupport
+public final class AssistantSupport
 {
-    private static final Logger log = Logger.getLogger( Mascot.class.getName( ) );
+    private static final Logger log = Logger.getLogger( com.group_finity.mascot.Mascot.class.getName( ) );
 
-    private final Mascot m;
+    private final AssistantHost m;
 
-    AssistantSupport( final Mascot m )
+    public AssistantSupport( final AssistantHost m )
     {
         this.m = m;
     }
 
     /** Capture the primary screen, scale to max 1024px wide, return base64-encoded PNG. */
-    static String captureScreenBase64() throws java.awt.AWTException, java.io.IOException
+    public static String captureScreenBase64() throws java.awt.AWTException, java.io.IOException
     {
         // Capture + downscale + PNG-encode is a CPU spike that competes with the 40ms
         // tick loop — a screen glance is the heaviest unprompted reaction, and the
@@ -131,7 +132,7 @@ final class AssistantSupport
     }
 
     /** Create OllamaClient using the model selected in Settings. */
-    static OllamaClient createOllamaClient()
+    public static OllamaClient createOllamaClient()
     {
         final String model = Main.getInstance().getProperties()
             .getProperty( "OllamaModel", OllamaClient.DEFAULT_MODEL );
@@ -146,13 +147,13 @@ final class AssistantSupport
      * already has a visible AI response so each exchange gets its own window
      * and its own chronological timestamp for inter-mascot vertical stacking.
      */
-    void ensureFreshBubble()
+    public void ensureFreshBubble()
     {
-        if( m.assistantBubble == null || m.assistantBubble.hasActiveResponse() )
+        if( m.assistantBubble() == null || m.assistantBubble().hasActiveResponse() )
         {
-            m.assistantBubble = new com.group_finity.mascot.assistant.AssistantBubble(
-                m::handleReply, m.getImageSet() );
-            m.activeBubbles.add( m.assistantBubble );
+            m.setAssistantBubble( new com.group_finity.mascot.assistant.AssistantBubble(
+                m::handleReply, m.getImageSet() ) );
+            m.activeBubbles().add( m.assistantBubble() );
         }
     }
 }

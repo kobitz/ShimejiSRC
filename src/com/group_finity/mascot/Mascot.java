@@ -1,5 +1,13 @@
 package com.group_finity.mascot;
 
+import static com.group_finity.mascot.assistant.AssistantShared.ollamaClient;
+import static com.group_finity.mascot.assistant.AssistantShared.audioBuffer;
+import static com.group_finity.mascot.assistant.AssistantShared.AUDIO_LOCK;
+import static com.group_finity.mascot.assistant.AssistantShared.lastAudioTranscriptText;
+import static com.group_finity.mascot.assistant.AssistantShared.DEFAULT_VISION_MODEL;
+import static com.group_finity.mascot.assistant.AssistantShared.QUICK_REACTION_STYLE_RULES;
+import static com.group_finity.mascot.assistant.AssistantShared.situationContext;
+import static com.group_finity.mascot.assistant.AssistantShared.isKnownImageSet;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_SPONTANEOUS_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_AUDIO_COOLDOWN_MS;
 import static com.group_finity.mascot.assistant.ReactionCooldowns.GLOBAL_VISION_COOLDOWN_MS;
@@ -388,7 +396,6 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
     com.group_finity.mascot.assistant.AssistantInputDialog activeDialog = null;
     // Strong reference — the registry only holds a WeakReference, so without this the listener gets GC'd
     private com.group_finity.mascot.assistant.MascotSpeechRegistry.PeerListener peerListener = null;
-    static com.group_finity.mascot.assistant.OllamaClient ollamaClient = null; // shared across all mascots
     // Ollama request rate-limiting is handled inside OllamaClient (queue-based).
 
     // Click-vs-hold detection: a press shorter than CLICK_MAX_MS with movement
@@ -418,11 +425,6 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
     private static final int AUDIO_MAX_TICKS  = 9_600; // ~4min ceiling
     private int  audioTickCounter  = 0;
     private int  audioNextTrigger  = -1; // -1 = randomize on first tick
-    /** Shared across all mascots — only one capture thread needed. */
-    static com.group_finity.mascot.assistant.AudioTranscriptBuffer audioBuffer = null;
-    static final Object AUDIO_LOCK = new Object();
-    /** Last system audio transcript; used to skip near-duplicate reactions across fires. */
-    static volatile String lastAudioTranscriptText = "";
 
     // Vision screen-glance cadence: anywhere from ~2min to ~7.5min, biased toward longer
     private static final int VISION_MIN_TICKS  = 4_800; // ~2min floor
@@ -430,9 +432,6 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
     private int  visionTickCounter  = 0;
     private int  visionNextTrigger  = -1; // -1 = randomize on first tick
 
-    /** Fallback when the VisionModel property is absent — matches the documented
-     *  default (shared multimodal model), NOT a separate vision-only model. */
-    static final String DEFAULT_VISION_MODEL = "gemma4:e2b-it-qat";
 
     private static final int CLICK_MAX_MS      = 100;
     private static final int CLICK_MAX_MOVE_PX = 8;
@@ -776,17 +775,17 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     private void handleTextInput( final String userText, final String mascotName, final com.group_finity.mascot.config.Configuration cfg )
     {
-        new AssistantInput( this ).handleTextInput( userText, mascotName, cfg );
+        new com.group_finity.mascot.assistant.AssistantInput( this ).handleTextInput( userText, mascotName, cfg );
     }
 
     private void openAssistantInput( )
     {
-        new AssistantInput( this ).openAssistantInput( );
+        new com.group_finity.mascot.assistant.AssistantInput( this ).openAssistantInput( );
     }
 
     String applyPersonaRewrites( final String text )
     {
-        return new AssistantPrompts( this ).applyPersonaRewrites( text );
+        return new com.group_finity.mascot.assistant.AssistantPrompts( this ).applyPersonaRewrites( text );
     }
 
     /**
@@ -833,7 +832,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     String buildUserMessage( final String userText )
     {
-        return new AssistantPrompts( this ).buildUserMessage( userText );
+        return new com.group_finity.mascot.assistant.AssistantPrompts( this ).buildUserMessage( userText );
     }
 
     /**
@@ -849,13 +848,14 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     String buildSystemPrompt( final com.group_finity.mascot.config.Configuration cfg, final String mascotName, final String userText )
     {
-        return new AssistantPrompts( this ).buildSystemPrompt( cfg, mascotName, userText );
+        return new com.group_finity.mascot.assistant.AssistantPrompts( this ).buildSystemPrompt( cfg, mascotName, userText );
     }
 
 
-    void handleReply( final String userText, final com.group_finity.mascot.assistant.AssistantBubble.Message message )
+    @Override
+    public void handleReply( final String userText, final com.group_finity.mascot.assistant.AssistantBubble.Message message )
     {
-        new AssistantInput( this ).handleReply( userText, message );
+        new com.group_finity.mascot.assistant.AssistantInput( this ).handleReply( userText, message );
     }
 
     private String getPersonalityName( )
@@ -889,7 +889,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     private void firePeerReaction( final String speakerName, final String speakerImageSet, final String speakerText, final int chainDepth )
     {
-        new AssistantReplies( this ).firePeerReaction( speakerName, speakerImageSet, speakerText, chainDepth );
+        new com.group_finity.mascot.assistant.AssistantReplies( this ).firePeerReaction( speakerName, speakerImageSet, speakerText, chainDepth );
     }
 
     void registerVoiceCommand()
@@ -922,26 +922,26 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     private void handleNameTrigger( final String vclTranscript )
     {
-        new AssistantReplies( this ).handleNameTrigger( vclTranscript );
+        new com.group_finity.mascot.assistant.AssistantReplies( this ).handleNameTrigger( vclTranscript );
     }
 
     private void fireAudioReaction( )
     {
-        new AssistantReactions( this ).fireAudioReaction( );
+        new com.group_finity.mascot.assistant.AssistantReactions( this ).fireAudioReaction( );
     }
 
     private void fireUserSpeechReaction( final String micText )
     {
-        new AssistantReactions( this ).fireUserSpeechReaction( micText );
+        new com.group_finity.mascot.assistant.AssistantReactions( this ).fireUserSpeechReaction( micText );
     }
 
     private void fireSpontaneousComment( final String windowTitle )
     {
-        new AssistantReactions( this ).fireSpontaneousComment( windowTitle );
+        new com.group_finity.mascot.assistant.AssistantReactions( this ).fireSpontaneousComment( windowTitle );
     }
     private void fireVisionReaction( )
     {
-        new AssistantReactions( this ).fireVisionReaction( );
+        new com.group_finity.mascot.assistant.AssistantReactions( this ).fireVisionReaction( );
     }
 
     /**
@@ -965,28 +965,13 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     static String getSpeechRule( final com.group_finity.mascot.config.Configuration cfg )
     {
-        return AssistantPrompts.getSpeechRule( cfg );
+        return com.group_finity.mascot.assistant.AssistantPrompts.getSpeechRule( cfg );
     }
 
-    /**
-     * Style rules shared by all unprompted reactions (peer, spontaneous, audio, vision).
-     * Targets the failure modes every mascot converged on: grading the quality of
-     * statements instead of reacting to their content, and hedging with appears/seems.
-     */
-    static final String QUICK_REACTION_STYLE_RULES =
-          "\n- REACT — do not report. Never merely describe what is on screen or what was said; the user already knows. Your sentence must carry YOUR take: an opinion, feeling, judgment, quip, or pointed question about ONE specific thing."
-        + "\nWRONG: \"You are viewing a Nintendo Direct featuring Kingdom Hearts right now.\" (a caption, not a reaction)"
-        + "\nWRONG: \"They mention Unreal Engine while the screen shows a Treehouse broadcast.\" (stitches context pieces together)"
-        + "\nWRONG: \"Your focus appears misaligned with operational parameters.\" (grades the speaker instead of reacting)"
-        + "\nRIGHT: pick the single most interesting detail and say what YOU think or feel about it, in your own voice."
-        + "\n- Never join two facts with \"while\" or \"as\". One thing, one opinion."
-        + "\n- NEVER comment on the quality of anyone's statement or attention (\"your assessment/analysis/focus [is/lacks/appears]...\")."
-        + "\n- State things directly. Do not hedge with \"appears\", \"seems\", \"suggests\", \"indicates\", \"implies\", \"perhaps\", or \"remarkably\" — say what something IS, not what it hints at."
-        + "\n- Memory entries and quoted mascot lines are background only — never mention them unless directly relevant to the thing you are reacting to, and never imitate their style.";
 
     static String withSpeechReminder( final String system, final String speechRule )
     {
-        return AssistantPrompts.withSpeechReminder( system, speechRule );
+        return com.group_finity.mascot.assistant.AssistantPrompts.withSpeechReminder( system, speechRule );
     }
 
     /**
@@ -994,29 +979,20 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
      * (state/activity/audio/time + recent change), drawn from the shared SituationModel.
      * Empty when the model is inactive, so callers can append it unconditionally.
      */
-    static String situationContext( )
-    {
-        if( !com.group_finity.mascot.assistant.SituationModel.isActive( ) ) return "";
-        try
-        {
-            return com.group_finity.mascot.assistant.SituationModel.getInstance( ).current( ).asContextBlock( );
-        }
-        catch( Exception e ) { return ""; }
-    }
 
     static String situationBackground( )
     {
-        return AssistantPrompts.situationBackground( );
+        return com.group_finity.mascot.assistant.AssistantPrompts.situationBackground( );
     }
 
     String getPersonality( final com.group_finity.mascot.config.Configuration cfg, final String mascotName )
     {
-        return new AssistantPrompts( this ).getPersonality( cfg, mascotName );
+        return new com.group_finity.mascot.assistant.AssistantPrompts( this ).getPersonality( cfg, mascotName );
     }
 
     String getPersonalityQuick( final com.group_finity.mascot.config.Configuration cfg, final String mascotName )
     {
-        return new AssistantPrompts( this ).getPersonalityQuick( cfg, mascotName );
+        return new com.group_finity.mascot.assistant.AssistantPrompts( this ).getPersonalityQuick( cfg, mascotName );
     }
 
     void tick( )
@@ -1649,26 +1625,15 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     private void parsePeerToneLine( final String payload, final com.group_finity.mascot.assistant.MascotMemory memory )
     {
-        new AssistantMemory( this ).parsePeerToneLine( payload, memory );
+        new com.group_finity.mascot.assistant.AssistantMemory( this ).parsePeerToneLine( payload, memory );
     }
 
     /** True if {@code name} matches a real loaded image set (case-insensitive). Used to
      *  reject hallucinated / non-existent peer names before they enter peerTones. */
-    static boolean isKnownImageSet( final String name )
-    {
-        if( name == null || name.isBlank() ) return false;
-        try
-        {
-            for( final String set : Main.getInstance().getImageSets() )
-                if( set.equalsIgnoreCase( name.trim() ) ) return true;
-        }
-        catch( final Exception ignored ) {}
-        return false;
-    }
 
     void maybeSummarizeMemory( )
     {
-        new AssistantMemory( this ).maybeSummarizeMemory( );
+        new com.group_finity.mascot.assistant.AssistantMemory( this ).maybeSummarizeMemory( );
     }
 
     public void applyBubbleSettings()
@@ -1681,32 +1646,32 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     void ensureFreshBubble( )
     {
-        new AssistantSupport( this ).ensureFreshBubble( );
+        new com.group_finity.mascot.assistant.AssistantSupport( this ).ensureFreshBubble( );
     }
 
     String weatherContext( final String userText )
     {
-        return new AssistantPrompts( this ).weatherContext( userText );
+        return new com.group_finity.mascot.assistant.AssistantPrompts( this ).weatherContext( userText );
     }
 
     static String captureScreenBase64( ) throws java.awt.AWTException, java.io.IOException
     {
-        return AssistantSupport.captureScreenBase64( );
+        return com.group_finity.mascot.assistant.AssistantSupport.captureScreenBase64( );
     }
 
     void handleScreenQuery( final String userText, final String system, final OllamaClient client )
     {
-        new AssistantReplies( this ).handleScreenQuery( userText, system, client );
+        new com.group_finity.mascot.assistant.AssistantReplies( this ).handleScreenQuery( userText, system, client );
     }
 
     static String audioSnapshotContext( )
     {
-        return AssistantPrompts.audioSnapshotContext( );
+        return com.group_finity.mascot.assistant.AssistantPrompts.audioSnapshotContext( );
     }
 
     static OllamaClient createOllamaClient( )
     {
-        return AssistantSupport.createOllamaClient( );
+        return com.group_finity.mascot.assistant.AssistantSupport.createOllamaClient( );
     }
 
     public void say( final String text )
@@ -2232,6 +2197,14 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
     {
         imageSet = set;
     }
+
+    // AssistantHost: state accessors for the assistant classes (fields stay here; Mascot's own code uses them directly)
+    @Override public com.group_finity.mascot.assistant.AssistantBubble assistantBubble( ) { return assistantBubble; }
+    @Override public void setAssistantBubble( final com.group_finity.mascot.assistant.AssistantBubble b ) { assistantBubble = b; }
+    @Override public com.group_finity.mascot.assistant.AssistantInputDialog activeDialog( ) { return activeDialog; }
+    @Override public void setActiveDialog( final com.group_finity.mascot.assistant.AssistantInputDialog d ) { activeDialog = d; }
+    @Override public String lastActiveWindowTitle( ) { return lastActiveWindowTitle; }
+    @Override public java.util.List<com.group_finity.mascot.assistant.AssistantBubble> activeBubbles( ) { return activeBubbles; }
 
     // AssistantHost: configuration of this mascot's image set (same lookup the assistant classes used inline)
     @Override

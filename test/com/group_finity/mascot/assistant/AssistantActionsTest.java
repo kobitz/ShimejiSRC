@@ -37,6 +37,13 @@ public final class AssistantActionsTest
         @Override public Configuration getConfiguration( ) { return cfg; }
         @Override public void setBehavior( final Behavior b ) { throw new AssertionError( "unexpected" ); }
         @Override public AssistantBubble timerBubble( ) { throw new AssertionError( "unexpected" ); }
+        @Override public AssistantBubble assistantBubble( ) { return null; }
+        @Override public void setAssistantBubble( final AssistantBubble b ) { }
+        @Override public AssistantInputDialog activeDialog( ) { return null; }
+        @Override public void setActiveDialog( final AssistantInputDialog d ) { }
+        @Override public String lastActiveWindowTitle( ) { return ""; }
+        @Override public java.util.List<AssistantBubble> activeBubbles( ) { return new java.util.ArrayList<>( ); }
+        @Override public void handleReply( final String t, final AssistantBubble.Message m ) { }
     }
 
     private static void eq( final String what, final Object expected, final Object actual )

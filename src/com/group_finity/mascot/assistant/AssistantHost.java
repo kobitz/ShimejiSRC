@@ -25,6 +25,23 @@ public interface AssistantHost
     /** Switch this mascot to the given behavior. */
     void setBehavior( Behavior behavior ) throws CantBeAliveException;
 
+    /** The mascot's chat bubble, or null before the first exchange. */
+    AssistantBubble assistantBubble( );
+    void setAssistantBubble( AssistantBubble bubble );
+
+    /** The open typed-input dialog, or null. */
+    AssistantInputDialog activeDialog( );
+    void setActiveDialog( AssistantInputDialog dialog );
+
+    /** Foreground-window title captured when the user last pressed the mascot ("" if none). */
+    String lastActiveWindowTitle( );
+
+    /** All bubbles this mascot owns (chat + timer); thread-safe list. */
+    java.util.List<AssistantBubble> activeBubbles( );
+
+    /** Entry point a bubble calls with the user's reply text. */
+    void handleReply( String userText, AssistantBubble.Message message );
+
     /** The countdown-timer bubble, created and registered on first use. */
     AssistantBubble timerBubble( );
 }
