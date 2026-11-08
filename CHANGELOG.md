@@ -12,6 +12,7 @@ Per-version release history for the Shimeji AI fork. The runnable app ships as a
 
 - **`Mascot.java` split, step 1** — 16 pure static text helpers (reply cleanup, timer/action-tag parsing, persona pronoun rewrite, query classifiers) moved to `assistant/ReplyText`; `Mascot.java` 5085 -> ~4700 lines. No behavior change (old vs new outputs byte-identical over ~30k test inputs).
 - **`Mascot.java` split, step 2** — the ~700-line right-click menu (`showPopup`) and its two menu-item classes moved to `MascotPopupMenu`; `Mascot.java` ~4700 -> ~4000 lines. Pure move: the extracted method text is identical to the original apart from `Mascot.this`/field/method references now going through the mascot instance.
+- **`Mascot.java` split, step 4** — the four unprompted reactions (spontaneous comment, audio, vision glance, overheard user speech; ~500 lines) moved to `AssistantReactions`; `Mascot.java` ~4000 -> ~3500 lines. Method text identical apart from `m.`/`Mascot.` member references; `Mascot` keeps one-line delegates.
 - **`Mascot.java` split, step 3** — the 4 global reaction-cooldown timers and their durations moved to `assistant/ReactionCooldowns` (static-imported, names and values unchanged). Prep for moving the `fire*Reaction` methods out next.
 - **Script sandbox follow-up** — mascot scripts that fired behaviors on other mascots via `com.group_finity.mascot.Main` (Mario/Luigi stomp, block hit, mushroom) now use `mascot.manager.triggerBehavior(o, 'Name')`; see CLAUDE.md -> Scripting.
 

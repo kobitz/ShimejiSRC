@@ -388,7 +388,7 @@ public class Mascot
     com.group_finity.mascot.assistant.AssistantInputDialog activeDialog = null;
     // Strong reference — the registry only holds a WeakReference, so without this the listener gets GC'd
     private com.group_finity.mascot.assistant.MascotSpeechRegistry.PeerListener peerListener = null;
-    private static com.group_finity.mascot.assistant.OllamaClient ollamaClient = null; // shared across all mascots
+    static com.group_finity.mascot.assistant.OllamaClient ollamaClient = null; // shared across all mascots
     // Ollama request rate-limiting is handled inside OllamaClient (queue-based).
 
     // Click-vs-hold detection: a press shorter than CLICK_MAX_MS with movement
@@ -398,7 +398,7 @@ public class Mascot
 
     /** Foreground window title captured just before the input dialog opens,
      *  so the mascot knows what the user was looking at when they spoke to it. */
-    private String lastActiveWindowTitle = "";
+    String lastActiveWindowTitle = "";
 
     // ── Spontaneous window-aware comments ─────────────────────────────────────
     /** Minimum ticks between spontaneous comments (~40 ticks/sec, so 1800 = ~45s). */
@@ -419,10 +419,10 @@ public class Mascot
     private int  audioTickCounter  = 0;
     private int  audioNextTrigger  = -1; // -1 = randomize on first tick
     /** Shared across all mascots — only one capture thread needed. */
-    private static com.group_finity.mascot.assistant.AudioTranscriptBuffer audioBuffer = null;
-    private static final Object AUDIO_LOCK = new Object();
+    static com.group_finity.mascot.assistant.AudioTranscriptBuffer audioBuffer = null;
+    static final Object AUDIO_LOCK = new Object();
     /** Last system audio transcript; used to skip near-duplicate reactions across fires. */
-    private static volatile String lastAudioTranscriptText = "";
+    static volatile String lastAudioTranscriptText = "";
 
     // Vision screen-glance cadence: anywhere from ~2min to ~7.5min, biased toward longer
     private static final int VISION_MIN_TICKS  = 4_800; // ~2min floor
@@ -432,7 +432,7 @@ public class Mascot
 
     /** Fallback when the VisionModel property is absent — matches the documented
      *  default (shared multimodal model), NOT a separate vision-only model. */
-    private static final String DEFAULT_VISION_MODEL = "gemma4:e2b-it-qat";
+    static final String DEFAULT_VISION_MODEL = "gemma4:e2b-it-qat";
 
     private static final int CLICK_MAX_MS      = 100;
     private static final int CLICK_MAX_MOVE_PX = 8;
@@ -978,7 +978,7 @@ public class Mascot
      * when the speech rule contains a third-person self-reference constraint.
      * Gated by: assistantMode on, non-empty speech rule, mascot name in the rule.
      */
-    private String applyPersonaRewrites( final String text )
+    String applyPersonaRewrites( final String text )
     {
         if( text == null ) return text;
         final String name = getImageSet( );
@@ -1099,7 +1099,7 @@ public class Mascot
         return null;
     }
 
-    private void fireActionFromResponse( final String raw )
+    void fireActionFromResponse( final String raw )
     {
         final String behaviorName = extractActionTag( raw );
         if( behaviorName != null )
@@ -1712,510 +1712,23 @@ public class Mascot
         }, "name-trigger" ).start();
     }
 
-    /**
-     * Ensures the shared AudioTranscriptBuffer is started, then
-     * transcribes the last ~15s of audio and fires a personality reaction.
-     * Called from tick() — runs Whisper + Ollama on a background thread.
-     */
-    private void fireAudioReaction()
+    private void fireAudioReaction( )
     {
-        synchronized( AUDIO_LOCK )
-        {
-            if( audioBuffer == null )
-            {
-                audioBuffer = new com.group_finity.mascot.assistant.AudioTranscriptBuffer();
-                if( !audioBuffer.start() )
-                {
-                    log.warning( "[Audio] Failed to start capture — audio reactions disabled." );
-                    audioBuffer = null;
-                    return;
-                }
-            }
-        }
-
-        final com.group_finity.mascot.assistant.AudioTranscriptBuffer buf = audioBuffer;
-        final com.group_finity.mascot.config.Configuration cfg =
-            Main.getInstance().getConfiguration( getImageSet() );
-        final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
-            ? cfg.getInformation( "Name" ) : getImageSet();
-        final String personality = getPersonalityQuick( cfg, mascotName );
-        final String audioSpeechRule = getSpeechRule( cfg );
-
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
-        final String vModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", DEFAULT_VISION_MODEL );
-
-        // Snapshot window title now — focus may shift during Whisper's run
-        final String windowTitleSnapshot = lastActiveWindowTitle;
-
-        // Whisper runs first on background thread — only show bubble if transcript is good
-        new Thread( () ->
-        {
-            final com.group_finity.mascot.assistant.AudioTranscriptBuffer.TranscriptResult result =
-                buf.transcribeWithSource();
-            if( result == null || result.transcript == null || result.transcript.length() < 8 )
-            {
-                log.info( "[Audio] Nothing useful heard, skipping." );
-                return;
-            }
-            final String transcript = result.transcript;
-            final String source     = result.source; // may be null
-            log.info( "[Audio] Transcript: " + transcript
-                + ( source != null ? " (source: " + source + ")" : "" ) );
-
-            if( isAudioTranscriptDuplicate( transcript, lastAudioTranscriptText ) )
-            {
-                log.info( "[Audio] Near-duplicate transcript — skipping reaction." );
-                return;
-            }
-            lastAudioTranscriptText = transcript;
-
-            // Attempt screen capture — enriches the reaction with visual context
-            String capturedBase64 = null;
-            try { capturedBase64 = captureScreenBase64(); }
-            catch( final Exception e )
-            { log.fine( "[Audio] Screen capture failed, falling back to audio-only: " + e.getMessage() ); }
-            final boolean hasScreen = capturedBase64 != null;
-
-            final String screenRule = hasScreen
-                ? "\n- You overheard this audio; a screen snapshot is attached ONLY so you understand what the audio belongs to."
-                  + "\n- React to the single most interesting detail. Do NOT describe the screen and the audio together in one sentence."
-                : "\n- This is an unprompted reaction to overheard audio only. You cannot see the screen."
-                  + "\n- React only to what was said.";
-
-            // No peerCtx: quoted peer lines leak into user-directed reactions as
-            // non-sequitur mentions and style contamination.
-            final String system = withSpeechReminder( personality
-                + "\n\n---"
-                + "\nRULES (override everything else):"
-                + ( audioSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + audioSpeechRule )
-                + "\n- Reply in ONE sentence. 15 words maximum."
-                + QUICK_REACTION_STYLE_RULES
-                + screenRule
-                + "\n- Be brief, natural, in-character. No greetings, no filler."
-                + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
-                + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
-                + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
-                + "\n---", audioSpeechRule );
-
-            // Good transcript — now show thinking and send to Ollama
-            javax.swing.SwingUtilities.invokeLater( () ->
-            {
-                ensureFreshBubble();
-                final java.awt.Rectangle b = getBounds();
-                if( b != null ) assistantBubble.showThinking( b );
-            });
-
-            final boolean isBrowser =
-                com.group_finity.mascot.assistant.AudioSessionUtil.BROWSER.equals( source );
-
-            // For browsers, include the page/tab title so Ollama knows what's playing
-            final String tabContext;
-            if( isBrowser && windowTitleSnapshot != null && !windowTitleSnapshot.isEmpty() )
-                tabContext = " The browser tab title is: \"" + windowTitleSnapshot + "\".";
-            else
-                tabContext = "";
-
-            final String userSpeech = result.userSpeech; // may be null
-
-            final String sourceHint = source != null ? " from " + source : "";
-            final String mediaHint  = isBrowser
-                ? " This is likely a video, stream, or music track playing in a browser."
-                  + " The transcript may be speech, dialogue, commentary, or song lyrics."
-                  + tabContext
-                : "";
-            final String userHint = userSpeech != null
-                ? " The user also said: \"" + userSpeech + "\"."
-                : "";
-            final String reactionScope = userSpeech != null
-                ? " React naturally to both what was playing and what the user said."
-                : " Refer to whoever is speaking or what is playing as \"they\" or \"them\" — not \"you\".";
-            final String prompt =
-                "You just overheard this audio" + sourceHint + ": \"" + transcript + "\"."
-                + userHint
-                + mediaHint
-                + " Make one short, in-character reaction."
-                + reactionScope
-                + " Do not repeat what was said verbatim."
-                + situationBackground( );
-
-            final String audioContext = source != null
-                ? "[Overheard audio from " + source + "] " + transcript
-                : "[Overheard audio] " + transcript;
-
-            // Guard: skip if a name-trigger or other Ollama request is already in flight.
-            // Request is queued via OllamaClient — no manual claiming needed.
-
-            // Summarization needs ~200-300 tokens: 5 facts + TONE + PEER_TONE lines.
-            // The default 80-token cap cuts off the response before TONE: is reached.
-            final OllamaClient.Callback audioCb = new OllamaClient.Callback()
-            {
-                @Override public void onResponse( final String raw )
-                {
-                    fireActionFromResponse( raw );
-                    final String text = trimToFirstSentence( applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
-                    if( isIncompleteUtterance( text ) )
-                    {
-                        javax.swing.SwingUtilities.invokeLater( () ->
-                        {
-                            if( assistantBubble != null ) assistantBubble.dismiss();
-                        });
-                        return;
-                    }
-                    final String audioSource = source != null ? source : "audio";
-                    com.group_finity.mascot.assistant.ChatLog.append( audioSource,
-                        "\"" + transcript.substring( 0, Math.min( 300, transcript.length() ) ) + "\"" );
-                    com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + audioSource + ")", text );
-                    final String sourcePrefix = source != null ? " from " + source : "";
-                    final String userNote = userSpeech != null
-                        ? " [User: " + userSpeech.substring( 0, Math.min( 120, userSpeech.length() ) ) + "]"
-                        : "";
-                    // Store only the observation — feeding the mascot's own reaction back
-                    // into memory entrenches whatever phrasing template it used.
-                    com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
-                        .addFact( "[Observed] Heard" + sourcePrefix + ": "
-                            + transcript.substring( 0, Math.min( 150, transcript.length() ) )
-                            + userNote );
-                    com.group_finity.mascot.assistant.MascotSpeechRegistry
-                        .record( getImageSet(), mascotName, text, 0 );
-                    javax.swing.SwingUtilities.invokeLater( () ->
-                    {
-                        final java.awt.Rectangle b = getBounds();
-                        if( b != null && assistantBubble != null )
-                            assistantBubble.showResponse( text, audioContext, b );
-                    });
-                }
-                @Override public void onError( final String error )
-                {
-                    javax.swing.SwingUtilities.invokeLater( () ->
-                    {
-                        if( assistantBubble != null ) assistantBubble.dismiss();
-                    });
-                }
-            };
-
-            if( hasScreen )
-                client.generateWithImage( system, prompt, capturedBase64, vModel, true, audioCb );
-            else
-                client.generateDeferrable( system, prompt, audioCb );
-        }, "audio-reaction" ).start();
+        new AssistantReactions( this ).fireAudioReaction( );
     }
 
-    /**
-     * Reacts to the user being overheard talking to something or someone else —
-     * a voice call, a stream chat, swearing at a game — without calling any
-     * mascot's name. Fired by VoiceCommandListener with the echo-stripped mic
-     * transcript. Transcribes the system-audio buffer first so the reaction
-     * understands what the user was responding to (the other side of the call,
-     * the video they're reacting to), then reacts to the exchange as a whole.
-     * Called on the voice-poll thread; cheap gates run here, heavy work
-     * (Whisper + Ollama) on a dedicated daemon thread.
-     */
     private void fireUserSpeechReaction( final String micText )
     {
-        // Substance gate: short fragments are mostly Whisper noise or half-words.
-        if( micText == null || micText.trim().split( "\\s+" ).length < 4 ) return;
-
-        final long nowU = System.currentTimeMillis();
-        final long lastU = globalUserSpeechLastFiredMs.get();
-        if( nowU - lastU < GLOBAL_USER_SPEECH_COOLDOWN_MS
-                || !globalUserSpeechLastFiredMs.compareAndSet( lastU, nowU ) )
-            return;
-
-        synchronized( AUDIO_LOCK )
-        {
-            if( audioBuffer == null )
-            {
-                audioBuffer = new com.group_finity.mascot.assistant.AudioTranscriptBuffer();
-                if( !audioBuffer.start() )
-                {
-                    audioBuffer = null; // react to the mic transcript alone
-                }
-            }
-        }
-
-        final com.group_finity.mascot.assistant.AudioTranscriptBuffer buf = audioBuffer;
-        final com.group_finity.mascot.config.Configuration cfg =
-            Main.getInstance().getConfiguration( getImageSet() );
-        final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
-            ? cfg.getInformation( "Name" ) : getImageSet();
-        final String personality = getPersonalityQuick( cfg, mascotName );
-        final String speechRule  = getSpeechRule( cfg );
-
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
-
-        new Thread( () ->
-        {
-            // System audio = what the user is responding to. blocks on Whisper.
-            final String sysTranscript = buf != null ? buf.transcribe() : null;
-            final boolean hasSys = sysTranscript != null && !sysTranscript.isBlank();
-
-            // Re-strip against the FRESH system transcript. The strip the voice
-            // listener did used lastSysTranscript, which can be minutes old —
-            // speaker content newer than that had no reference and slipped
-            // through as "user speech". This transcript covers the same window
-            // the mic just heard.
-            final String userSaid = hasSys
-                ? com.group_finity.mascot.assistant.AudioTranscriptBuffer
-                    .stripOverlap( sysTranscript, micText )
-                : micText;
-            if( userSaid == null || userSaid.isBlank() )
-            {
-                // Echo after all — return the cooldown so a genuine utterance
-                // shortly after can still fire.
-                globalUserSpeechLastFiredMs.compareAndSet( nowU, lastU );
-                log.fine( "[Voice] Overheard speech was speaker echo — skipping reaction." );
-                return;
-            }
-
-            final String system = withSpeechReminder( personality
-                + "\n\n---"
-                + "\nRULES (override everything else):"
-                + ( speechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + speechRule )
-                + "\n- Reply in ONE sentence. 15 words maximum."
-                + QUICK_REACTION_STYLE_RULES
-                + "\n- You overheard the user speaking — they were NOT talking to you. Do not answer as if addressed."
-                + "\n- Address the user as \"you\". Refer to anyone else in the conversation as \"they\"."
-                + "\n- Be brief, natural, in-character. No greetings, no filler."
-                + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
-                + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
-                + "\n---", speechRule );
-
-            final String sysCtx = hasSys
-                ? " At the same time this audio was playing (likely the other side of their conversation,"
-                  + " or whatever they are reacting to): \"" + sysTranscript + "\"."
-                  + " Use it ONLY to understand what the user is responding to."
-                : "";
-            final String prompt =
-                "You overheard the user say: \"" + userSaid + "\"." + sysCtx
-                + " Make one short, in-character remark about the user's side of the exchange."
-                + " Do not repeat what was said verbatim."
-                + situationBackground( );
-
-            javax.swing.SwingUtilities.invokeLater( () ->
-            {
-                ensureFreshBubble();
-                final java.awt.Rectangle b = getBounds();
-                if( b != null ) assistantBubble.showThinking( b );
-            });
-
-            final String overheardContext = "[Overheard user] " + userSaid;
-
-            client.generateDeferrable( system, prompt, new OllamaClient.Callback()
-            {
-                @Override public void onResponse( final String raw )
-                {
-                    fireActionFromResponse( raw );
-                    final String text = trimToFirstSentence( applyPersonaRewrites(
-                        polishUtterance( stripActionTag( raw ) ) ) );
-                    if( isIncompleteUtterance( text ) )
-                    {
-                        javax.swing.SwingUtilities.invokeLater( () ->
-                        {
-                            if( assistantBubble != null ) assistantBubble.dismiss();
-                        });
-                        return;
-                    }
-                    com.group_finity.mascot.assistant.ChatLog.append( "User(overheard)",
-                        "\"" + userSaid.substring( 0, Math.min( 300, userSaid.length() ) ) + "\"" );
-                    com.group_finity.mascot.assistant.ChatLog.append(
-                        mascotName + "(to: overheard user)", text );
-                    // Store only the observation — never the mascot's own reaction text.
-                    com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
-                        .addFact( "[Observed] User said (not to me): "
-                            + userSaid.substring( 0, Math.min( 150, userSaid.length() ) ) );
-                    com.group_finity.mascot.assistant.MascotSpeechRegistry
-                        .record( getImageSet(), mascotName, text, 0 );
-                    javax.swing.SwingUtilities.invokeLater( () ->
-                    {
-                        final java.awt.Rectangle b = getBounds();
-                        if( b != null && assistantBubble != null )
-                            assistantBubble.showResponse( text, overheardContext, b );
-                    });
-                }
-                @Override public void onError( final String error )
-                {
-                    javax.swing.SwingUtilities.invokeLater( () ->
-                    {
-                        if( assistantBubble != null ) assistantBubble.dismiss();
-                    });
-                }
-            });
-        }, "user-speech-reaction" ).start();
+        new AssistantReactions( this ).fireUserSpeechReaction( micText );
     }
 
     private void fireSpontaneousComment( final String windowTitle )
     {
-        final com.group_finity.mascot.config.Configuration cfg =
-            Main.getInstance( ).getConfiguration( getImageSet( ) );
-        final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
-            ? cfg.getInformation( "Name" ) : getImageSet();
-        final String personality = getPersonality( cfg, mascotName );
-
-        final String spontSpeechRule = getSpeechRule( cfg );
-
-        // No peerCtx: this comment is addressed to the user; quoted peer lines
-        // leak in as non-sequitur mentions ("...while 2B mentions Unreal Engine").
-        final String system = withSpeechReminder( getPersonalityQuick( cfg, mascotName )
-            + "\n\n---"
-            + "\nRULES (override everything else):"
-            + ( spontSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + spontSpeechRule )
-            + "\n- Reply in ONE sentence. 15 words maximum."
-            + QUICK_REACTION_STYLE_RULES
-            + "\n- This is an unprompted observation. Be brief and natural."
-            + "\n- No greetings, no filler."
-            + "\n- Do not reuse or echo words directly from the window title."
-            + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
-            + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
-            + "\n- Do not generate any other bracket tags such as [OBSERVATION:...] or [NOTE:...]. Only [ACTION:BehaviorName] is valid."
-            + "\n---", spontSpeechRule );
-
-        final String audioCtxSpont = audioSnapshotContext();
-        final String prompt =
-            "The user's active window is: \"" + windowTitle + "\"."
-            + ( audioCtxSpont.isEmpty() ? "" : " " + audioCtxSpont + "." )
-            + situationBackground( )
-            + " Make one short in-character observation, addressing the user directly as \"you\" — not in third person."
-            + " Do not repeat the raw title string.";
-
-        // All Swing calls must be on the EDT. fireSpontaneousComment runs on the
-        // manager thread, so dispatch bubble creation and showThinking via invokeLater.
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
-
-        javax.swing.SwingUtilities.invokeLater( ( ) ->
-        {
-            ensureFreshBubble();
-            final java.awt.Rectangle b = getBounds( );
-            if( b != null ) assistantBubble.showThinking( b );
-        } );
-
-        client.generateDeferrable( system, prompt, new OllamaClient.Callback( )
-        {
-            @Override public void onResponse( final String raw )
-            {
-                fireActionFromResponse( raw );
-                final String text = trimToFirstSentence( applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
-                if( isIncompleteUtterance( text ) )
-                {
-                    javax.swing.SwingUtilities.invokeLater( ( ) ->
-                    {
-                        if( assistantBubble != null ) assistantBubble.dismiss( );
-                    } );
-                    return;
-                }
-                com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(to: " + windowTitle + ")", text );
-                com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet() )
-                    .addFact( "[Observed] Window: " + windowTitle );
-                com.group_finity.mascot.assistant.MascotSpeechRegistry
-                    .record( getImageSet(), mascotName, text, 0 );
-                final String wCtx = "[Active window] " + windowTitle;
-                javax.swing.SwingUtilities.invokeLater( ( ) ->
-                {
-                    final java.awt.Rectangle b = getBounds( );
-                    if( b != null && assistantBubble != null )
-                        assistantBubble.showResponse( text, wCtx, b );
-                } );
-            }
-            @Override public void onError( final String error )
-            {
-                javax.swing.SwingUtilities.invokeLater( ( ) ->
-                {
-                    if( assistantBubble != null ) assistantBubble.dismiss( );
-                } );
-            }
-        } );
+        new AssistantReactions( this ).fireSpontaneousComment( windowTitle );
     }
-    private void fireVisionReaction()
+    private void fireVisionReaction( )
     {
-        final com.group_finity.mascot.config.Configuration cfg =
-            Main.getInstance().getConfiguration( getImageSet() );
-        final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
-            ? cfg.getInformation( "Name" ) : getImageSet();
-        final String personality = getPersonalityQuick( cfg, mascotName );
-        final String visionSpeechRule = getSpeechRule( cfg );
-
-        // No peerCtx: screen-glance comments address the user; peer quotes bleed in.
-        final String system = withSpeechReminder( personality
-            + "\n\n---"
-            + "\nRULES (override everything else):"
-            + ( visionSpeechRule.isEmpty() ? "" : "\n- CRITICAL SPEECH CONSTRAINT: " + visionSpeechRule )
-            + "\n- Reply in ONE sentence. 15 words maximum."
-            + QUICK_REACTION_STYLE_RULES
-            + "\n- This is an unprompted glance at the user's screen. Be brief, natural, in-character."
-            + "\n- No greetings, no filler."
-            + "\n- Avoid defaulting to the phrase \"preoccupied with\" — use it sparingly, not as a go-to."
-            + "\n- You may optionally append [ACTION:BehaviorName] after your spoken text to trigger a matching animation. The tag is silent. Omit it when nothing fits."
-            + "\n---", visionSpeechRule );
-
-        if( ollamaClient == null ) ollamaClient = createOllamaClient();
-        final OllamaClient client = ollamaClient;
-        final String vModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", DEFAULT_VISION_MODEL );
-
-        new Thread( () ->
-        {
-            try
-            {
-                final String base64 = captureScreenBase64();
-                final String audioCtxVision = audioSnapshotContext();
-                final String prompt =
-                    "You just glanced at the user's screen."
-                    + ( audioCtxVision.isEmpty() ? "" : " " + audioCtxVision + "." )
-                    + " Make one brief, in-character observation about what you see."
-                    + " Address the user directly as \"you\". One sentence only."
-                    + situationBackground( );
-
-                javax.swing.SwingUtilities.invokeLater( () ->
-                {
-                    ensureFreshBubble();
-                    final java.awt.Rectangle b = getBounds();
-                    if( b != null ) assistantBubble.showThinking( b );
-                });
-
-                client.generateWithImage( system, prompt, base64, vModel, true,
-                    new OllamaClient.Callback()
-                    {
-                        @Override public void onResponse( final String raw )
-                        {
-                            fireActionFromResponse( raw );
-                            final String text = trimToFirstSentence( applyPersonaRewrites( polishUtterance( stripActionTag( raw ) ) ) );
-                            if( isIncompleteUtterance( text ) )
-                            {
-                                javax.swing.SwingUtilities.invokeLater( () ->
-                                {
-                                    if( assistantBubble != null ) assistantBubble.dismiss();
-                                });
-                                return;
-                            }
-                            com.group_finity.mascot.assistant.ChatLog.append( mascotName + "(screen glance)", text );
-                            // No fact stored: "Screen glance" alone carries no information, and
-                            // storing the reaction text self-reinforces phrasing templates.
-                            com.group_finity.mascot.assistant.MascotSpeechRegistry
-                                .record( getImageSet(), mascotName, text, 0 );
-                            javax.swing.SwingUtilities.invokeLater( () ->
-                            {
-                                final java.awt.Rectangle b = getBounds();
-                                if( b != null && assistantBubble != null )
-                                    assistantBubble.showResponse( text, "[Screen glance]", b );
-                            });
-                        }
-                        @Override public void onError( final String error )
-                        {
-                            javax.swing.SwingUtilities.invokeLater( () ->
-                            {
-                                if( assistantBubble != null ) assistantBubble.dismiss();
-                            });
-                        }
-                    });
-            }
-            catch( final Exception e )
-            {
-                log.warning( "[Vision] Spontaneous capture failed: " + e.getMessage() );
-            }
-        }, "vision-reaction" ).start();
+        new AssistantReactions( this ).fireVisionReaction( );
     }
 
     /**
@@ -2243,7 +1756,7 @@ public class Mascot
      * falls back to a generic desktop-assistant prompt.
      */
     /** Returns the SpeechRule line for injection into RULES, or empty string if not set. */
-    private static String getSpeechRule( final com.group_finity.mascot.config.Configuration cfg )
+    static String getSpeechRule( final com.group_finity.mascot.config.Configuration cfg )
     {
         if( cfg == null ) return "";
         final String r = cfg.getInformation( "SpeechRule" );
@@ -2255,7 +1768,7 @@ public class Mascot
      * Targets the failure modes every mascot converged on: grading the quality of
      * statements instead of reacting to their content, and hedging with appears/seems.
      */
-    private static final String QUICK_REACTION_STYLE_RULES =
+    static final String QUICK_REACTION_STYLE_RULES =
           "\n- REACT — do not report. Never merely describe what is on screen or what was said; the user already knows. Your sentence must carry YOUR take: an opinion, feeling, judgment, quip, or pointed question about ONE specific thing."
         + "\nWRONG: \"You are viewing a Nintendo Direct featuring Kingdom Hearts right now.\" (a caption, not a reaction)"
         + "\nWRONG: \"They mention Unreal Engine while the screen shows a Treehouse broadcast.\" (stitches context pieces together)"
@@ -2267,7 +1780,7 @@ public class Mascot
         + "\n- Memory entries and quoted mascot lines are background only — never mention them unless directly relevant to the thing you are reacting to, and never imitate their style.";
 
     /** Appends a speech rule reminder after the closing --- for recency reinforcement. */
-    private static String withSpeechReminder( final String system, final String speechRule )
+    static String withSpeechReminder( final String system, final String speechRule )
     {
         if( speechRule.isEmpty() ) return system;
         return system + "\nFinal reminder: " + speechRule;
@@ -2297,13 +1810,13 @@ public class Mascot
      * the cross-signal fusion: every reaction is informed by the one shared picture of what the
      * user is doing, not just its own triggering signal.
      */
-    private static String situationBackground( )
+    static String situationBackground( )
     {
         final String s = situationContext( );
         return s.isEmpty( ) ? "" : " [Background — " + s + "]";
     }
 
-    private String getPersonality( final com.group_finity.mascot.config.Configuration cfg,
+    String getPersonality( final com.group_finity.mascot.config.Configuration cfg,
                                    final String mascotName )
     {
         if( cfg != null )
@@ -2317,7 +1830,7 @@ public class Mascot
              + "You are aware that you are a tiny animated character on their desktop.";
     }
 
-    private String getPersonalityQuick( final com.group_finity.mascot.config.Configuration cfg,
+    String getPersonalityQuick( final com.group_finity.mascot.config.Configuration cfg,
                                         final String mascotName )
     {
         if( cfg != null )
@@ -3218,7 +2731,7 @@ public class Mascot
      * already has a visible AI response so each exchange gets its own window
      * and its own chronological timestamp for inter-mascot vertical stacking.
      */
-    private void ensureFreshBubble()
+    void ensureFreshBubble()
     {
         if( assistantBubble == null || assistantBubble.hasActiveResponse() )
         {
@@ -3260,7 +2773,7 @@ public class Mascot
     }
 
     /** Capture the primary screen, scale to max 1024px wide, return base64-encoded PNG. */
-    private static String captureScreenBase64() throws java.awt.AWTException, java.io.IOException
+    static String captureScreenBase64() throws java.awt.AWTException, java.io.IOException
     {
         // Capture + downscale + PNG-encode is a CPU spike that competes with the 40ms
         // tick loop — a screen glance is the heaviest unprompted reaction, and the
@@ -3365,14 +2878,14 @@ public class Mascot
      * transcript is available, otherwise returns an empty string.
      * Non-blocking — reads the volatile field populated by fireAudioReaction.
      */
-    private static String audioSnapshotContext()
+    static String audioSnapshotContext()
     {
         final String t = com.group_finity.mascot.assistant.AudioTranscriptBuffer.lastSysTranscript;
         return ( t != null && !t.isBlank() ) ? "[Audio context: " + t.trim() + "]" : "";
     }
 
     /** Create OllamaClient using the model selected in Settings. */
-    private static OllamaClient createOllamaClient()
+    static OllamaClient createOllamaClient()
     {
         final String model = Main.getInstance().getProperties()
             .getProperty( "OllamaModel", OllamaClient.DEFAULT_MODEL );
