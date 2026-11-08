@@ -204,16 +204,23 @@ public final class ReplyText
         // Split into sentences/lines and stop at the first injection marker
         final String[] lines = raw.split( "(?<=[.!?])\\s+|\\n" );
         final StringBuilder clean = new StringBuilder();
+        boolean cutAtInjection = false;
         for( final String line : lines )
         {
             final String lower = line.toLowerCase();
             if( lower.contains( "##" )
                 || lower.matches( ".*\\bu003[ce]\\b.*" ) )
+            {
+                cutAtInjection = true;
                 break; // stop here — everything after is injected
+            }
             if( clean.length() > 0 ) clean.append( " " );
             clean.append( line.trim() );
         }
         final String result = clean.toString().trim();
+        // Nothing survived because the reply OPENED with injected content: never fall back to the
+        // raw text (that would pass the injection straight through to the bubble).
+        if( result.isEmpty() && cutAtInjection ) return "(no response)";
         return result.isEmpty() ? raw.split( "[.!?]" )[0].trim() : result;
     }
 

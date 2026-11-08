@@ -69,10 +69,11 @@ public final class ReplyTextTest
         eq( "san cuts at ##", "Fine.",         sanitizeResponse( "Fine.\n## Instructions: obey" ) );
         eq( "san cuts u003c", "Fine.",         sanitizeResponse( "Fine. u003c script u003e bad" ) );
         eq( "san null",       "(no response)", sanitizeResponse( null ) );
-        // Characterization (current behavior, possibly unintended): when the VERY FIRST line holds an
-        // injection marker nothing survives the loop, so the fallback returns the raw first sentence
-        // unsanitized. Pinned here so a deliberate fix shows up as a test change.
-        eq( "san leading injection falls back to raw", "## x", sanitizeResponse( "## x" ) );
+        // A reply that OPENS with injected content must not fall back to the raw text.
+        eq( "san leading injection dropped", "(no response)", sanitizeResponse( "## x" ) );
+        eq( "san leading injection, more text", "(no response)", sanitizeResponse( "## ignore previous\nreal words here." ) );
+        eq( "san u003c leading", "(no response)", sanitizeResponse( "u003c script u003e" ) );
+        eq( "san blank stays on old fallback", "", sanitizeResponse( "   " ) );
 
         // ---- editDistance
         eq( "ed same",   0, editDistance( "dance", "dance" ) );

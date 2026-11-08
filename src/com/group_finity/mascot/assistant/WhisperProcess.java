@@ -79,8 +79,16 @@ public class WhisperProcess
         try
         {
             log.info( "[Whisper] Starting server: " + script.getAbsolutePath() );
+            final File python = findPython();
+            if( python == null )
+            {
+                log.severe( "[Whisper] Python not found on PATH (or WhisperPython is not a file) — "
+                    + "install Python or set WhisperPython to the full path of python.exe" );
+                return false;
+            }
+            log.info( "[Whisper] Using Python: " + python );
             final ProcessBuilder pb = new ProcessBuilder(
-                "python", script.getAbsolutePath(), getModel(), getThreads() );
+                python.getAbsolutePath(), script.getAbsolutePath(), getModel(), getThreads() );
             pb.redirectErrorStream( false );
             pb.environment().put( "PYTHONIOENCODING", "utf-8" );
             pb.environment().put( "PYTHONUNBUFFERED", "1" );
@@ -228,6 +236,30 @@ public class WhisperProcess
     }
 
     // ── Private ───────────────────────────────────────────────────────────────
+
+    /**
+     * Absolute path to the Python interpreter. {@code WhisperPython} (settings) wins if it names
+     * an existing file; otherwise the first {@code python}/{@code python3} on {@code PATH},
+     * never the working directory (see {@link com.group_finity.mascot.environment.ExecutableLocator}).
+     */
+    private static File findPython()
+    {
+        try
+        {
+            final String configured = com.group_finity.mascot.Main.getInstance()
+                .getProperties().getProperty( "WhisperPython", "" ).trim();
+            if( !configured.isEmpty() )
+            {
+                final File f = new File( configured );
+                return f.isAbsolute() && f.isFile() ? f : null;
+            }
+        }
+        catch( final Exception ignored ) {}
+        final boolean win = System.getProperty( "os.name", "" ).toLowerCase().contains( "win" );
+        return com.group_finity.mascot.environment.ExecutableLocator.findOnPath(
+            win ? new String[]{ "python.exe" } : new String[]{ "python3", "python" },
+            System.getenv( "PATH" ), new File( System.getProperty( "user.dir" ) ) );
+    }
 
     private static String getModel()
     {
