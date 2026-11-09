@@ -1,15 +1,12 @@
-# Changelog
+﻿# Changelog
 
 Per-version release history for the Shimeji AI fork. The runnable app ships as a GitHub Release asset (`Shimeji-Install-Windows.zip`) at **github.com/kobitz/ShimejiSRC**; the README is intentionally version-agnostic, so this file + the GitHub release notes are the changelog of record. Release *mechanics* (how to cut one) live in `CLAUDE.md` → Distribution / Releases.
 
 ## Unreleased
 
-<<<<<<< HEAD
 - **Animated thinking indicator** — the chat bubble's "Thinking..." text is replaced by dots that cycle `.` -> `..` -> `...` (400 ms per step), anchored so they don't jitter as the count changes.
 - **Mascot Collision (universal behavior)** — new toggle: while on for a mascot's image set, other mascots treat it like a window (land/stand on it, climb it, etc.). The collision box is the smallest rectangle around the sprite's non-transparent pixels (alpha >= ~10%), so a 128x128 question block with a solid 64x64 middle collides as just that square. Right-click -> Universal Behaviours -> **Mascot Collision** (per image set, `Collision.imageset.<name>`) and tray -> Allowed Behaviours -> **Mascot Collision** (all; clears per-set overrides; `Collision`). Off by default. Windows only. Boxes are published each tick (`environment/CollisionRegistry`), so mascots standing on a moving one ride it.
-=======
 - **Script sandbox: `java.awt.Point` allowed** — mascot scripts that build a `java.awt.Point` were being blocked by the tightened class filter; that inert value class is now allowed by default (everything else is still blocked unless listed in `ScriptAllowedClasses`).
->>>>>>> Allow java.awt.Point in mascot scripts by default
 - **Build cleanup** — removed the unused 25 MB `vosk` jar (it was being merged into the fat jar); `build.xml` now defaults to `jar`, drops the broken upstream `zip`/`zip_package` targets, declares UTF-8, and is versioned 1.9; `MANIFEST.MF` Class-Path case fixed (`jnativehook-2.2.2.jar`) and newline-terminated; `Build.bat` reads machine-specific paths from a gitignored `Build.local.bat`; `.gitattributes` keeps `*.bat` CRLF.
 - **VideoAreaServer hardening** — web origins are now allowlisted (`VideoAreaAllowedHosts`, default `youtube.com,twitch.tv`; extension origins and Origin-less local requests still work) instead of `Access-Control-Allow-Origin: *`; request bodies capped at 2 KB; registered ids capped (64 entries / 64 chars). **If you extend the browser extension to more sites, add them to `VideoAreaAllowedHosts`.**
 - **TempSensor.exe launched by absolute path** — `CpuTempMonitor` and `FanController` resolve it next to the jar/exe (new `InstallFiles`) instead of by bare name, closing an exe-planting path under the elevated `Admin.bat`.
