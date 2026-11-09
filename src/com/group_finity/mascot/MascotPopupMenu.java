@@ -253,9 +253,9 @@ final class MascotPopupMenu
             final String command = behaviorName;
             try
             {
+                final String caption = behaviorName.replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " );
                 if( !config.isBehaviorHidden( command ) )
                 {
-                    String caption = behaviorName.replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " );
                     if( config.isBehaviorEnabled( command, m ) && !command.contains( "/" ) && !config.isBehaviorToggleable( command ) )
                     {
                         item = new JMenuItem( languageBundle.containsKey( behaviorName ) ? 
@@ -280,7 +280,10 @@ final class MascotPopupMenu
                         } );
                         submenu.add( item );
                     }
-                    
+                }
+
+                // Toggleable behaviours always get a checkbox, even when marked Hidden (Hidden only keeps them out of Set Behaviour)
+                {
                     if( config.isBehaviorToggleable( command ) && !command.contains( "/" ) )
                     {
                         toggleItem = new JCheckBoxMenuItem( caption, config.isBehaviorEnabled( command, m ) );

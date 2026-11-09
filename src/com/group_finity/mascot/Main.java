@@ -114,16 +114,42 @@ public class Main
         }
         catch( OutOfMemoryError err )
         {
-            log.log( Level.SEVERE, "Out of Memory Exception.  There are probably have too many "
-                    + "Shimeji mascots in the image folder for your computer to handle.  Select fewer"
-                    + " image sets or move some to the img/unused folder and try again.", err );
-            Main.showError( "Out of Memory.  There are probably have too many \n"
-                    + "Shimeji mascots for your computer to handle.\n"
-                    + "Select fewer image sets or move some to the \n"
-                    + "img/unused folder and try again." );
-            System.exit( 0 );
+            showMemoryError( err );
         }
     }
+    /**
+     * Frees image memory, resets the scaling setting to its default (a too-high scale is a common cause),
+     * tells the user how much memory Shimeji actually has, and exits.
+     */
+    public static void showMemoryError( final OutOfMemoryError err )
+    {
+        String memory = "unknown";
+        try
+        {
+            ImagePairs.clear( );
+            getInstance( ).getProperties( ).setProperty( "Scaling", "1.0" );
+            getInstance( ).updateConfigFile( );
+            memory = String.format( "%.2f MB", java.lang.management.ManagementFactory.getMemoryMXBean( ).getHeapMemoryUsage( ).getMax( ) / 1048576.0 );
+        }
+        catch( Throwable ignored )
+        {
+            // already out of memory; carry on and show the dialog
+        }
+        log.log( Level.SEVERE, "Out of Memory Exception.  There are probably too many "
+                + "Shimeji mascots in the image folder, or a scaling value set too high "
+                + "for your computer to handle.  Select fewer image sets or move some "
+                + "to the img/unused folder and try again.  Your scaling setting has "
+                + "been reset to default.  Memory currently available to Shimeji: " + memory, err );
+        Main.showError( "Out of Memory.  There are probably too many \n"
+                + "Shimeji mascots in the image folder, or a scaling \n"
+                + "value set too high for your computer to handle.\n\n"
+                + "Select fewer image sets or move some to the \n"
+                + "img/unused folder and try again. Your scaling \n"
+                + "setting has been reset to default.\n\n"
+                + "Memory currently available to Shimeji: " + memory );
+        System.exit( 0 );
+    }
+
     private final Manager manager = new Manager( );
     private ArrayList<String> imageSets = new ArrayList<String>( );
     private ConcurrentHashMap<String, Configuration> configurations = new ConcurrentHashMap<String, Configuration>( );
@@ -171,14 +197,7 @@ public class Main
         }
         catch( OutOfMemoryError err )
         {
-            log.log( Level.SEVERE, "Out of Memory Exception.  There are probably have too many "
-                    + "Shimeji mascots in the image folder for your computer to handle.  Select fewer"
-                    + " image sets or move some to the img/unused folder and try again.", err );
-            Main.showError( "Out of Memory.  There are probably have too many \n"
-                    + "Shimeji mascots for your computer to handle.\n"
-                    + "Select fewer image sets or move some to the \n"
-                    + "img/unused folder and try again." );
-            System.exit( 0 );
+            showMemoryError( err );
         }
     }
 
@@ -1763,8 +1782,9 @@ public class Main
             {
                 if( !childList.contains( set ) )
                 {
-                    populateArrayListWithChildSets( set, childList );
+                    // add before recursing so a child that links back to its parent can't loop forever
                     childList.add( set );
+                    populateArrayListWithChildSets( set, childList );
                 }
             }
         }
