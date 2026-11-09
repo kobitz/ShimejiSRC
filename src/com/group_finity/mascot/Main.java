@@ -756,7 +756,7 @@ public class Main
                                 } );
 
                                 // "Mascot Collision" menu item
-                                final JCheckBoxMenuItem collisionMenu = new JCheckBoxMenuItem( languageBundle.getString( "MascotCollision" ), Boolean.parseBoolean( properties.getProperty( "Collision", "false" ) ) );
+                                final JCheckBoxMenuItem collisionMenu = new JCheckBoxMenuItem( getLanguageString( "MascotCollision", "Mascot Collision" ), Boolean.parseBoolean( properties.getProperty( "Collision", "false" ) ) );
                                 collisionMenu.addItemListener( new ItemListener( )
                                 {
                                     public void itemStateChanged( final ItemEvent e )
@@ -1576,6 +1576,13 @@ public class Main
         }        
     }
     
+    /** Language string that never throws: returns {@code fallback} if the installed language file predates the key. */
+    public String getLanguageString( final String key, final String fallback )
+    {
+        try { return languageBundle.getString( key ); }
+        catch( final java.util.MissingResourceException e ) { return fallback; }
+    }
+
     boolean toggleBooleanSetting( String propertyName, boolean defaultValue )
     {
         if( Boolean.parseBoolean( properties.getProperty( propertyName, defaultValue + "" ) ) )

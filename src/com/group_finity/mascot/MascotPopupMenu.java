@@ -402,7 +402,7 @@ final class MascotPopupMenu
             }
         } );
 
-        final JCheckBoxMenuItem collisionMenu = new JCheckBoxMenuItem( languageBundle.getString( "MascotCollision" ),
+        final JCheckBoxMenuItem collisionMenu = new JCheckBoxMenuItem( Main.getInstance( ).getLanguageString( "MascotCollision", "Mascot Collision" ),
             ( props.getProperty( "Collision.imageset." + m.getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Collision.imageset." + m.getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Collision", "false" ) ) ) );
         collisionMenu.addItemListener( new ItemListener( )
         {
