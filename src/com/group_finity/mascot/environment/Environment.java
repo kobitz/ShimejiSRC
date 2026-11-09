@@ -123,6 +123,10 @@ public abstract class Environment
         cursor.set( Environment.getCursorPos( ) );
     }
 
+    /** Id of the mascot this environment instance serves (-1 until set); used to exclude its own collision box. */
+    protected int ownerId = -1;
+    public void setOwnerId( final int id ) { ownerId = id; }
+
     // Called once per tick per mascot with that mascot's anchor position.
     // Subclasses override to do per-mascot nearest-window detection.
     // Default falls back to tick() so non-Windows platforms are unaffected.

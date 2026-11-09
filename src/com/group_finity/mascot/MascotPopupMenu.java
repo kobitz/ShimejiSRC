@@ -402,6 +402,17 @@ final class MascotPopupMenu
             }
         } );
 
+        final JCheckBoxMenuItem collisionMenu = new JCheckBoxMenuItem( languageBundle.getString( "MascotCollision" ),
+            ( props.getProperty( "Collision.imageset." + m.getImageSet( ) ) != null ? Boolean.parseBoolean( props.getProperty( "Collision.imageset." + m.getImageSet( ) ) ) : Boolean.parseBoolean( props.getProperty( "Collision", "false" ) ) ) );
+        collisionMenu.addItemListener( new ItemListener( )
+        {
+            public void itemStateChanged( final ItemEvent e )
+            {
+                props.setProperty( "Collision.imageset." + m.getImageSet( ), String.valueOf( collisionMenu.isSelected( ) ) );
+                Main.getInstance( ).updateConfigFile( );
+            }
+        } );
+
         final JCheckBoxMenuItem floorMenu = new JCheckBoxMenuItem( "Floor Collision", m.floorEnabled );
         floorMenu.addItemListener( new ItemListener( )
         {
@@ -438,6 +449,7 @@ final class MascotPopupMenu
         universalSubmenu.add( multiscreenMenu );
         universalSubmenu.add( screenLoopMenu );
         universalSubmenu.add( floorMenu );
+        universalSubmenu.add( collisionMenu );
 
         // Personal Filter submenu — lets users override the global filter for this imageSet
         final String imageSetFilterKey = "Filter.imageset." + m.getImageSet( );

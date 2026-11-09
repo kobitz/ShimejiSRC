@@ -1531,6 +1531,8 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
                     lastDisplayScale = 0.0;
                 }
 
+                publishCollision( displayImage, bounds );
+
                 final boolean tintActive = tintColor != null && tintCurrentOpacity > 0.001f;
                 final boolean visible    = getWindow().asComponent().isVisible();
 
@@ -1595,6 +1597,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
             }
             else
             {
+                com.group_finity.mascot.environment.CollisionRegistry.remove( id );
                 if( getWindow().asComponent().isVisible() )
                 {
                     getWindow().asComponent().setVisible(false);
@@ -1770,6 +1773,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
         }
         for( String key : new String[]{ "Breeding", "Transients", "Transformation", "Throwing", "Sounds", "Multiscreen", "ScreenLoop" } )
             Main.getInstance( ).getProperties( ).remove( key + ".mascot" + id );
+        com.group_finity.mascot.environment.CollisionRegistry.remove( id );
         getWindow( ).dispose( );
         affordances.clear( );
         if( getManager( ) != null )
@@ -2136,6 +2140,44 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     public boolean isManualOnly( )          { return manualOnly; }
     public boolean isFloorEnabled( )        { return floorEnabled; }
+
+    // ── Collision (other mascots treat this one like a window) ────────────────
+    private boolean collisionOn      = false;
+    private int     collisionChecked = 0;
+
+    /** True when Collision is enabled for this mascot's image set (per-set key, else global). */
+    public boolean isCollisionEnabled( )
+    {
+        final java.util.Properties props = Main.getInstance( ).getProperties( );
+        final String perImageSet = props.getProperty( "Collision.imageset." + getImageSet( ) );
+        if( perImageSet != null )
+            return Boolean.parseBoolean( perImageSet );
+        return Boolean.parseBoolean( props.getProperty( "Collision", "false" ) );
+    }
+
+    /** Publish (or withdraw) this mascot's opaque-pixel rectangle in screen coordinates. */
+    private void publishCollision( final MascotImage img, final java.awt.Rectangle bounds )
+    {
+        if( collisionChecked-- <= 0 )            // re-read the setting ~twice a second
+        {
+            collisionOn = isCollisionEnabled( );
+            collisionChecked = 15;
+        }
+        if( !collisionOn || img == null || bounds == null )
+        {
+            com.group_finity.mascot.environment.CollisionRegistry.remove( id );
+            return;
+        }
+        final java.awt.Rectangle ob =
+            com.group_finity.mascot.environment.CollisionRegistry.cachedOpaqueBounds( img.getBufferedImage( ) );
+        if( ob == null )
+        {
+            com.group_finity.mascot.environment.CollisionRegistry.remove( id );
+            return;
+        }
+        com.group_finity.mascot.environment.CollisionRegistry.publish( id,
+            new java.awt.Rectangle( bounds.x + ob.x, bounds.y + ob.y, ob.width, ob.height ) );
+    }
 
     /** True when Screen Loop is enabled for this mascot's image set. */
     public boolean isScreenLoop( )

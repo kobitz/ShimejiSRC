@@ -250,6 +250,7 @@ Chat Bubbles tab built in `init()` (not `initComponents()`) so properties load f
 | `src/.../assistant/AssistantReactions.java` | The four unprompted reactions (spontaneous/audio/vision/user-speech), extracted from `Mascot` |
 | `src/.../MascotPopupMenu.java` | Right-click context menu, extracted from `Mascot` (reads/writes mascot state via package-visible members) |
 | `src/.../assistant/ReplyText.java` | Pure static text helpers extracted from `Mascot` (no state, no Ollama/UI) |
+| `src/.../environment/CollisionRegistry.java` | Process-wide Mascot Collision boxes (opaque-pixel bounds per mascot, pseudo window handles `<= -1000`); `WindowsEnvironment` appends them as IEs, excluding the owner via `Environment.ownerId` |
 | `src/.../HotkeyManager.java` | Global hotkey dispatch |
 | `src/.../config/Configuration.java` | XML parsing and caching |
 | `src/.../assistant/AssistantBubble.java` | Floating chat bubble UI |
@@ -344,11 +345,11 @@ Ko's stated direction (June 2026): go above and beyond — mascots should deeply
 No test framework; tests are plain `main` programs under `test/` that exit non-zero on failure. Compile the app first, then:
 
 ```
-javac --release 17 -encoding UTF-8 -cp "<classes>;lib/*" -d <out> test/com/group_finity/mascot/assistant/*.java
+javac --release 17 -encoding UTF-8 -cp "<classes>;lib/*" -d <out> test/com/group_finity/mascot/*/*.java
 java -Djava.awt.headless=true -cp "<out>;<classes>;lib/*" com.group_finity.mascot.assistant.ReplyTextTest
 java -Djava.awt.headless=true -cp "<out>;<classes>;lib/*" com.group_finity.mascot.assistant.AssistantActionsTest
 ```
 
-`ReplyTextTest` (pure helpers, ~100 checks), `AssistantActionsTest` (fake `AssistantHost`) and `ExecutableLocatorTest` (PATH lookup never trusts the cwd) are the suites; run each class the same way. When you change a `ReplyText` helper on purpose, update its test in the same edit.
+`ReplyTextTest` (pure helpers, ~100 checks), `AssistantActionsTest` (fake `AssistantHost`) and `ExecutableLocatorTest` (PATH lookup never trusts the cwd) and `environment.CollisionRegistryTest` (opaque-bounds scan, handle encoding) are the suites; run each class the same way (`com.group_finity.mascot.<package>.<Class>`). When you change a `ReplyText` helper on purpose, update its test in the same edit.
 
 (`<classes>` = the compiled app classes, e.g. `target/classes`; use `:` instead of `;` outside Windows.) Not part of `build.xml`.

@@ -755,6 +755,20 @@ public class Main
                                     }
                                 } );
 
+                                // "Mascot Collision" menu item
+                                final JCheckBoxMenuItem collisionMenu = new JCheckBoxMenuItem( languageBundle.getString( "MascotCollision" ), Boolean.parseBoolean( properties.getProperty( "Collision", "false" ) ) );
+                                collisionMenu.addItemListener( new ItemListener( )
+                                {
+                                    public void itemStateChanged( final ItemEvent e )
+                                    {
+                                        collisionMenu.setState( toggleBooleanSetting( "Collision", false ) );
+                                        // "Toggle for all": drop per-image-set overrides so every mascot follows this
+                                        properties.keySet( ).removeIf( k -> String.valueOf( k ).startsWith( "Collision.imageset." ) );
+                                        updateConfigFile( );
+                                        btnAllowedBehaviours.setEnabled( true );
+                                    }
+                                } );
+
                                 JPopupMenu behaviourPopup = new JPopupMenu( );
                                 behaviourPopup.add( breedingMenu );
                                 behaviourPopup.add( transientMenu );
@@ -764,6 +778,7 @@ public class Main
                                 behaviourPopup.add( multiscreenMenu );
                                 behaviourPopup.add( screenLoopMenu );
                                 behaviourPopup.add( floorCollisionMenu );
+                                behaviourPopup.add( collisionMenu );
                                 behaviourPopup.addPopupMenuListener( new PopupMenuListener( )
                                 {
                                     @Override

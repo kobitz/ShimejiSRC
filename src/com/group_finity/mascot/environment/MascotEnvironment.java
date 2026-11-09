@@ -29,6 +29,7 @@ public class MascotEnvironment
 
     public void tick( )
     {
+        impl.setOwnerId( mascot.getId( ) );
         if( mascot.isScreenLoop( ) && !isMultiscreen( ) && !mascot.isDragging( ) && currentWorkArea != null
                 && mascot.getUserData( "screenLoopTeleportedRight" ) == null )
         {

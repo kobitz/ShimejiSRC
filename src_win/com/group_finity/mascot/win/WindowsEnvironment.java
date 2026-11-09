@@ -527,6 +527,24 @@ public class WindowsEnvironment extends Environment
     private int ticksSinceIEScan = IE_SCAN_INTERVAL +
         ( instanceCounter.getAndIncrement( ) % IE_SCAN_INTERVAL );
 
+    // ── Mascot collision boxes ────────────────────────────────────────────────
+    private static boolean isCollisionHandle( final Pointer p )
+    {
+        return p != null && Pointer.nativeValue( p ) <= com.group_finity.mascot.environment.CollisionRegistry.HANDLE_BASE;
+    }
+
+    private static boolean isSyntheticHandle( final Pointer p )
+    {
+        return isCollisionHandle( p ) || Pointer.createConstant( -1L ).equals( p );
+    }
+
+    /** Fresh (this-tick) rectangle of the collision box a pseudo-handle refers to, or null. */
+    private static Rectangle collisionRect( final Pointer p )
+    {
+        final Rectangle r = com.group_finity.mascot.environment.CollisionRegistry.get( com.group_finity.mascot.environment.CollisionRegistry.idFromHandleValue( Pointer.nativeValue( p ) ) );
+        return r == null ? null : new Rectangle( r );
+    }
+
     // ── Per-mascot window selection ───────────────────────────────────────────
 
     /**
@@ -536,10 +554,32 @@ public class WindowsEnvironment extends Environment
     private Pointer findNearestIEFromSnapshot( final Point anchor )
     {
         final Snapshot        snap      = snapshot;   // one volatile read — consistent set
-        final List<Pointer>   handles   = snap.handles;
-        final List<Rectangle> rects     = snap.rects;
-        final List<IEResult>  viability = snap.viability;
-        final List<Integer>   exStyles  = snap.exStyles;
+        List<Pointer>   handles   = snap.handles;
+        List<Rectangle> rects     = snap.rects;
+        List<IEResult>  viability = snap.viability;
+        List<Integer>   exStyles  = snap.exStyles;
+
+        // Mascots with Collision enabled act as windows for everyone else. Appended AFTER the
+        // real windows (so they never occlude anything) and read live from the registry,
+        // not from the 40ms scanner, so a mascot standing on a moving block rides it smoothly.
+        if( !com.group_finity.mascot.environment.CollisionRegistry.all( ).isEmpty( ) )
+        {
+            List<Pointer> mh = null; List<Rectangle> mr = null; List<IEResult> mv = null; List<Integer> me = null;
+            for( final java.util.Map.Entry<Integer, Rectangle> en : com.group_finity.mascot.environment.CollisionRegistry.all( ).entrySet( ) )
+            {
+                if( en.getKey( ) == ownerId ) continue;
+                if( mh == null )
+                {
+                    mh = new ArrayList<>( handles );  mr = new ArrayList<>( rects );
+                    mv = new ArrayList<>( viability ); me = new ArrayList<>( exStyles );
+                }
+                mh.add( Pointer.createConstant( com.group_finity.mascot.environment.CollisionRegistry.handleValueFor( en.getKey( ) ) ) );
+                mr.add( en.getValue( ) );
+                mv.add( IEResult.IE );
+                me.add( 0 );
+            }
+            if( mh != null ) { handles = mh; rects = mr; viability = mv; exStyles = me; }
+        }
 
         Rectangle mascotScreen = null;
         for( Rectangle sr : screenRects.values( ) )
@@ -562,7 +602,7 @@ public class WindowsEnvironment extends Environment
             // Synthetic rects bypass occlusion — they represent content drawn ON TOP
             // of a browser window (e.g. a video player), so they're intentionally
             // inside another window's bounds.
-            final boolean isSynthetic = com.sun.jna.Pointer.createConstant(-1L).equals( handles.get(i) );
+            final boolean isSynthetic = isSyntheticHandle( handles.get(i) );
             boolean occluded = false;
             if( !isSynthetic )
             {
@@ -598,7 +638,7 @@ public class WindowsEnvironment extends Environment
 
             int     sampleX  = r.x + r.width / 2;
             boolean occluded = false;
-            for( int j = 0; j < i; j++ )
+            for( int j = 0; j < i && !isCollisionHandle( handles.get( i ) ); j++ )
             {
                 if( ( exStyles.get( j ) & User32.WS_EX_LAYERED ) != 0 ) continue;
                 if( rects.get( j ).contains( sampleX, r.y ) ) { occluded = true; break; }
@@ -666,7 +706,8 @@ public class WindowsEnvironment extends Environment
             if( activeIEobject != null )
             {
                 final com.sun.jna.Pointer SEN = com.sun.jna.Pointer.createConstant( -1L );
-                Rectangle r = SEN.equals( activeIEobject ) ? null : rectFromSnapshot( activeIEobject );
+                Rectangle r = isCollisionHandle( activeIEobject ) ? collisionRect( activeIEobject )
+                            : SEN.equals( activeIEobject ) ? null : rectFromSnapshot( activeIEobject );
                 if( r != null )
                 {
                     activeIE.setVisible( r.intersects( getScreen( ).toRectangle( ) ) );
@@ -695,7 +736,11 @@ public class WindowsEnvironment extends Environment
             // Check if this is a synthetic sentinel handle
             final com.sun.jna.Pointer SENTINEL = com.sun.jna.Pointer.createConstant( -1L );
             Rectangle r;
-            if( SENTINEL.equals( activeIEobject ) )
+            if( isCollisionHandle( activeIEobject ) )
+            {
+                r = collisionRect( activeIEobject );
+            }
+            else if( SENTINEL.equals( activeIEobject ) )
             {
                 // Find the synthetic rect that matches the selected sentinel
                 // by finding the nearest one to mascotAnchor (mirrors findNearest logic)
@@ -743,7 +788,7 @@ public class WindowsEnvironment extends Environment
     @Override
     public void moveActiveIE( final Point point )
     {
-        if( activeIEobject == null ) return;
+        if( activeIEobject == null || isSyntheticHandle( activeIEobject ) ) return;
         final int w = activeIE.getWidth( );
         final int h = activeIE.getHeight( );
         moveIE( activeIEobject, new Rectangle( point.x, point.y, w, h ) );
@@ -760,6 +805,7 @@ public class WindowsEnvironment extends Environment
     {
         if( activeIEobject == null ) return "";
         final com.sun.jna.Pointer SENTINEL = com.sun.jna.Pointer.createConstant( -1L );
+        if( isCollisionHandle( activeIEobject ) ) return "Mascot";
         if( SENTINEL.equals( activeIEobject ) )
         {
             com.group_finity.mascot.VideoAreaServer vas =
