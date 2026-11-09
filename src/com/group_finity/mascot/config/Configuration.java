@@ -70,7 +70,7 @@ public class Configuration
             locale = Locale.forLanguageTag( "en-US" );
         }
         
-        schema = ResourceBundle.getBundle( "schema", locale, utf8Control );
+        schema = new SchemaBundle( ResourceBundle.getBundle( "schema", locale, utf8Control ) );
         
         for( Entry constant : configurationNode.selectChildren( schema.getString( "Constant" ) ) )
         {

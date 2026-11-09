@@ -33,6 +33,13 @@ public class ConfigurationSplashTest
         Configuration empty = load( "<Information><SplashImages></SplashImages></Information>" );
         check( "empty pages -> no key", !empty.containsInformationKey( "SplashImages" ) );
 
+        // Tags added after 1.0.22 must resolve even if the installed schema file is older than the jar
+        check( "schema Arc", "Arc".equals( single.getSchema( ).getString( "Arc" ) ) );
+        check( "schema Look", "Look".equals( single.getSchema( ).getString( "Look" ) ) );
+        boolean threw = false;
+        try { single.getSchema( ).getString( "NoSuchKeyAnywhere" ); } catch( java.util.MissingResourceException e ) { threw = true; }
+        check( "unknown keys still throw", threw );
+
         System.out.println( fails == 0 ? "ConfigurationSplashTest: all passed" : "ConfigurationSplashTest: " + fails + " FAILED" );
         System.exit( fails == 0 ? 0 : 1 );
     }
