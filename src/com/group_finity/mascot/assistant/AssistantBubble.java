@@ -134,6 +134,8 @@ public class AssistantBubble
     private       boolean   replyFocusArmed = false;
 
     private volatile boolean thinking = false;
+    private volatile int     thinkingDots = 1;      // 1..3, cycled by thinkingTimer while thinking
+    private          Timer   thinkingTimer = null;  // EDT only
 
     // CopyOnWriteArrayList: EDT timers/clicks mutate while the Manager thread
     // iterates via reposition() -> layout(). A plain ArrayList risks
@@ -232,6 +234,14 @@ public class AssistantBubble
         }
 
         /** Draws wrapped centered text; returns the new baseline after last line. */
+        /** Animated "." / ".." / "..." indicator; positioned as if all three dots were drawn so it doesn't jitter. */
+        private void drawThinkingDots( final Graphics2D g2, final int baseline )
+        {
+            final FontMetrics fm = g2.getFontMetrics();
+            final int x = getWidth() / 2 - fm.stringWidth( "..." ) / 2;
+            drawShadowed( g2, ".".repeat( thinkingDots ), x, baseline, textColor( 1.0f ), shadowColor( 1.0f ) );
+        }
+
         private int drawWrappedShadowed( final Graphics2D g2, final String text,
                                          final int startBaseline,
                                          final Color tCol, final Color sCol )
@@ -508,8 +518,7 @@ public class AssistantBubble
                 {
                     // Outside the bubble — drawn below bubble content, no bg
                     final int thinkBaseline = bubbleContentH + SHADOW_PAD + fm.getAscent();
-                    drawWrappedShadowed( g2, "Thinking...", thinkBaseline,
-                        textColor( 1.0f ), shadowColor( 1.0f ) );
+                    drawThinkingDots( g2, thinkBaseline );
                 }
                 else
                 {
@@ -526,8 +535,7 @@ public class AssistantBubble
                         g2.fillRoundRect( sepX, sepY, sepW, 2, 2, 2 );
                         baseline = sepY + 2 + SEP_PAD + fm.getAscent();
                     }
-                    drawWrappedShadowed( g2, "Thinking...", baseline,
-                        textColor( 1.0f ), shadowColor( 1.0f ) );
+                    drawThinkingDots( g2, baseline );
                 }
             }
 
@@ -868,6 +876,20 @@ public class AssistantBubble
         thinking = true;
         lastResponseTimestamp = 0L;
         layout( mascotBounds );
+        SwingUtilities.invokeLater( () ->
+        {
+            thinkingDots = 1;
+            if( thinkingTimer == null )
+            {
+                thinkingTimer = new Timer( 400, e ->
+                {
+                    if( !thinking ) { ( (Timer) e.getSource() ).stop(); return; }
+                    thinkingDots = thinkingDots % 3 + 1;
+                    panel.repaint();
+                } );
+            }
+            if( !thinkingTimer.isRunning() ) thinkingTimer.start();
+        } );
     }
 
     public void showListening( final Rectangle mascotBounds )
