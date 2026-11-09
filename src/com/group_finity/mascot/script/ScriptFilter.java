@@ -12,7 +12,7 @@ import org.openjdk.nashorn.api.scripting.ClassFilter;
  * Decides which Java classes a mascot script may <em>name</em> ({@code Java.type(...)},
  * {@code Packages.x.Y}, {@code new x.Y()}).
  *
- * <p>The default is: none. Mascot XML does not need to name classes -- it works with the objects
+ * <p>The default is: none (apart from the tiny {@code BUILT_IN_ALLOWED} set of inert value classes such as {@code java.awt.Point}). Mascot XML does not need to name classes -- it works with the objects
  * the engine hands it ({@code mascot}, {@code scaling}, ...), and Nashorn does not consult this
  * filter for method/property access on those objects. This used to expose every
  * {@code com.group_finity.mascot.*} class, which let any script (e.g. from a downloaded mascot
@@ -30,6 +30,9 @@ public class ScriptFilter implements ClassFilter
 
     /** Denials already reported, so a script evaluated every tick does not flood the log. */
     private static final Set<String> reported = ConcurrentHashMap.newKeySet( );
+
+    /** Plain value classes with no I/O, reflection or process access; safe to name from any script. */
+    private static final Set<String> BUILT_IN_ALLOWED = Set.of( "java.awt.Point" );
 
     private final Set<String> allowed;
 
@@ -64,7 +67,7 @@ public class ScriptFilter implements ClassFilter
     @Override
     public boolean exposeToScripts( final String className )
     {
-        if( allowed.contains( className ) ) return true;
+        if( BUILT_IN_ALLOWED.contains( className ) || allowed.contains( className ) ) return true;
         if( looksLikeClassName( className ) && reported.add( className ) )
         {
             log.warning( "[Script] A mascot script tried to use the Java class " + className
