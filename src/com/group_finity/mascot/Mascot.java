@@ -2181,8 +2181,33 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
             com.group_finity.mascot.environment.CollisionRegistry.remove( id );
             return;
         }
-        com.group_finity.mascot.environment.CollisionRegistry.publish( id,
-            new java.awt.Rectangle( bounds.x + ob.x, bounds.y + ob.y, ob.width, ob.height ) );
+        final java.awt.Rectangle rect =
+            new java.awt.Rectangle( bounds.x + ob.x, bounds.y + ob.y, ob.width, ob.height );
+        // A mascot that is not always-on-top and is completely hidden behind another window
+        // can't be touched, so it stops acting as a surface until it is uncovered.
+        if( !isEffectivelyAlwaysOnTop( ) )
+        {
+            try
+            {
+                final com.group_finity.mascot.environment.Environment env =
+                    com.group_finity.mascot.NativeFactory.getInstance( ).getEnvironment( );
+                if( env != null && env.isObscuredByWindow( getWindow( ).asComponent( ), rect ) )
+                {
+                    com.group_finity.mascot.environment.CollisionRegistry.remove( id );
+                    return;
+                }
+            }
+            catch( RuntimeException | LinkageError ignored ) { }
+        }
+        com.group_finity.mascot.environment.CollisionRegistry.publish( id, rect );
+    }
+
+    /** Global AlwaysOnTop && per-image-set AlwaysOnTop (same rule applyAlwaysOnTop uses). */
+    private boolean isEffectivelyAlwaysOnTop( )
+    {
+        final java.util.Properties props = Main.getInstance( ).getProperties( );
+        return Boolean.parseBoolean( props.getProperty( "AlwaysOnTop", "true" ) )
+            && Boolean.parseBoolean( props.getProperty( "AlwaysOnTop.imageset." + getImageSet( ), "true" ) );
     }
 
     /** True when Screen Loop is enabled for this mascot's image set. */

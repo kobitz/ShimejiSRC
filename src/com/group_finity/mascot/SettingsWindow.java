@@ -569,7 +569,10 @@ public class SettingsWindow extends javax.swing.JDialog
         float menuScaling = Float.parseFloat( Main.getInstance( ).getProperties( ).getProperty( "MenuDPI", "96" ) ) / 96;
         
         // scale controls to fit
-        getContentPane( ).setPreferredSize( new Dimension( (int)( 800 * menuScaling ), (int)( 640 * menuScaling ) ) );
+        // 720 (was 640) so Done/Cancel are fully inside the window; never taller than the screen.
+        final java.awt.Rectangle usable = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment( ).getMaximumWindowBounds( );
+        final int contentH = Math.max( 400, Math.min( (int)( 720 * menuScaling ), usable.height - (int)( 80 * menuScaling ) ) );
+        getContentPane( ).setPreferredSize( new Dimension( (int)( 800 * menuScaling ), contentH ) );
         sldOpacity.setPreferredSize( new Dimension( (int)( sldOpacity.getPreferredSize( ).width * menuScaling ), (int)( sldOpacity.getPreferredSize( ).height * menuScaling ) ) );
         sldScaling.setPreferredSize( new Dimension( (int)( sldScaling.getPreferredSize( ).width * menuScaling ), (int)( sldScaling.getPreferredSize( ).height * menuScaling ) ) );
         btnAddInteractiveWindow.setPreferredSize( new Dimension( (int)( btnAddInteractiveWindow.getPreferredSize( ).width * menuScaling ), (int)( btnAddInteractiveWindow.getPreferredSize( ).height * menuScaling ) ) );

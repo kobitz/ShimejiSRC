@@ -528,6 +528,28 @@ public class WindowsEnvironment extends Environment
         ( instanceCounter.getAndIncrement( ) % IE_SCAN_INTERVAL );
 
     // ── Mascot collision boxes ────────────────────────────────────────────────
+    @Override
+    public boolean isObscuredByWindow( final java.awt.Component mascotWindow, final Rectangle r )
+    {
+        if( mascotWindow == null || r == null || r.isEmpty( ) ) return false;
+        final Pointer me = com.sun.jna.Native.getComponentPointer( mascotWindow );
+        if( me == null ) return false;
+        final Snapshot snap = snapshot;
+        final List<Pointer> hs = snap.handles;
+        int idx = -1;
+        for( int i = 0; i < hs.size( ); i++ )
+            if( me.equals( hs.get( i ) ) ) { idx = i; break; }
+        if( idx < 0 ) return false;                  // not enumerated (hidden) — leave collision alone
+        for( int j = 0; j < idx; j++ )               // z-ordered, topmost first
+        {
+            final IEResult v = snap.viability.get( j );
+            if( v != IEResult.IE && v != IEResult.INVALID ) continue;   // INVALID = maximized
+            final Rectangle wr = snap.rects.get( j );
+            if( wr != null && wr.contains( r ) ) return true;
+        }
+        return false;
+    }
+
     private static boolean isCollisionHandle( final Pointer p )
     {
         return p != null && Pointer.nativeValue( p ) <= com.group_finity.mascot.environment.CollisionRegistry.HANDLE_BASE;

@@ -39,6 +39,15 @@ public abstract class Environment
 
     public abstract void minimizeActiveIE( );
 
+    /**
+     * True when a real window stacked above the given mascot window completely covers
+     * {@code r} (screen coordinates). Default: nothing obscures.
+     */
+    public boolean isObscuredByWindow( final java.awt.Component mascotWindow, final java.awt.Rectangle r )
+    {
+        return false;
+    }
+
     public abstract void restoreIE( );
     
     public abstract void refreshCache( );

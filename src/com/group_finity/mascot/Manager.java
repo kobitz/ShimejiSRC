@@ -126,6 +126,7 @@ public class Manager {
 	public Manager() { }
 
 	public void start() {
+		StallWatchdog.start();
 		if ( thread!=null && thread.isAlive() ) {
 			return;
 		}
@@ -155,7 +156,8 @@ public class Manager {
 						if (System.nanoTime() - nextTick > TICK_INTERVAL * 1_000_000L) {
 							nextTick = System.nanoTime();
 						}
-						tick();
+						StallWatchdog.tickBegin();
+						try { tick(); } finally { StallWatchdog.tickEnd(); }
 					}
 				} catch (final InterruptedException e) {
 				} catch (final Throwable e) {
@@ -191,6 +193,7 @@ public class Manager {
 		// Started before the lock so contention (e.g. EDT holding the mascots
 		// lock during a menu) shows up as total time unaccounted for by phases.
 		final long tickStartNs = System.nanoTime();
+		final long gcStartMs = StallWatchdog.gcTimeMs();
 		long envScanNs = 0;
 		long mascotsTotalNs = 0;
 		long slowestMascotNs = 0;
@@ -453,6 +456,7 @@ public class Manager {
 					+ " tick=" + ( slowestTickNs / 1000L ) + "us"
 					+ " apply=" + ( slowestApplyNs / 1000L ) + "us)"
 				+ " mascots=" + mascotCount
+				+ " gc=" + ( StallWatchdog.gcTimeMs() - gcStartMs ) + "ms"
 				+ " heap=" + ( ( rt.totalMemory() - rt.freeMemory() ) / 1_048_576L ) + "/"
 				+ ( rt.totalMemory() / 1_048_576L ) + "MB"
 				+ " cpu=" + (int) cpu + "% gpu=" + (int) gpu + "%" );
