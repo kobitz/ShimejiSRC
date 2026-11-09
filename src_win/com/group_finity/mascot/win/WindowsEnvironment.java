@@ -100,7 +100,12 @@ public class WindowsEnvironment extends Environment
      * Used by getWorkAreaRect() to return full-screen bounds instead of
      * the work area (which excludes the taskbar) when a fullscreen app is present.
      */
-    private static volatile Set<Rectangle> fullscreenMonitors = new HashSet<>( );
+    private static volatile Set<Rectangle> fullscreenMonitors = Set.of( );
+
+    /** How long a monitor stays "fullscreen" after the scan last saw a fullscreen window on it. */
+    private static final long FULLSCREEN_HOLD_MS = 1500;
+    /** monitor rect -> last time a fullscreen window was seen on it. Scanner thread only. */
+    private static final java.util.Map<Rectangle, Long> fsLastSeenMs = new java.util.HashMap<>( );
 
     // Reusable native structs — manager thread only (single-threaded tick loop).
     private static final RECT            reuseOut   = new RECT( );
@@ -232,7 +237,7 @@ public class WindowsEnvironment extends Environment
                 fsMonitors.add( monRect );
             }
         }
-        fullscreenMonitors = fsMonitors;
+        // (published once, below, after the browser-reported areas are merged in)
 
         // Also treat any browser-reported fullscreen tabs as fullscreen monitors.
         // The extension POSTs the browser window's screen rect to /fullscreen;
@@ -260,9 +265,24 @@ public class WindowsEnvironment extends Environment
                     bmi.rcMonitor.right  - bmi.rcMonitor.left,
                     bmi.rcMonitor.bottom - bmi.rcMonitor.top ) );
             }
-            // Re-publish with browser fullscreen additions
-            fullscreenMonitors = fsMonitors;
         }
+
+        // Publish ONCE, as an immutable set, with a short hold. Two bugs lived here (Nov 2026):
+        // (1) the set was published and then mutated by the browser merge above, so the tick
+        //     thread could read a monitor as "not fullscreen" for an instant and the floor would
+        //     jump from the monitor bottom to the taskbar top (mascots hopped onto the taskbar),
+        //     and a HashSet mutated during a concurrent read is not safe anyway;
+        // (2) any one-scan blip (window briefly non-popup during a fullscreen transition, a
+        //     missed enumeration) had the same effect. Keeping a monitor "fullscreen" for
+        //     FULLSCREEN_HOLD_MS after it was last seen absorbs those; leaving fullscreen is
+        //     delayed by that much, which is harmless.
+        final long nowMs = System.currentTimeMillis( );
+        for( final Rectangle fm : fsMonitors ) fsLastSeenMs.put( fm, nowMs );
+        fsLastSeenMs.values( ).removeIf( t -> nowMs - t > FULLSCREEN_HOLD_MS );
+        final Set<Rectangle> newFs = Set.copyOf( fsLastSeenMs.keySet( ) );
+        if( !newFs.equals( fullscreenMonitors ) )
+            log.fine( "[Fullscreen] monitors now fullscreen: " + newFs );   // transitions only; FINE to keep the log quiet
+        fullscreenMonitors = newFs;
         // They use a null handle (no real HWND) and are marked IEResult.IE so
         // findNearestIEFromSnapshot treats them identically to real windows.
         com.group_finity.mascot.VideoAreaServer vas =
