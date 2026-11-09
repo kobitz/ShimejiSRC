@@ -1559,7 +1559,14 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
                     // component's bounds) stays live with the tick loop even though the pixel
                     // update for a tinted mascot may now lag by up to one composite cycle —
                     // the same one-cycle tradeoff already accepted for the async blit below.
-                    getWindow().asComponent().setBounds(bounds);
+                    // Only when needed. Component.setBounds is a SYNCHRONOUS native call that holds
+                    // the AWT tree lock and waits on the AWT-Windows thread; with ~30 mascots a slow
+                    // toolkit thread stalled the tick for seconds and blocked the Swing EDT (the
+                    // "whole program freezes" thread dump, Nov 2026). UpdateLayeredWindow below
+                    // already moves AND resizes the native window, and AWT picks the new bounds up
+                    // from the resulting window messages, so steady-state frames skip it.
+                    if( !visible || lastAppliedBounds == null || displayImage.getImage( ) == null )
+                        getWindow().asComponent().setBounds(bounds);
 
                     // Set Images — apply tint overlay if active
                     if( tintActive )

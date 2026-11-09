@@ -68,8 +68,10 @@ public final class StallWatchdog
                     javax.swing.SwingUtilities.invokeLater( () -> edtPingSentNs = 0 );
                 }
                 final long now = System.nanoTime( );
-                final long tickMs = tickStartNs == 0 ? 0 : ( now - tickStartNs ) / 1_000_000L;
-                final long edtMs  = edtPingSentNs == 0 ? 0 : ( now - edtPingSentNs ) / 1_000_000L;
+                final long ts     = tickStartNs;
+                final long tickMs = ts == 0 ? 0 : ( now - ts ) / 1_000_000L;
+                final long sent   = edtPingSentNs;          // read once: the EDT may zero it between reads
+                final long edtMs  = sent == 0 ? 0 : ( now - sent ) / 1_000_000L;
                 final boolean stalled = tickMs >= THRESHOLD_MS || edtMs >= THRESHOLD_MS;
                 if( !stalled )
                 {
