@@ -64,6 +64,10 @@ public class ComplexJump extends ActionBase
     public static final String PARAMETER_LIVE_TARGET = "LiveTarget";
     private static final String DEFAULT_LIVE_TARGET  = "";
 
+    public static final String PARAMETER_ARC = "Arc";
+
+    private static final boolean DEFAULT_ARC = true;
+
     public static final String VARIABLE_VELOCITYX = "VelocityX";
     public static final String VARIABLE_VELOCITYY = "VelocityY";
 
@@ -139,7 +143,7 @@ public class ComplexJump extends ActionBase
             final int targetY = getTargetY( );
 
             final double distanceX = targetX - getMascot( ).getAnchor( ).x;
-            final double distanceY = targetY - getMascot( ).getAnchor( ).y - Math.abs( distanceX ) / 2;
+            final double distanceY = targetY - getMascot( ).getAnchor( ).y - ( getArc( ) ? Math.abs( distanceX ) / 2 : 0 );
 
             final double distance = Math.sqrt( distanceX * distanceX + distanceY * distanceY );
 
@@ -178,7 +182,7 @@ public class ComplexJump extends ActionBase
         }
 
         double distanceX = targetX - getMascot( ).getAnchor( ).x;
-        double distanceY = targetY - getMascot( ).getAnchor( ).y - Math.abs( distanceX ) / 2;
+        double distanceY = targetY - getMascot( ).getAnchor( ).y - ( getArc( ) ? Math.abs( distanceX ) / 2 : 0 );
 
         double distance = Math.sqrt( distanceX * distanceX + distanceY * distanceY );
 
@@ -287,5 +291,10 @@ public class ComplexJump extends ActionBase
                               + getEnvironment( ).getActiveIE( ).toRectangle( ).height / 2;
             default:     return eval( getSchema( ).getString( PARAMETER_TARGETY ), Number.class, DEFAULT_TARGETY ).intValue( );
         }
+    }
+
+    private boolean getArc( ) throws VariableException
+    {
+        return eval( getSchema( ).getString( PARAMETER_ARC ), Boolean.class, DEFAULT_ARC );
     }
 }

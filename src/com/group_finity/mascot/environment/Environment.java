@@ -37,6 +37,8 @@ public abstract class Environment
 
     public abstract void moveActiveIE( final Point point );
 
+    public abstract void minimizeActiveIE( );
+
     public abstract void restoreIE( );
     
     public abstract void refreshCache( );

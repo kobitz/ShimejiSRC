@@ -48,6 +48,11 @@ class VirtualEnvironment extends Environment
     }
 
     @Override
+    public void minimizeActiveIE( )
+    {
+    }
+
+    @Override
     public void moveActiveIE( final Point point )
     {
     }

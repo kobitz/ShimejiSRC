@@ -55,6 +55,8 @@ public interface User32 extends StdCallLibrary{
 
 	int GetWindowRgn(Pointer hWnd, Pointer hRgn);
 
+	boolean ShowWindow(Pointer hWnd, int nCmdShow);
+
 	int MoveWindow(Pointer hWnd, int X, int Y, int nWidth, int nHeight, int bRepaint);
 
 	int BringWindowToTop(Pointer hWnd);

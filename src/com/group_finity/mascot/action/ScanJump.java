@@ -40,6 +40,10 @@ public class ScanJump extends ActionBase
 
     private static final double DEFAULT_VELOCITY = 20.0;
 
+    public static final String PARAMETER_ARC = "Arc";
+
+    private static final boolean DEFAULT_ARC = true;
+
     public static final String VARIABLE_VELOCITYX = "VelocityX";
 
     public static final String VARIABLE_VELOCITYY = "VelocityY";
@@ -92,7 +96,7 @@ public class ScanJump extends ActionBase
         }
 
         double distanceX = targetX - getMascot( ).getAnchor( ).x;
-        double distanceY = targetY - getMascot( ).getAnchor( ).y - Math.abs( distanceX )/2;
+        double distanceY = targetY - getMascot( ).getAnchor( ).y - ( getArc( ) ? Math.abs( distanceX ) / 2 : 0 );
 
         double distance = Math.sqrt( distanceX * distanceX + distanceY * distanceY );
 
@@ -160,5 +164,10 @@ public class ScanJump extends ActionBase
     private double getVelocity( ) throws VariableException
     {
         return eval( getSchema( ).getString( PARAMETER_VELOCITY ), Number.class, DEFAULT_VELOCITY ).doubleValue( );
+    }
+
+    private boolean getArc( ) throws VariableException
+    {
+        return eval( getSchema( ).getString( PARAMETER_ARC ), Boolean.class, DEFAULT_ARC );
     }
 }

@@ -44,6 +44,10 @@ public class Jump extends ActionBase
     public static final String PARAMETER_LIVE_TARGET = "LiveTarget";
     private static final String DEFAULT_LIVE_TARGET  = "";
 
+    public static final String PARAMETER_ARC = "Arc";
+
+    private static final boolean DEFAULT_ARC = true;
+
     public static final String VARIABLE_VELOCITYX = "VelocityX";
     public static final String VARIABLE_VELOCITYY = "VelocityY";
 
@@ -84,7 +88,7 @@ public class Jump extends ActionBase
         getMascot( ).setUserData( "jumpCurrentTargetY", targetY );
 
         final double distanceX = targetX - getMascot( ).getAnchor( ).x;
-        final double distanceY = targetY - getMascot( ).getAnchor( ).y - Math.abs( distanceX ) / 2;
+        final double distanceY = targetY - getMascot( ).getAnchor( ).y - ( getArc( ) ? Math.abs( distanceX ) / 2 : 0 );
 
         final double distance = Math.sqrt( distanceX * distanceX + distanceY * distanceY );
 
@@ -118,7 +122,7 @@ public class Jump extends ActionBase
         getMascot( ).setLookRight( getMascot( ).getAnchor( ).x < targetX );
 
         final double distanceX = targetX - getMascot( ).getAnchor( ).x;
-        final double distanceY = targetY - getMascot( ).getAnchor( ).y - Math.abs( distanceX ) / 2;
+        final double distanceY = targetY - getMascot( ).getAnchor( ).y - ( getArc( ) ? Math.abs( distanceX ) / 2 : 0 );
 
         final double distance = Math.sqrt( distanceX * distanceX + distanceY * distanceY );
 
@@ -261,5 +265,10 @@ public class Jump extends ActionBase
         }
 
         return best;
+    }
+
+    private boolean getArc( ) throws VariableException
+    {
+        return eval( getSchema( ).getString( PARAMETER_ARC ), Boolean.class, DEFAULT_ARC );
     }
 }

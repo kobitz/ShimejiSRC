@@ -30,6 +30,10 @@ public class ScanInteract extends BorderedAction
 
     private static final String DEFAULT_TARGETBEHAVIOUR = "";
     
+    public static final String PARAMETER_LOOK = "Look";
+
+    private static final boolean DEFAULT_LOOK = true;
+
     public static final String PARAMETER_TARGETLOOK = "TargetLook";
 
     private static final boolean DEFAULT_TARGETLOOK = false;
@@ -88,18 +92,21 @@ public class ScanInteract extends BorderedAction
         
         if( target != null && target.get( ) != null && target.get( ).getAffordances( ).contains( getAffordance( ) ) )
         {
-            if( getMascot( ).getAnchor( ).x != target.get( ).getAnchor( ).x )
+            if( getLook( ) )
             {
-                // activate turn animation if we change directions
-                turning = hasTurningAnimation( ) && ( turning || getMascot( ).getAnchor( ).x < target.get( ).getAnchor( ).x != getMascot( ).isLookRight( ) );
-                getMascot( ).setLookRight( getMascot( ).getAnchor( ).x < target.get( ).getAnchor( ).x );
-            }
-        
-            // check if turning animation has finished
-            if( turning && getTime( ) >= getAnimation( ).getDuration( ) )
-            {
-                setTime( getTime( ) - getAnimation( ).getDuration( ) );
-                turning = false;
+                if( getMascot( ).getAnchor( ).x != target.get( ).getAnchor( ).x )
+                {
+                    // activate turn animation if we change directions
+                    turning = hasTurningAnimation( ) && ( turning || getMascot( ).getAnchor( ).x < target.get( ).getAnchor( ).x != getMascot( ).isLookRight( ) );
+                    getMascot( ).setLookRight( getMascot( ).getAnchor( ).x < target.get( ).getAnchor( ).x );
+                }
+
+                // check if turning animation has finished
+                if( turning && getTime( ) >= getAnimation( ).getDuration( ) )
+                {
+                    setTime( getTime( ) - getAnimation( ).getDuration( ) );
+                    turning = false;
+                }
             }
         
             getAnimation( ).next( getMascot( ), getTime( ) );
@@ -189,5 +196,10 @@ public class ScanInteract extends BorderedAction
     private boolean getTargetLook( ) throws VariableException
     {
         return eval( getSchema( ).getString( PARAMETER_TARGETLOOK ), Boolean.class, DEFAULT_TARGETLOOK );
+    }
+
+    private boolean getLook( ) throws VariableException
+    {
+        return eval( getSchema( ).getString( PARAMETER_LOOK ), Boolean.class, DEFAULT_LOOK );
     }
 }

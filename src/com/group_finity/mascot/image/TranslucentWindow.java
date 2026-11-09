@@ -29,6 +29,13 @@ public interface TranslucentWindow
         updateImage( );
     }
     
+    /** Raise this window above other windows. */
+    default void bringToFront( )
+    {
+        if( asComponent( ) instanceof java.awt.Window )
+            ( (java.awt.Window) asComponent( ) ).toFront( );
+    }
+
     public void dispose( );
     
     public void setAlwaysOnTop( boolean onTop );

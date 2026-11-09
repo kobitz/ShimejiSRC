@@ -1583,6 +1583,18 @@ public class Main
         catch( final java.util.MissingResourceException e ) { return fallback; }
     }
 
+    /**
+     * Effective value of a universal-behavior toggle for one mascot: its own override
+     * ({@code Key.mascot<id>}), else its image set's ({@code Key.imageset.<set>}), else the global {@code Key}.
+     */
+    public boolean getMascotBooleanSetting( final String key, final Mascot mascot )
+    {
+        String v = properties.getProperty( key + ".mascot" + mascot.getId( ) );
+        if( v == null ) v = properties.getProperty( key + ".imageset." + mascot.getImageSet( ) );
+        if( v == null ) v = properties.getProperty( key, "true" );
+        return Boolean.parseBoolean( v );
+    }
+
     boolean toggleBooleanSetting( String propertyName, boolean defaultValue )
     {
         if( Boolean.parseBoolean( properties.getProperty( propertyName, defaultValue + "" ) ) )

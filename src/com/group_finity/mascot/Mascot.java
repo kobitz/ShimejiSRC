@@ -1803,6 +1803,11 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
         getWindow( ).asComponent( ).setCursor( Cursor.getPredefinedCursor( useHand ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR ) );
     }
 
+    public void bringToFront( )
+    {
+        window.bringToFront( );
+    }
+
     public Manager getManager( )
     {
         return manager;

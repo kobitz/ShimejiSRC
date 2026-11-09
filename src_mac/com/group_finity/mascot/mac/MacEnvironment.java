@@ -335,6 +335,10 @@ class MacEnvironment extends Environment {
 	}
 
 	@Override
+	public void minimizeActiveIE( ) {
+	}
+
+	@Override
 	public void moveActiveIE(final Point point) {
 		/**
 			前述のとおり、完全に画面外へ移動しようとすると押し返されるため、

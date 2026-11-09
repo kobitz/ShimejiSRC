@@ -286,6 +286,11 @@ public class MascotEnvironment
         }
     }
 
+    public void minimizeActiveIE( )
+    {
+        impl.minimizeActiveIE( );
+    }
+
     public void moveActiveIE( Point point )
     {
         impl.moveActiveIE( point );

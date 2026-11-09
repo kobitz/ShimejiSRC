@@ -785,6 +785,20 @@ public class WindowsEnvironment extends Environment
 
     @Override public void dispose( ) { }
 
+    private static void minimizeIE( final Pointer ie )
+    {
+        if( ie == null || isSyntheticHandle( ie ) )
+            return;
+
+        User32.INSTANCE.ShowWindow( ie, 6 );   // SW_MINIMIZE
+    }
+
+    @Override
+    public void minimizeActiveIE( )
+    {
+        minimizeIE( activeIEobject );
+    }
+
     @Override
     public void moveActiveIE( final Point point )
     {
