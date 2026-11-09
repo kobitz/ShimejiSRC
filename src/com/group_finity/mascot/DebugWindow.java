@@ -33,8 +33,11 @@ public class DebugWindow extends javax.swing.JFrame
         lblWindowYValue = new javax.swing.JLabel();
         lblWindowWidthValue = new javax.swing.JLabel();
         lblWindowHeightValue = new javax.swing.JLabel();
-        lblBehaviour = new javax.swing.JLabel();
-        lblBehaviourValue = new javax.swing.JLabel();
+        pnlTabs = new javax.swing.JTabbedPane();
+        scrBehaviours = new javax.swing.JScrollPane();
+        lstBehaviours = new javax.swing.JList<String>();
+        scrVariables = new javax.swing.JScrollPane();
+        lstVariables = new javax.swing.JList<String>();
         lblEnvironmentY = new javax.swing.JLabel();
         lblEnvironmentX = new javax.swing.JLabel();
         lblEnvironmentXValue = new javax.swing.JLabel();
@@ -78,10 +81,10 @@ public class DebugWindow extends javax.swing.JFrame
         lblWindowHeightValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
         lblWindowHeightValue.setText("N/A");
 
-        lblBehaviour.setText("Behaviour");
-
-        lblBehaviourValue.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
-        lblBehaviourValue.setText("N/A");
+        scrBehaviours.setViewportView(lstBehaviours);
+        scrVariables.setViewportView(lstVariables);
+        pnlTabs.addTab("Behaviours", scrBehaviours);
+        pnlTabs.addTab("Variables", scrVariables);
 
         lblEnvironmentY.setText("Environment Y");
 
@@ -174,10 +177,13 @@ public class DebugWindow extends javax.swing.JFrame
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addContainerGap()
+                .addComponent(pnlTabs, 300, 330, Short.MAX_VALUE)
+                .addContainerGap())
+            .addGroup(layout.createSequentialGroup()
+                .addContainerGap()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(lblShimejiX)
                     .addComponent(lblShimejiY)
-                    .addComponent(lblBehaviour)
                     .addComponent(lblActionTimer)
                     .addComponent(lblWindowX)
                     .addComponent(lblWindowY)
@@ -199,7 +205,6 @@ public class DebugWindow extends javax.swing.JFrame
                     .addComponent(lblDeltaY))
                 .addGap(42, 42, 42)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(lblBehaviourValue, javax.swing.GroupLayout.DEFAULT_SIZE, 165, Short.MAX_VALUE)
                     .addComponent(lblActionTimerValue, javax.swing.GroupLayout.DEFAULT_SIZE, 165, Short.MAX_VALUE)
                     .addGroup(layout.createSequentialGroup()
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -230,9 +235,7 @@ public class DebugWindow extends javax.swing.JFrame
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addContainerGap()
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(lblBehaviour)
-                    .addComponent(lblBehaviourValue))
+                .addComponent(pnlTabs, 120, 160, 260)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblActionTimer)
@@ -323,9 +326,59 @@ public class DebugWindow extends javax.swing.JFrame
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    void setBehaviour( String text )
+    /** Behaviours most recently entered, newest first. Only touched on the EDT. */
+    private static final int MAX_BEHAVIOUR_HISTORY = 200;
+    private final java.util.ArrayList<String> behavioursData = new java.util.ArrayList<String>( );
+    private java.util.List<String> lastVariablesData = java.util.Collections.emptyList( );
+
+    /** Records a behaviour in the history list if it differs from the newest entry. Safe from any thread. */
+    void setBehaviour( final String text )
     {
-        lblBehaviourValue.setText( text );
+        javax.swing.SwingUtilities.invokeLater( new Runnable( )
+        {
+            @Override
+            public void run( )
+            {
+                if( behavioursData.isEmpty( ) || !behavioursData.get( 0 ).equals( text ) )
+                {
+                    behavioursData.add( 0, text );
+                    if( behavioursData.size( ) > MAX_BEHAVIOUR_HISTORY )
+                        behavioursData.remove( behavioursData.size( ) - 1 );
+                    lstBehaviours.setListData( behavioursData.toArray( new String[ 0 ] ) );
+                }
+            }
+        } );
+    }
+
+    /** Shows this mascot's variables. Safe from any thread; skips the repaint when nothing changed. */
+    void setVariables( final java.util.Map<String, com.group_finity.mascot.script.Variable> variables )
+    {
+        final java.util.List<String> data = new java.util.ArrayList<String>( );
+        if( variables != null )
+        {
+            try
+            {
+                for( final java.util.Map.Entry<String, com.group_finity.mascot.script.Variable> e : variables.entrySet( ) )
+                    data.add( e.getKey( ) + ": " + e.getValue( ) );
+            }
+            catch( final java.util.ConcurrentModificationException ex )
+            {
+                return;   // tick thread mutated it mid-copy; try again next tick
+            }
+            java.util.Collections.sort( data );
+        }
+        javax.swing.SwingUtilities.invokeLater( new Runnable( )
+        {
+            @Override
+            public void run( )
+            {
+                if( !data.equals( lastVariablesData ) )
+                {
+                    lastVariablesData = data;
+                    lstVariables.setListData( data.toArray( new String[ 0 ] ) );
+                }
+            }
+        } );
     }
     
     void setShimejiX( int x )
@@ -441,7 +494,10 @@ public class DebugWindow extends javax.swing.JFrame
     {
         if( b )
         {
-          lblBehaviour.setText( Main.getInstance( ).getLanguageBundle( ).getString( "Behaviour" ) );
+          pnlTabs.setTitleAt( 0, Main.getInstance( ).getLanguageString( "Behaviours", "Behaviours" ) );
+          pnlTabs.setTitleAt( 1, Main.getInstance( ).getLanguageString( "Variables", "Variables" ) );
+          behavioursData.clear( );
+          lstBehaviours.setListData( new String[ 0 ] );
           lblShimejiX.setText( Main.getInstance( ).getLanguageBundle( ).getString( "ShimejiX" ) );
           lblShimejiY.setText( Main.getInstance( ).getLanguageBundle( ).getString( "ShimejiY" ) );
           lblActiveIE.setText( Main.getInstance( ).getLanguageBundle( ).getString( "ActiveIE" ) );
@@ -462,8 +518,11 @@ public class DebugWindow extends javax.swing.JFrame
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JLabel lblActiveIE;
     private javax.swing.JLabel lblActiveIEValue;
-    private javax.swing.JLabel lblBehaviour;
-    private javax.swing.JLabel lblBehaviourValue;
+    private javax.swing.JTabbedPane pnlTabs;
+    private javax.swing.JScrollPane scrBehaviours;
+    private javax.swing.JScrollPane scrVariables;
+    private javax.swing.JList<String> lstBehaviours;
+    private javax.swing.JList<String> lstVariables;
     private javax.swing.JLabel lblCpuTemp;
     private javax.swing.JLabel lblCpuTempValue;
     private javax.swing.JLabel lblCpuLoad;

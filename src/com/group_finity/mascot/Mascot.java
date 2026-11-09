@@ -1080,6 +1080,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
             if( debugWindow != null && behavior != null )
             {
                 debugWindow.setBehaviour( behavior.toString( ).substring( 9, behavior.toString( ).length( ) - 1 ).replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " ) );
+                debugWindow.setVariables( variables != null ? variables.getRawMap( ) : null );
                 debugWindow.setShimejiX( anchor.x );
                 debugWindow.setShimejiY( anchor.y );
                 debugWindow.setDeltaX( lastDeltaX );
