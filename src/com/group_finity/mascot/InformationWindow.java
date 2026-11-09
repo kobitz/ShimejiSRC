@@ -34,6 +34,9 @@ import javax.swing.event.HyperlinkEvent;
 public class InformationWindow extends javax.swing.JFrame
 {
     private final Path themePath = Paths.get( ".", "conf", "theme.properties" );
+    private String   imageSet;
+    private String[] imageFilenames = { };
+    private int      imageIndex = 0;
     
     /**
      * Creates new form InformationWindow
@@ -65,8 +68,23 @@ public class InformationWindow extends javax.swing.JFrame
         }
         setIconImage( icon );
         
-        // load image
-        Image image = new ImageIcon( Paths.get( ".", "img", imageSet, config.getInformation( "SplashImage" ) ).toString( ) ).getImage( );
+        // load image (single SplashImage, or the first page of SplashImages)
+        this.imageSet = imageSet;
+        final Image image;
+        if( config.containsInformationKey( "SplashImage" ) )
+        {
+            image = new ImageIcon( Paths.get( ".", "img", imageSet, config.getInformation( "SplashImage" ) ).toString( ) ).getImage( );
+            btnPrevPage.setVisible( false );
+            btnNextPage.setVisible( false );
+        }
+        else
+        {
+            imageFilenames = config.getInformation( "SplashImages" ).split( String.valueOf( Configuration.SPLASH_PAGE_SEPARATOR ) );
+            image = new ImageIcon( Paths.get( ".", "img", imageSet, imageFilenames[ 0 ] ).toString( ) ).getImage( );
+            btnPrevPage.setVisible( imageFilenames.length > 1 );
+            btnNextPage.setVisible( imageFilenames.length > 1 );
+            updatePageButtons( );
+        }
         try
         {
             lblSplashImage.setIcon( new ImageIcon( image ) );
@@ -218,6 +236,21 @@ public class InformationWindow extends javax.swing.JFrame
         btnClose.setText( language.getString( "Close" ) );
     }
     
+    private void updatePageButtons( )
+    {
+        btnPrevPage.setEnabled( imageIndex > 0 );
+        btnNextPage.setEnabled( imageIndex < imageFilenames.length - 1 );
+    }
+
+    private void showPage( final int index )
+    {
+        if( index < 0 || index >= imageFilenames.length )
+            return;
+        imageIndex = index;
+        lblSplashImage.setIcon( new ImageIcon( new ImageIcon( Paths.get( ".", "img", imageSet, imageFilenames[ imageIndex ] ).toString( ) ).getImage( ) ) );
+        updatePageButtons( );
+    }
+
     public boolean display( )
     {
         float menuScaling = Float.parseFloat( Main.getInstance( ).getProperties( ).getProperty( "MenuDPI", "96" ) ) / 96;
@@ -231,6 +264,8 @@ public class InformationWindow extends javax.swing.JFrame
         pnlEditorPane.setPreferredSize( new Dimension( (int)( pnlEditorPane.getPreferredSize( ).width * menuScaling ), (int)( pnlEditorPane.getPreferredSize( ).height * menuScaling ) ) );
         pnlScrollPane.setPreferredSize( new Dimension( (int)( pnlScrollPane.getPreferredSize( ).width * menuScaling ), (int)( pnlScrollPane.getPreferredSize( ).height * menuScaling ) ) );
         btnClose.setPreferredSize( new Dimension( (int)( btnClose.getPreferredSize( ).width * menuScaling ), (int)( btnClose.getPreferredSize( ).height * menuScaling ) ) );
+        btnPrevPage.setPreferredSize( new Dimension( (int)( btnPrevPage.getPreferredSize( ).width * menuScaling ), (int)( btnPrevPage.getPreferredSize( ).height * menuScaling ) ) );
+        btnNextPage.setPreferredSize( new Dimension( (int)( btnNextPage.getPreferredSize( ).width * menuScaling ), (int)( btnNextPage.getPreferredSize( ).height * menuScaling ) ) );
         pnlFooter.setPreferredSize( new Dimension( pnlFooter.getPreferredSize( ).width, btnClose.getPreferredSize( ).height + 6 ) );
         pack( );
         setLocationRelativeTo( null );
@@ -255,7 +290,9 @@ public class InformationWindow extends javax.swing.JFrame
         pnlScrollPane = new javax.swing.JScrollPane();
         pnlEditorPane = new javax.swing.JEditorPane();
         pnlFooter = new javax.swing.JPanel();
+        btnPrevPage = new javax.swing.JButton();
         btnClose = new javax.swing.JButton();
+        btnNextPage = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
 
@@ -273,6 +310,17 @@ public class InformationWindow extends javax.swing.JFrame
         pnlFooter.setPreferredSize(new java.awt.Dimension(380, 36));
         pnlFooter.setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 10, 5));
 
+        btnPrevPage.setText("\u25c4");
+        btnPrevPage.setPreferredSize(new java.awt.Dimension(60, 26));
+        btnPrevPage.addActionListener(new java.awt.event.ActionListener()
+        {
+            public void actionPerformed(java.awt.event.ActionEvent evt)
+            {
+                showPage( imageIndex - 1 );
+            }
+        });
+        pnlFooter.add(btnPrevPage);
+
         btnClose.setText("Close");
         btnClose.setMaximumSize(new java.awt.Dimension(130, 26));
         btnClose.setMinimumSize(new java.awt.Dimension(95, 23));
@@ -286,6 +334,17 @@ public class InformationWindow extends javax.swing.JFrame
             }
         });
         pnlFooter.add(btnClose);
+
+        btnNextPage.setText("\u25ba");
+        btnNextPage.setPreferredSize(new java.awt.Dimension(60, 26));
+        btnNextPage.addActionListener(new java.awt.event.ActionListener()
+        {
+            public void actionPerformed(java.awt.event.ActionEvent evt)
+            {
+                showPage( imageIndex + 1 );
+            }
+        });
+        pnlFooter.add(btnNextPage);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
@@ -369,6 +428,8 @@ public class InformationWindow extends javax.swing.JFrame
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnClose;
+    private javax.swing.JButton btnPrevPage;
+    private javax.swing.JButton btnNextPage;
     private javax.swing.JLabel lblSplashImage;
     private javax.swing.JEditorPane pnlEditorPane;
     private javax.swing.JPanel pnlFooter;

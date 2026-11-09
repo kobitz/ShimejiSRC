@@ -341,7 +341,7 @@ public class Main
         for( String imageSet : imageSets )
         {
             String informationAlreadySeen = properties.getProperty( "InformationDismissed", "" );
-            if( configurations.get( imageSet ).containsInformationKey( "SplashImage" ) &&
+            if( ( configurations.get( imageSet ).containsInformationKey( "SplashImage" ) || configurations.get( imageSet ).containsInformationKey( "SplashImages" ) ) &&
                 ( Boolean.parseBoolean( properties.getProperty( "AlwaysShowInformationScreen", "false" ) ) ||
                   !informationAlreadySeen.contains( imageSet ) ) )
             {
@@ -1810,7 +1810,7 @@ public class Main
             {
                 imageSets.add( imageSet );
                 String informationAlreadySeen = properties.getProperty( "InformationDismissed", "" );
-                if( configurations.get( imageSet ).containsInformationKey( "SplashImage" ) &&
+                if( ( configurations.get( imageSet ).containsInformationKey( "SplashImage" ) || configurations.get( imageSet ).containsInformationKey( "SplashImages" ) ) &&
                     ( Boolean.parseBoolean( properties.getProperty( "AlwaysShowInformationScreen", "false" ) ) ||
                       !informationAlreadySeen.contains( imageSet ) ) )
                 {

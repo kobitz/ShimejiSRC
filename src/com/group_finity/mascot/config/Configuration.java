@@ -41,6 +41,9 @@ public class Configuration
     private final Map<String, String> constants = new LinkedHashMap<String, String>( 2 );
     private final Map<String, ActionBuilder> actionBuilders = new LinkedHashMap<String, ActionBuilder>( );
     private final Map<String, BehaviorBuilder> behaviorBuilders = new LinkedHashMap<String, BehaviorBuilder>( );
+    /** Separates page filenames in the {@code SplashImages} information value. */
+    public static final char SPLASH_PAGE_SEPARATOR = '\n';
+
     private final Map<String, String> information = new LinkedHashMap<String, String>( 8 );
     private final Map<String, java.util.List<Entry>> animationTemplates = new LinkedHashMap<String, java.util.List<Entry>>( );
     private final List<TransitionEntry> transitions = new ArrayList<TransitionEntry>( );
@@ -360,6 +363,22 @@ public class Configuration
                 node.getName( ).equals( schema.getString( "PersonalityBrief" ) ) )
             {
                 information.put( node.getName( ), node.getText( ) );
+            }
+            else if( node.getName( ).equals( schema.getString( "SplashImages" ) ) )
+            {
+                // Multipage splash: <SplashImages><SplashImage>a.png</SplashImage>...</SplashImages>.
+                // Stored as newline-joined filenames (see SPLASH_PAGE_SEPARATOR) so the String-valued information map stays as is.
+                final StringBuilder pages = new StringBuilder( );
+                for( final Entry imageNode : node.getChildren( ) )
+                {
+                    if( imageNode.getName( ).equals( schema.getString( "SplashImage" ) ) && imageNode.getText( ) != null && !imageNode.getText( ).trim( ).isEmpty( ) )
+                    {
+                        if( pages.length( ) > 0 ) pages.append( SPLASH_PAGE_SEPARATOR );
+                        pages.append( imageNode.getText( ).trim( ) );
+                    }
+                }
+                if( pages.length( ) > 0 )
+                    information.put( node.getName( ), pages.toString( ) );
             }
             else if( node.getName( ).equals( schema.getString( "Artist" ) ) ||
                      node.getName( ).equals( schema.getString( "Scripter" ) ) || 
