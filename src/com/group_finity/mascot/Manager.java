@@ -203,6 +203,7 @@ public class Manager {
 		long slowestEnvNs = 0, slowestTickNs = 0, slowestApplyNs = 0;
 		int mascotCount = 0;
 
+		final List<Mascot> tickList;
 		synchronized (this.getMascots()) {
 
 			// ── Run the shared EnumWindows scan ONCE before any mascot ticks ──
@@ -261,8 +262,17 @@ public class Manager {
 			// FanController de-dupes, so this only spawns a WMI call on an actual transition.
 			checkCoolerBoostState( );
 
-			// ── Tick + apply in a single pass ─────────────────────────────────
-			for (final Mascot mascot : this.getMascots()) {
+			tickList = new java.util.ArrayList<>( this.getMascots() );
+		}
+
+		// ── Tick + apply in a single pass ─────────────────────────────────────
+		// Deliberately NOT under the mascots lock. UserBehavior methods are synchronized and
+		// the voice/assistant path (EDT) holds a UserBehavior monitor while it queries the
+		// mascot list (Manager.getMascotNearestWithAffordance -> synchronized(mascots)); with
+		// the tick holding the list lock while entering UserBehavior.next() the two threads
+		// deadlocked ABBA and the whole program froze (watchdog dump, Nov 2026).
+		{
+			for (final Mascot mascot : tickList) {
 				mascotCount++;
 				final long mascotStartNs = System.nanoTime();
 				long envPhaseNs = 0, tickPhaseNs = 0, applyPhaseNs = 0;
