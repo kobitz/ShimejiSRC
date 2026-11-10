@@ -711,12 +711,29 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
     {
         if( event.isPopupTrigger( ) )
         {
+            final long requestedNs = System.nanoTime( );
             SwingUtilities.invokeLater( new Runnable( )
             {
                 @Override
                 public void run( )
                 {
-                    new MascotPopupMenu( Mascot.this ).show( event.getX( ), event.getY( ) );
+                    // Anything thrown here used to vanish into the EDT's default handler (stderr),
+                    // so a menu that "stopped working" left no trace in the log.
+                    try
+                    {
+                        final long waitMs = ( System.nanoTime( ) - requestedNs ) / 1_000_000L;
+                        if( waitMs > 500 )
+                            log.warning( "[Menu] right-click menu waited " + waitMs + "ms for the event thread (" + Mascot.this + ")" );
+                        // A previous popup that never reported closing must not block this one.
+                        if( activePopup != null && !activePopup.isVisible( ) )
+                            activePopup = null;
+                        new MascotPopupMenu( Mascot.this ).show( event.getX( ), event.getY( ) );
+                    }
+                    catch( final Throwable t )
+                    {
+                        log.log( Level.SEVERE, "[Menu] failed to open right-click menu for " + Mascot.this, t );
+                        setAnimating( true );   // the menu pauses animation while open; never leave it paused
+                    }
                 }
             } );
             return;
