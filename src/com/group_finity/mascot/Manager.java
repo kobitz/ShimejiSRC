@@ -512,9 +512,23 @@ public class Manager {
 		mascot.setManager(null);
 	}
 
+	/**
+	 * Copy of the mascot list taken under the list lock. Anything that calls into a Behavior
+	 * (setBehavior -> synchronized init, action internals) must iterate this and NOT hold the
+	 * list lock: the tick thread holds a behavior monitor while it queries the list, so holding
+	 * the list lock while taking a behavior monitor is an ABBA deadlock.
+	 */
+	List<Mascot> mascotsSnapshot( )
+	{
+		synchronized( this.getMascots( ) )
+		{
+			return new ArrayList<Mascot>( this.getMascots( ) );
+		}
+	}
+
 	public void setBehaviorAll(final String name) {
-		synchronized (this.getMascots()) {
-			for (final Mascot mascot : this.getMascots()) {
+		/* snapshot below: never call into behaviors while holding the list lock */ {
+			for (final Mascot mascot : mascotsSnapshot( ) ) {
 				try {
 					Configuration configuration = Main.getInstance( ).getConfiguration( mascot.getImageSet( ) );
 					mascot.setBehavior( configuration.buildBehavior( configuration.getSchema( ).getString( name ), mascot ) );
@@ -532,8 +546,8 @@ public class Manager {
 	}
 
 	public void setBehaviorAll(final Configuration configuration, final String name, String imageSet) {
-		synchronized (this.getMascots()) {
-			for (final Mascot mascot : this.getMascots()) {
+		/* snapshot below: never call into behaviors while holding the list lock */ {
+			for (final Mascot mascot : mascotsSnapshot( ) ) {
 				try {
 					if( mascot.getImageSet().equals(imageSet) ) {
 						mascot.setBehavior(configuration.buildBehavior( configuration.getSchema( ).getString( name ), mascot ) );
@@ -553,9 +567,9 @@ public class Manager {
 
 	public void setBehaviorAllSafe( final String imageSet, final String name )
 	{
-		synchronized( this.getMascots( ) )
+		/* snapshot below: never call into behaviors while holding the list lock */
 		{
-			for( final Mascot mascot : this.getMascots( ) )
+			for( final Mascot mascot : mascotsSnapshot( ) )
 			{
 				if( !mascot.getImageSet( ).equals( imageSet ) ) continue;
 				try
@@ -587,9 +601,9 @@ public class Manager {
 	 */
 	public void setBehaviorAllSafe( final String name )
 	{
-		synchronized( this.getMascots( ) )
+		/* snapshot below: never call into behaviors while holding the list lock */
 		{
-			for( final Mascot mascot : this.getMascots( ) )
+			for( final Mascot mascot : mascotsSnapshot( ) )
 			{
 				try
 				{
@@ -630,9 +644,9 @@ public class Manager {
 	 */
 	public void cancelHeldActions( final String imageSet, final String heldBehaviorName )
 	{
-		synchronized( getMascots() )
+		/* snapshot below: never call into behaviors while holding the list lock */
 		{
-			for( final Mascot mascot : getMascots() )
+			for( final Mascot mascot : mascotsSnapshot( ) )
 			{
 				if( imageSet != null && !mascot.getImageSet().equals( imageSet ) ) continue;
 
