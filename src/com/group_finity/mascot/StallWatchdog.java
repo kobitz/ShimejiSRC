@@ -54,8 +54,7 @@ public final class StallWatchdog
     private static void run( )
     {
         boolean reported = false;
-        long lastGc = gcTimeMs( );
-        long gcAtEpisodeStart = lastGc;
+        long gcHealthy = gcTimeMs( );      // GC total at the last healthy check
         while( true )
         {
             try { Thread.sleep( 1000 ); } catch( final InterruptedException e ) { return; }
@@ -75,23 +74,24 @@ public final class StallWatchdog
                 final boolean stalled = tickMs >= THRESHOLD_MS || edtMs >= THRESHOLD_MS;
                 if( !stalled )
                 {
+                    final long g = gcTimeMs( );
                     if( reported )
                     {
-                        log.warning( "[StallWatchdog] Recovered. GC during the stall: "
-                            + ( gcTimeMs( ) - gcAtEpisodeStart ) + "ms" );
+                        log.warning( "[StallWatchdog] Recovered. GC since the stall began: "
+                            + ( g - gcHealthy ) + "ms" );
                         reported = false;
                     }
+                    gcHealthy = g;
                     continue;
                 }
                 if( reported ) continue;
                 reported = true;
-                gcAtEpisodeStart = lastGc;
                 final long gcNow = gcTimeMs( );
                 final Runtime rt = Runtime.getRuntime( );
                 final StringBuilder sb = new StringBuilder( 8192 );
                 sb.append( "[StallWatchdog] STALL: managerTick=" ).append( tickMs ).append( "ms" )
                   .append( " edtUnresponsive=" ).append( edtMs ).append( "ms" )
-                  .append( " gcSinceLastCheck=" ).append( gcNow - lastGc ).append( "ms" )
+                  .append( " gcSinceStallBegan=" ).append( gcNow - gcHealthy ).append( "ms" )
                   .append( " heap=" ).append( ( rt.totalMemory( ) - rt.freeMemory( ) ) / 1_048_576L )
                   .append( "/" ).append( rt.maxMemory( ) / 1_048_576L ).append( "MB(max)" ).append( '\n' );
                 final ThreadMXBean mx = ManagementFactory.getThreadMXBean( );
@@ -119,7 +119,6 @@ public final class StallWatchdog
                         sb.append( "    at " ).append( f ).append( '\n' );
                 }
                 log.warning( sb.toString( ) );
-                lastGc = gcNow;
             }
             catch( final Throwable t )
             {

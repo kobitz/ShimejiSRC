@@ -528,12 +528,25 @@ public class WindowsEnvironment extends Environment
         ( instanceCounter.getAndIncrement( ) % IE_SCAN_INTERVAL );
 
     // ── Mascot collision boxes ────────────────────────────────────────────────
+    /** HWND per mascot window, looked up once (weak keys, so disposed windows drop out). */
+    private static final java.util.Map<java.awt.Component, Pointer> mascotHwnd =
+        java.util.Collections.synchronizedMap( new java.util.WeakHashMap<>( ) );
+
     @Override
     public boolean isObscuredByWindow( final java.awt.Component mascotWindow, final Rectangle r )
     {
         if( mascotWindow == null || r == null || r.isEmpty( ) ) return false;
-        final Pointer me = com.sun.jna.Native.getComponentPointer( mascotWindow );
-        if( me == null ) return false;
+        // Native.getComponentPointer goes through JAWT and needs the AWT lock, which the Swing
+        // EDT holds for whole seconds while it repaints a translucent window (watchdog dump,
+        // Nov 2026) — so never call it on the tick thread more than once per window.
+        Pointer me = mascotHwnd.get( mascotWindow );
+        if( me == null )
+        {
+            if( !mascotWindow.isDisplayable( ) ) return false;
+            me = com.sun.jna.Native.getComponentPointer( mascotWindow );
+            if( me == null ) return false;
+            mascotHwnd.put( mascotWindow, me );
+        }
         final Snapshot snap = snapshot;
         final List<Pointer> hs = snap.handles;
         int idx = -1;
