@@ -17,7 +17,8 @@ import java.util.logging.Logger;
 public final class StallWatchdog
 {
     private static final Logger log = Logger.getLogger( StallWatchdog.class.getName( ) );
-    static final long THRESHOLD_MS = 4000;
+    static final long THRESHOLD_MS = 1500;          // first dump
+    static final long SECOND_DUMP_MS = 4000;        // second sample if still stuck
     private static final int  MAX_FRAMES = 25;
 
     private static volatile long tickStartNs = 0;      // 0 = no tick in progress
@@ -54,10 +55,11 @@ public final class StallWatchdog
     private static void run( )
     {
         boolean reported = false;
+        int dumps = 0;
         long gcHealthy = gcTimeMs( );      // GC total at the last healthy check
         while( true )
         {
-            try { Thread.sleep( 1000 ); } catch( final InterruptedException e ) { return; }
+            try { Thread.sleep( 200 ); } catch( final InterruptedException e ) { return; }
             try
             {
                 // EDT ping: queue a no-op and see whether it runs.
@@ -81,15 +83,20 @@ public final class StallWatchdog
                             + ( g - gcHealthy ) + "ms" );
                         reported = false;
                     }
+                    dumps = 0;
                     gcHealthy = g;
                     continue;
                 }
-                if( reported ) continue;
+                final long worstMs = Math.max( tickMs, edtMs );
+                // One dump at THRESHOLD_MS, a second sample if it is still stuck at SECOND_DUMP_MS
+                // (two stacks of the same thread show whether it is stuck or just slow).
+                if( dumps >= 2 || ( dumps == 1 && worstMs < SECOND_DUMP_MS ) ) continue;
+                dumps++;
                 reported = true;
                 final long gcNow = gcTimeMs( );
                 final Runtime rt = Runtime.getRuntime( );
                 final StringBuilder sb = new StringBuilder( 8192 );
-                sb.append( "[StallWatchdog] STALL: managerTick=" ).append( tickMs ).append( "ms" )
+                sb.append( "[StallWatchdog] STALL (dump " ).append( dumps ).append( "): managerTick=" ).append( tickMs ).append( "ms" )
                   .append( " edtUnresponsive=" ).append( edtMs ).append( "ms" )
                   .append( " gcSinceStallBegan=" ).append( gcNow - gcHealthy ).append( "ms" )
                   .append( " heap=" ).append( ( rt.totalMemory( ) - rt.freeMemory( ) ) / 1_048_576L )
@@ -106,10 +113,15 @@ public final class StallWatchdog
                 for( final ThreadInfo ti : mx.dumpAllThreads( true, true, MAX_FRAMES ) )
                 {
                     final String n = ti.getThreadName( );
-                    // Skip idle JVM housekeeping threads to keep the record readable.
-                    if( n.startsWith( "Reference Handler" ) || n.startsWith( "Finalizer" )
+                    // Keep the record readable: always show the two threads that matter, and
+                    // otherwise only threads that are running or blocked (idle pool/sleeping
+                    // threads, ~35 'Direct Clip' threads etc. are noise).
+                    final boolean key = n.equals( "ManagerThread" ) || n.startsWith( "AWT-EventQueue" );
+                    final Thread.State st = ti.getThreadState( );
+                    if( !key && st != Thread.State.RUNNABLE && st != Thread.State.BLOCKED ) continue;
+                    if( n.equals( "StallWatchdog" ) || n.startsWith( "Reference Handler" ) || n.startsWith( "Finalizer" )
                      || n.startsWith( "Signal Dispatcher" ) || n.startsWith( "Common-Cleaner" )
-                     || n.equals( "StallWatchdog" ) ) continue;
+                     || n.startsWith( "Attach Listener" ) || n.startsWith( "Notification Thread" ) ) continue;
                     sb.append( "--- " ).append( n ).append( " [" ).append( ti.getThreadState( ) ).append( ']' );
                     if( ti.getLockName( ) != null )
                         sb.append( " waiting on " ).append( ti.getLockName( ) )
