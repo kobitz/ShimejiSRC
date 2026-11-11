@@ -109,10 +109,52 @@ public abstract class Environment
         return screenRect;
     }
 
+    // Last known pointer position, refreshed by a background poller. MouseInfo.getPointerInfo()
+    // calls into native AWT code that waits on the AWT lock; called per mascot per tick on the
+    // Manager thread it stalled the whole tick for 5s while the EDT was inside a long native
+    // Window.setSize (watchdog dump, Nov 2026). Now only the poller can block; the tick just
+    // reads the cache (at most ~15 ms stale, imperceptible).
+    private static volatile Point cursorPos = new Point( 0, 0 );
+    private static volatile boolean cursorPolled = false;
+
+    private static Point readCursorNow( )
+    {
+        final java.awt.PointerInfo info = MouseInfo.getPointerInfo( );
+        return info != null ? info.getLocation( ) : new Point( 0, 0 );
+    }
+
+    private static final Thread cursorThread = new Thread( "CursorPoller" )
+    {
+        @Override
+        public void run( )
+        {
+            try
+            {
+                while( true )
+                {
+                    try { cursorPos = readCursorNow( ); }
+                    catch( final RuntimeException e ) { /* keep last position */ }
+                    Thread.sleep( 15 );
+                }
+            }
+            catch( final InterruptedException e )
+            {
+            }
+        }
+    };
+
     private static Point getCursorPos( )
     {
-        java.awt.PointerInfo info = MouseInfo.getPointerInfo( );
-        return info != null ? info.getLocation( ) : new Point( 0, 0 );
+        if( !cursorPolled )
+        {
+            // First call only: read synchronously so tick 1 has a real position, then hand over.
+            cursorPolled = true;
+            cursorPos = readCursorNow( );
+            cursorThread.setDaemon( true );
+            cursorThread.setPriority( Thread.NORM_PRIORITY );
+            cursorThread.start( );
+        }
+        return cursorPos;
     }
 
     public void init( )
