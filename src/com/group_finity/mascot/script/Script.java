@@ -39,7 +39,14 @@ public class Script extends Variable {
 	private static ScriptEngine newEngine() {
 		final Main main = Main.getInstance();
 		final String csv = main == null ? "" : main.getProperties().getProperty("ScriptAllowedClasses", "");
-		return new NashornScriptEngineFactory().getScriptEngine(new ScriptFilter(ScriptFilter.parseAllowed(csv)));
+		// --optimistic-types=false: with optimistic types Nashorn compiles scripts assuming int
+		// arithmetic and RE-COMPILES them on the tick thread the first time a value overflows or
+		// changes type ("Script$Recompilation" frames in a 2.1 s stall). Pessimistic types never
+		// recompile; the tiny per-eval cost is irrelevant for these one-line expressions.
+		return new NashornScriptEngineFactory().getScriptEngine(
+			new String[] { "--optimistic-types=false" },
+			Script.class.getClassLoader(),
+			new ScriptFilter(ScriptFilter.parseAllowed(csv)));
 	}
 
 	/**
@@ -63,9 +70,16 @@ public class Script extends Variable {
             
 		this.source = source;
 		this.clearAtInitFrame = clearAtInitFrame;
-		// Validate syntax by compiling on the current thread's engine
+		// Validate syntax by compiling on the current thread's engine. The result goes into the
+		// shared per-thread cache so get() (and every later Script built from the same source,
+		// e.g. each time a behavior's action tree is rebuilt) reuses it instead of recompiling:
+		// the watchdog caught the tick thread inside Nashorn's compiler for 2.7 s rebuilding one
+		// mascot's actions, because this constructor used to compile and throw the result away.
 		try {
-			((Compilable) engine.get()).compile(guarded(this.source));
+			final java.util.Map<String, CompiledScript> cache = compiledCache.get();
+			if (!cache.containsKey(this.source)) {
+				cache.put(this.source, ((Compilable) engine.get()).compile(guarded(this.source)));
+			}
 		} catch (final ScriptException e) {
 			throw new VariableException( Main.getInstance( ).getLanguageBundle( ).getString( "ScriptCompilationErrorMessage" ) + ": "+this.source, e);
 		}
