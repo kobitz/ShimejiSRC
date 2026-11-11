@@ -78,6 +78,12 @@ public interface User32 extends StdCallLibrary{
 
     boolean EnumWindows(WNDENUMPROC lpEnumFunc, Pointer arg);
 
+    interface MONITORENUMPROC extends StdCallCallback {
+        boolean callback( Pointer hMonitor, Pointer hdcMonitor, Pointer lprcMonitor, Pointer dwData );
+    }
+
+    boolean EnumDisplayMonitors( Pointer hdc, Pointer lprcClip, MONITORENUMPROC lpfnEnum, Pointer dwData );
+
     int SetProcessDPIAware( );
 
     Pointer MonitorFromPoint( POINT.ByValue pt, int dwFlags );

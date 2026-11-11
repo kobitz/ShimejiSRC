@@ -140,10 +140,74 @@ public class WindowsEnvironment extends Environment
         scannerStarted = true;
     }
 
+    /** One monitor: full rect + work area (taskbar excluded). Immutable. */
+    private static final class MonInfo
+    {
+        final Rectangle mon, work;
+        MonInfo( final Rectangle mon, final Rectangle work ) { this.mon = mon; this.work = work; }
+    }
+
+    /** Monitor table maintained on the scanner thread so the tick thread never has to call
+     *  MonitorFromPoint/GetMonitorInfo/SystemParametersInfo itself: those user32 calls blocked
+     *  the tick for ~3 s while the Swing thread held the desktop inside UpdateLayeredWindow
+     *  (watchdog dump, Nov 2026). Empty until the first refresh -> callers fall back to native. */
+    private static volatile MonInfo[] monitorTable = new MonInfo[ 0 ];
+    private static long lastMonitorRefreshMs = 0;
+    private static final long MONITOR_REFRESH_MS = 1000;
+
+    private static void refreshMonitorTable( )
+    {
+        final long now = System.currentTimeMillis( );
+        if( now - lastMonitorRefreshMs < MONITOR_REFRESH_MS ) return;
+        lastMonitorRefreshMs = now;
+        final List<MonInfo> out = new ArrayList<>( 4 );
+        final User32.MONITORENUMPROC cb = ( hMon, hdc, rc, data ) ->
+        {
+            final com.group_finity.mascot.win.jna.MONITORINFO mi = new com.group_finity.mascot.win.jna.MONITORINFO( );
+            mi.cbSize = new NativeLong( mi.size( ) );
+            mi.write( );
+            if( User32.INSTANCE.GetMonitorInfoW( hMon, mi ) )
+            {
+                mi.read( );
+                out.add( new MonInfo(
+                    new Rectangle( mi.rcMonitor.left, mi.rcMonitor.top,
+                        mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top ),
+                    new Rectangle( mi.rcWork.left, mi.rcWork.top,
+                        mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top ) ) );
+            }
+            return true;
+        };
+        if( User32.INSTANCE.EnumDisplayMonitors( null, null, cb, null ) && !out.isEmpty( ) )
+            monitorTable = out.toArray( new MonInfo[ 0 ] );
+    }
+
+    /** Pure-Java work-area lookup from the cached table; null if the table isn't populated. */
+    private static Rectangle cachedWorkArea( final Point p )
+    {
+        final MonInfo[] t = monitorTable;
+        if( t.length == 0 ) return null;
+        MonInfo best = null;
+        long bestD = Long.MAX_VALUE;
+        for( final MonInfo m : t )
+        {
+            // distance from the point to the monitor rect (0 when inside) = MONITOR_DEFAULTTONEAREST
+            final long dx = p.x < m.mon.x ? m.mon.x - p.x : ( p.x >= m.mon.x + m.mon.width  ? p.x - ( m.mon.x + m.mon.width  - 1 ) : 0 );
+            final long dy = p.y < m.mon.y ? m.mon.y - p.y : ( p.y >= m.mon.y + m.mon.height ? p.y - ( m.mon.y + m.mon.height - 1 ) : 0 );
+            final long d = dx * dx + dy * dy;
+            if( d < bestD ) { bestD = d; best = m; }
+        }
+        if( best == null ) return null;
+        // Fullscreen app on this monitor: floor is the real screen bottom, not the taskbar top.
+        if( fullscreenMonitors.contains( best.mon ) ) return best.mon;
+        return best.work;
+    }
+
     private static void scanLoop( )
     {
         while( true )
         {
+            try { refreshMonitorTable( ); }
+            catch( Throwable th ) { log.log( Level.FINE, "monitor refresh error", th ); }
             try { runScan( ); }
             catch( Throwable th ) { log.log( Level.FINE, "window scan error", th ); }
             // Fixed pause between scans → self-pacing: a 200ms scan under load simply
@@ -887,6 +951,8 @@ public class WindowsEnvironment extends Environment
 
     private static Rectangle getWorkAreaRect( final Point mascotPos )
     {
+        final Rectangle cached = cachedWorkArea( mascotPos );
+        if( cached != null ) return new Rectangle( cached );
         try
         {
             final com.group_finity.mascot.win.jna.POINT.ByValue pt =
