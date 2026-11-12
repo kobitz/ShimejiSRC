@@ -58,6 +58,7 @@ public class Fall extends ActionBase {
 	@Override
 	public void init(final Mascot mascot) throws VariableException {
 		super.init(mascot);
+        mascot.recordStat( com.group_finity.mascot.assistant.MascotStats.FELL, 1 );
 
 		this.setVelocityX(getInitialVx());
 		this.setVelocityY(getInitialVy());

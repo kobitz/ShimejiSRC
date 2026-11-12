@@ -1012,6 +1012,29 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
         return new com.group_finity.mascot.assistant.AssistantPrompts( this ).getPersonalityQuick( cfg, mascotName );
     }
 
+    /**
+     * Bumps a behavior counter for this image set. No-op unless the set already keeps memory
+     * (memory.json exists), so plain sets never get a file. Never throws into the tick.
+     */
+    public void recordStat( final String name, final double amount )
+    {
+        try
+        {
+            if( com.group_finity.mascot.assistant.MascotMemory.existsFor( getImageSet( ) ) )
+                com.group_finity.mascot.assistant.MascotMemory.forImageSet( getImageSet( ) ).addStat( name, amount );
+        }
+        catch( final Throwable t ) { /* stats must never break a tick */ }
+    }
+
+    /** Global Scaling x current dynamic scale: divide screen px by this to get unscaled px. */
+    public double statScale( )
+    {
+        return getGlobalScaling( ) * currentScale;
+    }
+
+    private static final java.util.regex.Pattern SIT_NAME = java.util.regex.Pattern.compile( "(?i)(^|[^a-z])sit" );
+    private int sitTickAcc = 0;
+
     void tick( )
     {
         if( isAnimating( ) )
@@ -1033,6 +1056,13 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
                     log.log( Level.SEVERE, "Fatal Error.", e );
                     Main.showError( Main.getInstance( ).getLanguageBundle( ).getString( "CouldNotGetNextBehaviourErrorMessage" ), e );
                     dispose( );
+                }
+                if( getBehavior( ) instanceof com.group_finity.mascot.behavior.UserBehavior
+                    && SIT_NAME.matcher( ( (com.group_finity.mascot.behavior.UserBehavior) getBehavior( ) ).getName( ) ).find( )
+                    && ++sitTickAcc >= 25 )   // 25 ticks * 40 ms = 1 s
+                {
+                    sitTickAcc = 0;
+                    recordStat( com.group_finity.mascot.assistant.MascotStats.SAT, 1 );
                 }
                 lastDeltaX = anchor.x - tickStartX;
                 lastDeltaY = anchor.y - tickStartY;

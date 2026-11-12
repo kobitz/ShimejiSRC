@@ -84,7 +84,10 @@ public class Move extends BorderedAction
             turning = false;
         }
 
+        final int walkX0 = getMascot( ).getAnchor( ).x;
+        final int walkY0 = getMascot( ).getAnchor( ).y;
         getAnimation( ).next( getMascot( ), getTime( ) );
+        statDistance( walkX0, walkY0 );
 
         if( targetX != DEFAULT_TARGETX )
         {
@@ -104,6 +107,25 @@ public class Move extends BorderedAction
         }
     }
     
+    /** Accumulates on-foot distance (unscaled px) into the "walked" counter, flushed per ~second of walking. */
+    private double pendingWalk = 0;
+    private int walkTicks = 0;
+    private void statDistance( final int x0, final int y0 )
+    {
+        final java.awt.Point a = getMascot( ).getAnchor( );
+        final double d = Math.hypot( a.x - x0, a.y - y0 );
+        if( d > 200 ) return;   // teleport / screen-loop wrap, not walking
+        pendingWalk += d;
+        if( ++walkTicks >= 25 )
+        {
+            final double scale = getMascot( ).statScale( );
+            if( pendingWalk > 0 )
+                getMascot( ).recordStat( com.group_finity.mascot.assistant.MascotStats.WALKED, pendingWalk / ( scale > 0 ? scale : 1 ) );
+            pendingWalk = 0;
+            walkTicks = 0;
+        }
+    }
+
     @Override
     public Animation getAnimation( ) throws VariableException
     {

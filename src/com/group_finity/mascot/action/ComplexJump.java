@@ -89,6 +89,7 @@ public class ComplexJump extends ActionBase
     public void init( final Mascot mascot ) throws VariableException
     {
         super.init( mascot );
+        mascot.recordStat( com.group_finity.mascot.assistant.MascotStats.JUMPED, 1 );
 
         for( String characteristic : getCharacteristics( ).split( "," ) )
         {

@@ -59,6 +59,7 @@ public class Dragged extends ActionBase
     public void init(final Mascot mascot) throws VariableException
     {
         super.init( mascot );
+        mascot.recordStat( com.group_finity.mascot.assistant.MascotStats.CARRIED, 1 );
 
         scaling = Double.parseDouble( Main.getInstance( ).getProperties( ).getProperty( "Scaling", "1.0" ) );
 

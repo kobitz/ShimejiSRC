@@ -1893,6 +1893,8 @@ public class Main
             this.getManager( ).stop( );
         }
         catch( Throwable t ) { }
+        try { com.group_finity.mascot.assistant.MascotMemory.flushStats( ); }
+        catch( Throwable t ) { }
         // disposeAll() writes each mascot's current scale to properties —
         // flush to disk now before the process exits.
         updateConfigFile( );

@@ -59,6 +59,7 @@ public class ScanJump extends ActionBase
     public void init( final Mascot mascot ) throws VariableException
     {
         super.init( mascot );
+        mascot.recordStat( com.group_finity.mascot.assistant.MascotStats.JUMPED, 1 );
         
         // cannot broadcast while scanning for an affordance
         getMascot( ).getAffordances( ).clear( );

@@ -59,6 +59,8 @@ public class MascotMemory
     /** Epoch-day (LocalDate.toEpochDay) this mascot first ran for the user; 0 until set.
      *  Anchors the "how long we've known each other" relationship signal. */
     private long   firstSeenEpochDay = 0;
+    /** Behavior counters (walked, sat, jumped, ...) — lifetime + daily buckets. */
+    private MascotStats stats = new MascotStats();
 
     /** Dirty flag + pending task for debounced saves — collapses burst writes into one. */
     private boolean                 dirty     = false;
@@ -121,7 +123,8 @@ public class MascotMemory
         final boolean hasFacts     = !facts.isEmpty();
         final boolean hasUserEx    = !userExchanges.isEmpty();
         final boolean hasPeerEx    = peerName != null && !peerExchanges.isEmpty();
-        if( !hasFacts && !hasUserEx && !hasPeerEx ) return "";
+        final boolean hasStats     = peerName == null && !stats.isEmpty();
+        if( !hasFacts && !hasUserEx && !hasPeerEx && !hasStats ) return "";
 
         final StringBuilder sb = new StringBuilder();
         sb.append( "\n\n--- MEMORY ---" );
@@ -159,6 +162,7 @@ public class MascotMemory
         {
             sb.append( "\nYour tone toward the user: " ).append( emotionalTone );
             sb.append( relationshipLine() );
+            sb.append( stats.describe( java.time.LocalDate.now().toEpochDay() ) );
         }
 
         sb.append( "\n--- END MEMORY ---" );
@@ -468,6 +472,47 @@ public class MascotMemory
         save();
     }
 
+    private static final long STATS_FLUSH_DELAY_MS = 30_000;
+    private java.util.TimerTask statsFlushTask = null;
+
+    /**
+     * True when this image set already keeps memory (its memory.json exists or it is loaded), so
+     * behavior counting only ever applies to sets that use assistant memory — never creates files
+     * for plain sets.
+     */
+    public static boolean existsFor( final String imageSet )
+    {
+        return CACHE.containsKey( imageSet ) || Files.exists( Paths.get( "img", imageSet, "conf", "memory.json" ) );
+    }
+
+    /**
+     * Bumps a behavior counter (built-ins or custom). Called from the tick thread, so it only
+     * touches memory; the file is rewritten at most every 30 s (counters change every tick while
+     * walking, unlike chat memory) and on {@link #save()}.
+     */
+    public synchronized void addStat( final String name, final double amount )
+    {
+        stats.add( name, amount, java.time.LocalDate.now().toEpochDay() );
+        if( statsFlushTask != null ) return;
+        statsFlushTask = new java.util.TimerTask()
+        {
+            public void run() { synchronized( MascotMemory.this ) { statsFlushTask = null; save(); } }
+        };
+        FLUSH_TIMER.schedule( statsFlushTask, STATS_FLUSH_DELAY_MS );
+    }
+
+    synchronized MascotStats stats() { return stats; }
+
+    /** Writes any loaded memory that has unsaved behavior counters (called on exit). */
+    public static void flushStats()
+    {
+        for( final MascotMemory m : CACHE.values() )
+            synchronized( m )
+            {
+                if( m.statsFlushTask != null ) { m.statsFlushTask.cancel(); m.statsFlushTask = null; m.save(); }
+            }
+    }
+
     public synchronized void save()
     {
         try
@@ -492,6 +537,7 @@ public class MascotMemory
         sb.append( "  \"sinceLastSummary\": " ).append( sinceLastSummary ).append( ",\n" );
         sb.append( "  \"firstSeenEpochDay\": " ).append( firstSeenEpochDay ).append( ",\n" );
         sb.append( "  \"emotionalTone\": " ).append( jsonStr( emotionalTone ) ).append( ",\n" );
+        sb.append( "  \"stats\": " ).append( stats.toJsonObject() ).append( ",\n" );
 
         // peerTones
         sb.append( "  \"peerTones\": {" );
@@ -566,6 +612,8 @@ public class MascotMemory
             sinceLastSummary = parseInt( json, "sinceLastSummary", 0 );
             firstSeenEpochDay = parseInt( json, "firstSeenEpochDay", 0 );  // epoch-day fits int for ~5.8M yrs
             emotionalTone    = parseStr( json, "emotionalTone", "neutral" );
+
+            stats = MascotStats.fromJson( json );
 
             peerTones.clear();
             parsePeerTones( json );

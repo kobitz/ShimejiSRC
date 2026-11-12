@@ -64,6 +64,7 @@ public class Jump extends ActionBase
     public void init( final com.group_finity.mascot.Mascot mascot ) throws VariableException
     {
         super.init( mascot );
+        mascot.recordStat( com.group_finity.mascot.assistant.MascotStats.JUMPED, 1 );
         String raw = eval( getSchema( ).getString( PARAMETER_LIVE_TARGET ), String.class, DEFAULT_LIVE_TARGET ).trim( ).toLowerCase( );
         switch( raw )
         {
