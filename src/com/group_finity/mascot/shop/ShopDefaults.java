@@ -1,0 +1,75 @@
+package com.group_finity.mascot.shop;
+
+/**
+ * Built-in copy of conf/shop_catalog.json, used when neither the online catalog nor the
+ * installed conf/shop_catalog.json can be read, so the shop is never empty. Keep identical to
+ * the conf file (ShopTest checks this).
+ */
+final class ShopDefaults
+{
+    static final String CATALOG = """
+{
+  "version": 1,
+  "_note": "Curated Mascot Shop list. mode=install needs an https downloadUrl + sha256 and is only for mascots whose creator allows redistribution. mode=link just opens the creator's page; the user downloads there and uses Import .zip. id should match the mascot's folder name in img/ so the shop can show 'Installed'.",
+  "mascots": [
+    {
+      "id": "Kopa",
+      "name": "Kopa the Lion Cub",
+      "creator": "Cachomon",
+      "source": "cachomon.com",
+      "price": "Free",
+      "mode": "link",
+      "description": "Free public Shimeji from the creator's own site. Download the zip there, then use Import .zip.",
+      "pageUrl": "https://cachomon.com/shimeji.php?g=1&m=0&a=0&t=0&id=159",
+      "tags": ["animal"]
+    },
+    {
+      "id": "Alyssa Aspen",
+      "name": "Alyssa Aspen",
+      "creator": "VonKellcsiis (via Cachomon)",
+      "source": "cachomon.com",
+      "price": "Free",
+      "mode": "link",
+      "description": "Free public Shimeji. Download the zip from the creator's page, then use Import .zip.",
+      "pageUrl": "https://cachomon.com/shimeji.php?g=1&m=0&a=0&t=0&id=182"
+    },
+    {
+      "id": "Cherubi",
+      "name": "Cherubi",
+      "creator": "FluffyFoxOfFate (via Cachomon)",
+      "source": "cachomon.com",
+      "price": "Free",
+      "mode": "link",
+      "description": "Free public Shimeji. Download the zip from the creator's page, then use Import .zip.",
+      "pageUrl": "https://cachomon.com/shimeji.php?g=1&m=0&a=0&t=0&id=372",
+      "tags": ["pokemon"]
+    },
+    {
+      "id": "Inu",
+      "name": "Inu the Anthro Fox",
+      "creator": "JM Luxro & VonKellcsiis (via Cachomon)",
+      "source": "cachomon.com",
+      "price": "Free",
+      "mode": "link",
+      "description": "Free public Shimeji. Download the zip from the creator's page, then use Import .zip.",
+      "pageUrl": "https://cachomon.com/shimeji.php?g=1&m=0&a=0&t=0&id=290",
+      "tags": ["animal"]
+    },
+    {
+      "id": "Wynaut",
+      "name": "0360 - Wynaut",
+      "creator": "0b1nary (via Cachomon)",
+      "source": "cachomon.com",
+      "price": "Patreon",
+      "mode": "link",
+      "description": "Patreon exclusive. Support the creator to get access, then use Import .zip.",
+      "pageUrl": "https://cachomon.com/shimeji.php?g=1&m=0&a=0&t=0&id=309",
+      "buyUrl": "https://www.patreon.com/cachomon",
+      "tags": ["pokemon"]
+    }
+  ]
+}
+""";
+
+    private ShopDefaults() { }
+}

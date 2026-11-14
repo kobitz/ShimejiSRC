@@ -1330,14 +1330,15 @@ public class Main
                         width = Math.max( metrics.stringWidth( btnRestoreWindows.getText( ) ), width );
                         width = Math.max( metrics.stringWidth( btnAllowedBehaviours.getText( ) ), width );
                         width = Math.max( metrics.stringWidth( btnChooseShimeji.getText( ) ), width );
+                        width = Math.max( metrics.stringWidth( btnShop.getText( ) ), width );
                         width = Math.max( metrics.stringWidth( btnSettings.getText( ) ), width );
                         width = Math.max( metrics.stringWidth( btnLanguage.getText( ) ), width );
                         width = Math.max( metrics.stringWidth( btnPauseAll.getText( ) ), width );
                         width = Math.max( metrics.stringWidth( btnDismissAll.getText( ) ), width );
                         panel.setPreferredSize( new Dimension( width + 64, 
                                 (int)( 24 * scaling ) + // 12 padding on top and bottom
-                                (int)( 75 * scaling ) + // 13 insets of 5 height normally
-                                10 * metrics.getHeight( ) + // 10 button faces
+                                (int)( 80 * scaling ) + // 14 insets of 5 height normally (incl. the Mascot Shop button)
+                                11 * metrics.getHeight( ) + // 11 button faces
                                 84 ) );
                         form.pack( );
                         

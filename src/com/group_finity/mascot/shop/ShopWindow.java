@@ -127,10 +127,13 @@ public final class ShopWindow extends JDialog
                     try
                     {
                         final Path local = Paths.get( "conf", "shop_catalog.json" );
-                        final String text = Files.exists( local )
-                            ? new String( Files.readAllBytes( local ), java.nio.charset.StandardCharsets.UTF_8 )
-                            : new String( ShopWindow.class.getResourceAsStream( "/shop_catalog.json" ).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8 );
-                        return new Object[] { ShopCatalog.parse( text ), "Offline - showing the built-in list." };
+                        String text = ShopDefaults.CATALOG;
+                        if( Files.exists( local ) )
+                        {
+                            try { text = new String( Files.readAllBytes( local ), java.nio.charset.StandardCharsets.UTF_8 ); ShopCatalog.parse( text ); }
+                            catch( final Exception badLocal ) { text = ShopDefaults.CATALOG; }
+                        }
+                        return new Object[] { ShopCatalog.parse( text ), "Couldn't reach the online catalog (" + online.getMessage() + ") - showing the built-in list." };
                     }
                     catch( final Exception offline )
                     {

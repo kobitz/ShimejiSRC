@@ -75,6 +75,11 @@ public final class ShopTest
         eq( "unused", null, MascotPackage.sanitizeName( "unused" ) );
         eq( "dot", null, MascotPackage.sanitizeName( ".hidden" ) );
 
+        eq( "built-in catalog parses", true, ShopCatalog.parse( ShopDefaults.CATALOG ).entries().size() > 0 );
+        final Path conf = java.nio.file.Paths.get( "conf", "shop_catalog.json" );
+        if( Files.exists( conf ) )
+            eq( "built-in catalog matches conf file", new String( Files.readAllBytes( conf ), "UTF-8" ), ShopDefaults.CATALOG );
+
         final Path root = Files.createTempDirectory( "shoptest" );
         final Path img = root.resolve( "img" );
         final String A = "<Mascot/>";
