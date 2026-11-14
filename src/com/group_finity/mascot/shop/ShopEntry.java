@@ -24,17 +24,17 @@ public final class ShopEntry
     private static final Pattern SHA256 = Pattern.compile( "[0-9a-fA-F]{64}" );
 
     public final String id, name, creator, description, source, price;
-    public final String pageUrl, buyUrl, downloadUrl, sha256;
+    public final String pageUrl, buyUrl, downloadUrl, sha256, previewUrl;
     public final List<String> tags;
     public final Mode mode;
 
     private ShopEntry( final String id, final String name, final String creator, final String description,
                        final String source, final String price, final String pageUrl, final String buyUrl,
-                       final String downloadUrl, final String sha256, final List<String> tags, final Mode mode )
+                       final String downloadUrl, final String sha256, final String previewUrl, final List<String> tags, final Mode mode )
     {
         this.id = id; this.name = name; this.creator = creator; this.description = description;
         this.source = source; this.price = price; this.pageUrl = pageUrl; this.buyUrl = buyUrl;
-        this.downloadUrl = downloadUrl; this.sha256 = sha256; this.tags = tags; this.mode = mode;
+        this.downloadUrl = downloadUrl; this.sha256 = sha256; this.previewUrl = previewUrl; this.tags = tags; this.mode = mode;
     }
 
     public boolean isFree()
@@ -90,6 +90,9 @@ public final class ShopEntry
         if( mode == Mode.LINK && page.isEmpty() && buy.isEmpty() ) return null;
         if( mode == Mode.LINK ) dl = "";
 
+        String preview = str( m, "previewUrl", 1000 );
+        if( !isWebUrl( preview, true ) ) preview = "";   // thumbnails: https only
+
         final List<String> tags = new ArrayList<>();
         if( m.get( "tags" ) instanceof List )
             for( final Object t : (List<?>) m.get( "tags" ) )
@@ -97,6 +100,6 @@ public final class ShopEntry
                     tags.add( ( (String) t ).trim() );
 
         return new ShopEntry( id, name, str( m, "creator", 80 ), str( m, "description", 600 ), str( m, "source", 40 ),
-                              str( m, "price", 20 ), page, buy, dl, sha.toLowerCase( Locale.ROOT ), tags, mode );
+                              str( m, "price", 20 ), page, buy, dl, sha.toLowerCase( Locale.ROOT ), preview, tags, mode );
     }
 }

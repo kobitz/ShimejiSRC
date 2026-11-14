@@ -47,7 +47,20 @@ public final class ShopWindow extends JDialog
     static final String DEFAULT_CATALOG_URL = "https://raw.githubusercontent.com/kobitz/ShimejiSRC/main/conf/shop_catalog.json";
     private static ShopWindow open;
 
-    private final JPanel list = new JPanel();
+    /** A vertical list that always matches the viewport width, so cards wrap instead of forcing a horizontal scrollbar. */
+    private static final class ListPanel extends JPanel implements javax.swing.Scrollable
+    {
+        public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        public int getScrollableUnitIncrement( final java.awt.Rectangle r, final int o, final int d ) { return 16; }
+        public int getScrollableBlockIncrement( final java.awt.Rectangle r, final int o, final int d ) { return 120; }
+        public boolean getScrollableTracksViewportWidth() { return true; }
+        public boolean getScrollableTracksViewportHeight() { return false; }
+    }
+
+    private static final int PREVIEW_PX = 72;
+    /** Thumbnails already fetched/loaded, keyed by URL or file path (null value = tried and failed). */
+    private final java.util.Map<String, javax.swing.ImageIcon> previews = new java.util.HashMap<>();
+    private final JPanel list = new ListPanel();
     private final JTextField search = new JTextField( 18 );
     private final JCheckBox freeOnly = new JCheckBox( "Free only" );
     private final JLabel status = new JLabel( " " );
@@ -80,7 +93,7 @@ public final class ShopWindow extends JDialog
         top.add( imp );
 
         list.setLayout( new BoxLayout( list, BoxLayout.Y_AXIS ) );
-        final JScrollPane scroll = new JScrollPane( list );
+        final JScrollPane scroll = new JScrollPane( list, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER );
         scroll.getVerticalScrollBar().setUnitIncrement( 16 );
         scroll.setBorder( BorderFactory.createEmptyBorder() );
 
@@ -187,7 +200,14 @@ public final class ShopWindow extends JDialog
             BorderFactory.createEmptyBorder( 4, 8, 4, 8 ),
             BorderFactory.createCompoundBorder( BorderFactory.createLineBorder( new java.awt.Color( 128, 128, 128, 90 ) ),
                                                BorderFactory.createEmptyBorder( 8, 10, 8, 10 ) ) ) );
-        c.setMaximumSize( new Dimension( Integer.MAX_VALUE, 150 ) );
+        c.setMaximumSize( new Dimension( Integer.MAX_VALUE, 170 ) );
+
+        final JLabel pic = new JLabel();
+        pic.setPreferredSize( new Dimension( PREVIEW_PX, PREVIEW_PX ) );
+        pic.setHorizontalAlignment( JLabel.CENTER );
+        pic.setVerticalAlignment( JLabel.TOP );
+        loadPreview( e, pic );
+        c.add( pic, BorderLayout.WEST );
 
         final JPanel text = new JPanel();
         text.setLayout( new BoxLayout( text, BoxLayout.Y_AXIS ) );
@@ -203,6 +223,9 @@ public final class ShopWindow extends JDialog
         desc.setOpaque( false );
         desc.setFocusable( false );
         desc.setBorder( BorderFactory.createEmptyBorder( 4, 0, 0, 0 ) );
+        title.setAlignmentX( java.awt.Component.LEFT_ALIGNMENT );
+        sub.setAlignmentX( java.awt.Component.LEFT_ALIGNMENT );
+        desc.setAlignmentX( java.awt.Component.LEFT_ALIGNMENT );
         text.add( title );
         text.add( sub );
         text.add( desc );
@@ -240,6 +263,33 @@ public final class ShopWindow extends JDialog
         c.add( text, BorderLayout.CENTER );
         c.add( buttons, BorderLayout.EAST );
         return c;
+    }
+
+    /** Sets the card thumbnail: the installed mascot's own first sprite, else the catalog's previewUrl (fetched off the EDT). */
+    private void loadPreview( final ShopEntry e, final JLabel pic )
+    {
+        final Path local = Paths.get( "img", e.id, "shime1.png" );
+        final String key = Files.isRegularFile( local ) ? local.toString() : e.previewUrl;
+        if( key == null || key.isEmpty() ) return;
+        if( previews.containsKey( key ) ) { pic.setIcon( previews.get( key ) ); return; }
+        new SwingWorker<javax.swing.ImageIcon, Void>()
+        {
+            @Override protected javax.swing.ImageIcon doInBackground() throws Exception
+            {
+                final byte[] data = key.equals( local.toString() ) ? Files.readAllBytes( local ) : ShopDownloader.fetchBytes( key, 1024 * 1024 );
+                final java.awt.image.BufferedImage img = javax.imageio.ImageIO.read( new java.io.ByteArrayInputStream( data ) );
+                if( img == null ) return null;
+                final double k = Math.min( 1.0, Math.min( (double) PREVIEW_PX / img.getWidth(), (double) PREVIEW_PX / img.getHeight() ) );
+                return new javax.swing.ImageIcon( img.getScaledInstance( Math.max( 1, (int) ( img.getWidth() * k ) ), Math.max( 1, (int) ( img.getHeight() * k ) ), java.awt.Image.SCALE_SMOOTH ) );
+            }
+            @Override protected void done()
+            {
+                javax.swing.ImageIcon icon = null;
+                try { icon = get(); } catch( final Exception ignored ) { }
+                previews.put( key, icon );
+                pic.setIcon( icon );
+            }
+        }.execute();
     }
 
     // ── actions ──────────────────────────────────────────────────────────────

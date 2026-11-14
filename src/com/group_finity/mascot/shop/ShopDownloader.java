@@ -48,6 +48,12 @@ public final class ShopDownloader
     /** Fetches the catalog JSON text. */
     public static String fetchText( final String url ) throws IOException
     {
+        return new String( fetchBytes( url, MAX_CATALOG_BYTES ), StandardCharsets.UTF_8 );
+    }
+
+    /** Fetches a small https resource (catalog, thumbnail) into memory, refusing anything over {@code max} bytes. */
+    public static byte[] fetchBytes( final String url, final long max ) throws IOException
+    {
         final HttpURLConnection c = open( url );
         try( InputStream in = c.getInputStream() )
         {
@@ -57,9 +63,9 @@ public final class ShopDownloader
             while( ( n = in.read( buf ) ) > 0 )
             {
                 bos.write( buf, 0, n );
-                if( bos.size() > MAX_CATALOG_BYTES ) throw new IOException( "Catalog is too large." );
+                if( bos.size() > max ) throw new IOException( "Response is too large." );
             }
-            return new String( bos.toByteArray(), StandardCharsets.UTF_8 );
+            return bos.toByteArray();
         }
         finally { c.disconnect(); }
     }
