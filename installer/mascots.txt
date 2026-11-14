@@ -1,0 +1,13 @@
+# Image sets (folders under img\) that go into the installer, one per line.
+# Lines starting with # are ignored. Sets listed here that don't exist are skipped with a warning.
+# Only list mascots you are allowed to redistribute (your own work, or with the creator's permission).
+# Sound files are picked up automatically from each set's XML (every /Something.wav it references).
+2B
+CampfireOFF
+CampfireON
+CampfireON_blue
+Holo
+Hornet
+Mosscreep (White)
+Mossfly (White)
+Paimon

@@ -848,6 +848,16 @@ public class Main
                             }
                         } );
                         
+                        final JButton btnShop = new JButton( getLanguageString( "MascotShop", "Mascot Shop..." ) );
+                        btnShop.addActionListener( new ActionListener( )
+                        {
+                            public void actionPerformed( final ActionEvent event )
+                            {
+                                form.dispose( );
+                                com.group_finity.mascot.shop.ShopWindow.showShop( frame );
+                            }
+                        } );
+                        
                         final JButton btnSettings = new JButton( languageBundle.getString( "Settings" ) );
                         btnSettings.addActionListener( new ActionListener( )
                         {
@@ -1293,6 +1303,9 @@ public class Main
                         panel.add( btnAllowedBehaviours, gridBag );
                         gridBag.gridy++;
                         panel.add( btnChooseShimeji, gridBag );
+                        
+                        gridBag.gridy++;
+                        panel.add( btnShop, gridBag );
                         gridBag.gridy++;
                         panel.add( btnSettings, gridBag );
                         gridBag.gridy++;
@@ -1772,6 +1785,15 @@ public class Main
             addImageSet( a );
         
         Main.this.getManager( ).setExitOnLastRemoved( isExit );
+    }
+
+    /** Adds one image set to the running set (used by the Mascot Shop after an install). Call on the EDT. */
+    public void activateImageSet( final String imageSet )
+    {
+        if( imageSet == null || imageSets.contains( imageSet ) ) return;
+        final ArrayList<String> next = new ArrayList<String>( imageSets );
+        next.add( imageSet );
+        setActiveImageSets( next );
     }
 
     private void populateArrayListWithChildSets( String imageSet, ArrayList<String> childList )
