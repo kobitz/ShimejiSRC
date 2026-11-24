@@ -68,7 +68,8 @@ Copy-Tree (Join-Path $InstallDir "conf") (Join-Path $out "conf") $scrubFiles
 
 # --- img: loose files + the sets in mascots.txt ----------------------------------------------------
 $imgOut = Join-Path $out "img"; New-Item -ItemType Directory -Path $imgOut | Out-Null
-Get-ChildItem (Join-Path $InstallDir "img") -File | ForEach-Object { Copy-Item $_.FullName $imgOut }
+# loose files in img\: icons only (the personal install keeps zips and scratch files here)
+Get-ChildItem (Join-Path $InstallDir "img") -File | Where-Object { $_.Extension -in @(".ico", ".png") } | ForEach-Object { Copy-Item $_.FullName $imgOut }
 $sets = Get-Content (Join-Path $here "mascots.txt") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith("#") }
 $waves = New-Object System.Collections.Generic.HashSet[string]
 foreach ($s in $sets) {
@@ -92,8 +93,12 @@ $sp = Join-Path $InstallDir "settings.properties"
 if (Test-Path $sp) {
     $lines = Get-Content $sp | Where-Object { $_ -notmatch '^\s*(PinnedMascot\.|[^#=]*\.mascot\d+\s*=)' }
     $lines = $lines | ForEach-Object { if ($_ -match '^\s*WeatherLocation\s*=') { 'WeatherLocation=auto' } else { $_ } }
+    # Start with the showcase mascots that are actually in this bundle, never the personal install's list.
+    $showcase = @("2B", "CampfireOFF", "Holo", "Hornet", "Mosscreep (White)", "Paimon") | Where-Object { $sets -contains $_ }
+    $active = "ActiveShimeji=" + ($showcase -join "/")
+    $lines = @($lines | Where-Object { $_ -notmatch '^\s*ActiveShimeji\s*=' }) + $active
     [IO.File]::WriteAllLines((Join-Path $out "settings.properties"), $lines, (New-Object Text.UTF8Encoding $false))
-    Write-Warning "settings.properties copied and scrubbed (PinnedMascot.*, *.mascotN, WeatherLocation). Open dist\Shimeji\settings.properties and eyeball it before you publish."
+    Write-Warning "settings.properties copied and scrubbed (PinnedMascot.*, *.mascotN, WeatherLocation; ActiveShimeji reset to the bundled mascots). Open dist\Shimeji\settings.properties and eyeball it before you publish."
 } else { Write-Warning "No settings.properties in the install folder; the app will create one on first run." }
 
 # --- scrub verification: refuse to build if any personal file slipped in ----------------------------
