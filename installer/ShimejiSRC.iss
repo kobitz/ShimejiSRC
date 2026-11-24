@@ -13,13 +13,29 @@
 #ifndef JreSha256
   #define JreSha256 ""
 #endif
+#ifdef TestBuild
+  ; Throwaway test installer: its own app id, folder, shortcut names and file name, so running it can
+  ; never touch (or replace the uninstall entry of) a real install. Build with build-installer.bat <ver> test.
+  #define SetupId "{{6D1B7C52-3A4E-4F0B-9C81-2E5A7B0D4F13}"
+  #define DisplayName "ShimejiSRC (test)"
+  #define OutName "ShimejiSRC-Setup-" + AppVersion + "-TEST"
+  #ifndef TestDir
+    #define TestDir "..\dist\test-install"
+  #endif
+  #define DefaultDir TestDir
+#else
+  #define SetupId "{{1F6928A0-56AC-49AF-9D6D-A8CDC0A17D6E}"
+  #define DisplayName "ShimejiSRC"
+  #define OutName "ShimejiSRC-Setup-" + AppVersion
+  #define DefaultDir "{autopf}\ShimejiSRC"
+#endif
 #ifndef SourceDir
   #define SourceDir "..\dist\Shimeji"
 #endif
 
 [Setup]
-AppId={{1F6928A0-56AC-49AF-9D6D-A8CDC0A17D6E}
-AppName=ShimejiSRC
+AppId={#SetupId}
+AppName={#DisplayName}
 AppVersion={#AppVersion}
 AppPublisher=Ko (kobitz)
 AppPublisherURL=https://github.com/kobitz/ShimejiSRC
@@ -29,10 +45,13 @@ AppSupportURL=https://github.com/kobitz/ShimejiSRC/issues
 ; by the dialog but then needs a writable folder of your choosing.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-DefaultDirName={autopf}\ShimejiSRC
+DefaultDirName={#DefaultDir}
+#ifdef TestBuild
+UsePreviousAppDir=no
+#endif
 DisableProgramGroupPage=yes
-DefaultGroupName=ShimejiSRC
-OutputBaseFilename=ShimejiSRC-Setup-{#AppVersion}
+DefaultGroupName={#DisplayName}
+OutputBaseFilename={#OutName}
 OutputDir=..\dist
 Compression=lzma2/max
 SolidCompression=yes
@@ -42,7 +61,7 @@ WizardStyle=modern
 LicenseFile=..\LICENSE
 SetupIconFile={#SourceDir}\img\icon.ico
 UninstallDisplayIcon={app}\Shimeji.exe
-UninstallDisplayName=ShimejiSRC
+UninstallDisplayName={#DisplayName}
 CloseApplications=yes
 RestartApplications=no
 
@@ -60,12 +79,12 @@ Source: "{#SourceDir}\settings.properties"; DestDir: "{app}"; Flags: onlyifdoesn
 
 [Icons]
 ; WorkingDir matters: the app resolves img/, conf/ and settings relative to its working directory.
-Name: "{autoprograms}\ShimejiSRC"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{app}"
-Name: "{autoprograms}\ShimejiSRC (Administrator - hardware sensors)"; Filename: "{app}\Admin.bat"; WorkingDir: "{app}"; IconFilename: "{app}\Shimeji.exe"
+Name: "{autoprograms}\{#DisplayName}"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{app}"
+Name: "{autoprograms}\{#DisplayName} (Administrator - hardware sensors)"; Filename: "{app}\Admin.bat"; WorkingDir: "{app}"; IconFilename: "{app}\Shimeji.exe"
 Name: "{autoprograms}\Set up AI features (Ollama, voice)"; Filename: "{app}\Setup.bat"; WorkingDir: "{app}"; IconFilename: "{app}\Shimeji.exe"
-Name: "{autoprograms}\Uninstall ShimejiSRC"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\ShimejiSRC"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{userstartup}\ShimejiSRC"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{app}"; Tasks: startupicon
+Name: "{autoprograms}\Uninstall {#DisplayName}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#DisplayName}"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userstartup}\{#DisplayName}"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{app}"; Tasks: startupicon
 
 [Run]
 Filename: "{app}\Shimeji.exe"; Description: "Launch ShimejiSRC"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent

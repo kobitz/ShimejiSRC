@@ -3,6 +3,7 @@ param(
     [string]$InstallDir = "",
     [string]$Iscc = "",
     [int]$JreFeature = 21,        # Java version the installer downloads (LTS)
+    [switch]$Test,                # throwaway test installer: own app id + dist\test-install, never touches a real install
     [switch]$BundleJre            # old behaviour: ship jre\ inside the installer (big, works offline)
 )
 $ErrorActionPreference = "Stop"
@@ -107,6 +108,7 @@ Write-Host "Bundle assembled: $out ($mb MB), scrub check passed."
 
 # --- Java runtime: pin the exact Temurin build the installer will download (URL + SHA-256) ---------------
 $isccArgs = @("/DAppVersion=$Version", "/DSourceDir=$out")
+if ($Test) { $isccArgs += "/DTestBuild=1"; $isccArgs += "/DTestDir=$(Join-Path $dist 'test-install')" }
 if (-not $BundleJre) {
     Write-Host "Looking up the latest Temurin $JreFeature JRE (x64, Windows)..."
     $api = "https://api.adoptium.net/v3/assets/latest/$JreFeature/hotspot?architecture=x64&image_type=jre&os=windows"
@@ -121,8 +123,10 @@ if (-not $BundleJre) {
 # --- compile -----------------------------------------------------------------------------------------
 & $Iscc @isccArgs (Join-Path $here "ShimejiSRC.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed." }
-$exe = Join-Path $dist "ShimejiSRC-Setup-$Version.exe"
+$suffix = if ($Test) { "-TEST" } else { "" }
+$exe = Join-Path $dist "ShimejiSRC-Setup-$Version$suffix.exe"
 $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
 Write-Host ""
 Write-Host "Installer: $exe"
 Write-Host "SHA-256:   $hash"
+if ($Test) { Write-Host ""; Write-Host "TEST installer: it installs to $(Join-Path $dist 'test-install') under its own name, separate from any real install." }
