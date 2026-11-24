@@ -32,6 +32,22 @@ public class ImageSetChooser extends javax.swing.JDialog
     private boolean closeProgram = true; // Whether the program closes on dispose
     private boolean selectAllSets = false; // Default all to selected
 
+    /** Name of the marker file that keeps an image set out of the Choose Shimeji list and the Call Shimeji pick. */
+    public static final String HIDDEN_MARKER = "hidden.txt";
+
+    /** True when img/&lt;imageSet&gt;/conf/hidden.txt exists (the file may be empty). Helper sets such as spawned sidekicks use it. */
+    public static boolean isHidden( String imageSet )
+    {
+        return isHidden( Paths.get( ".", "img" ), imageSet );
+    }
+
+    public static boolean isHidden( Path imgDir, String imageSet )
+    {
+        if( imageSet == null || imageSet.isEmpty( ) )
+            return false;
+        return imgDir.resolve( imageSet ).resolve( "conf" ).resolve( HIDDEN_MARKER ).toFile( ).isFile( );
+    }
+
     public ImageSetChooser( java.awt.Frame parent, boolean modal )
     {
         super( parent, modal );
@@ -70,6 +86,10 @@ public class ImageSetChooser extends javax.swing.JDialog
             public boolean accept( File dir, String name )
             {
                 if( name.equalsIgnoreCase( "unused" ) || name.startsWith( "." ) )
+                {
+                    return false;
+                }
+                if( isHidden( topDir, name ) )
                 {
                     return false;
                 }

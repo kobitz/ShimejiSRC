@@ -46,6 +46,8 @@ AppSupportURL=https://github.com/kobitz/ShimejiSRC/issues
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 DefaultDirName={#DefaultDir}
+; Always show the folder page (pre-filled with the default or the previous location) so people can pick where it goes.
+DisableDirPage=no
 #ifdef TestBuild
 UsePreviousAppDir=no
 #endif
@@ -73,9 +75,10 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 Name: "startupicon"; Description: "Start ShimejiSRC when I sign in to Windows"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
-; Everything except settings.properties: reinstalling/upgrading must never clobber the user's settings.
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "settings.properties"; Flags: recursesubdirs createallsubdirs ignoreversion
-Source: "{#SourceDir}\settings.properties"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall skipifsourcedoesntexist
+; Everything except the default settings: reinstalling/upgrading must never clobber the user's settings.
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "settings.default.properties"; Flags: recursesubdirs createallsubdirs ignoreversion
+; The app reads and writes conf\settings.properties; the bundled default is only installed when none exists.
+Source: "{#SourceDir}\settings.default.properties"; DestDir: "{app}\conf"; DestName: "settings.properties"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
 ; WorkingDir matters: the app resolves img/, conf/ and settings relative to its working directory.

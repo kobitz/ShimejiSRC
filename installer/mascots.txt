@@ -1,6 +1,7 @@
 # Image sets (folders under img\) that go into the installer, one per line.
 # Lines starting with # are ignored. Sets listed here that don't exist are skipped with a warning.
 # Only list mascots you are allowed to redistribute (your own work, or with the creator's permission).
+# Sets are read from <repo>\img (clean copies), never from your personal install folder.
 # Sound files are picked up automatically from each set's XML (every /Something.wav it references).
 2B
 CampfireOFF
@@ -11,3 +12,7 @@ Hornet
 Mosscreep (White)
 Mossfly (White)
 Paimon
+Shimeji
+Hornet_Needle
+Mosscreep (Orange)
+Mossfly (Orange)

@@ -2,6 +2,7 @@ param(
     [string]$Version = "2.0",
     [string]$InstallDir = "",
     [string]$Iscc = "",
+    [string]$ImgSource = "",      # clean mascot sets (default: <repo>\img). NOT the personal install folder
     [int]$JreFeature = 21,        # Java version the installer downloads (LTS)
     [switch]$Test,                # throwaway test installer: own app id + dist\test-install, never touches a real install
     [switch]$BundleJre            # old behaviour: ship jre\ inside the installer (big, works offline)
@@ -9,6 +10,8 @@ param(
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repo = Split-Path -Parent $here
+if (-not $ImgSource) { $ImgSource = Join-Path $repo "img" }
+if (-not (Test-Path $ImgSource)) { throw "Mascot source folder not found: $ImgSource" }
 
 # --- locate the install folder (INSTALL_DIR in the gitignored Build.local.bat) -------------------
 if (-not $InstallDir) {
@@ -19,7 +22,8 @@ if (-not $InstallDir) {
     }
 }
 if (-not $InstallDir -or -not (Test-Path $InstallDir)) { throw "Install folder not found. Set INSTALL_DIR in Build.local.bat or pass -InstallDir." }
-Write-Host "Install folder: $InstallDir"
+Write-Host "Build output (exe/jar) from: $InstallDir"
+Write-Host "Clean conf\ and mascot sets from: $repo"
 
 # --- locate Inno Setup ----------------------------------------------------------------------------
 if (-not $Iscc) {
@@ -53,8 +57,8 @@ $required = @("Shimeji.exe", "Shimeji-ee.jar")
 $optional = @("TempSensor.exe", "whisper_server.py", "whisper_prompt.txt", "Setup.bat", "Admin.bat", "Debug.bat", "shimeji-video-tracker.xpi", "README.txt")
 foreach ($f in $required) { if (-not (Test-Path (Join-Path $InstallDir $f))) { throw "Missing required file in install folder: $f (run Build.bat -> [1] Release first)" } Copy-Item (Join-Path $InstallDir $f) $out }
 foreach ($f in $optional) {
-    $p = Join-Path $InstallDir $f
-    if (-not (Test-Path $p)) { $p = Join-Path $repo $f }   # fall back to the repo copy (e.g. the browser .xpi)
+    $p = Join-Path $repo $f                                # the repo copy wins (source of truth)
+    if (-not (Test-Path $p)) { $p = Join-Path $InstallDir $f }   # support files that only live in the install folder
     if (Test-Path $p) { Copy-Item $p $out } else { Write-Warning "Not found (skipped): $f" }
 }
 Get-ChildItem $InstallDir -Filter *.dll -File | ForEach-Object { Copy-Item $_.FullName $out }   # MinGW runtime DLLs
@@ -64,17 +68,18 @@ if ($BundleJre) {
     if (-not (Test-Path (Join-Path $InstallDir "jre"))) { throw "Missing jre\ in the install folder." }
     Copy-Tree (Join-Path $InstallDir "jre") (Join-Path $out "jre")
 }
-Copy-Tree (Join-Path $InstallDir "conf") (Join-Path $out "conf") $scrubFiles
+# conf\ comes from the repo, never from the personal install. settings.properties is handled separately below.
+Copy-Tree (Join-Path $repo "conf") (Join-Path $out "conf") ($scrubFiles + @("settings.properties"))
 
 # --- img: loose files + the sets in mascots.txt ----------------------------------------------------
 $imgOut = Join-Path $out "img"; New-Item -ItemType Directory -Path $imgOut | Out-Null
 # loose files in img\: icons only (the personal install keeps zips and scratch files here)
-Get-ChildItem (Join-Path $InstallDir "img") -File | Where-Object { $_.Extension -in @(".ico", ".png") } | ForEach-Object { Copy-Item $_.FullName $imgOut }
+Get-ChildItem $ImgSource -File | Where-Object { $_.Extension -in @(".ico", ".png") } | ForEach-Object { Copy-Item $_.FullName $imgOut }
 $sets = Get-Content (Join-Path $here "mascots.txt") | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith("#") }
 $waves = New-Object System.Collections.Generic.HashSet[string]
 foreach ($s in $sets) {
-    $src = Join-Path $InstallDir "img\$s"
-    if (-not (Test-Path $src)) { Write-Warning "Mascot set not found (skipped): $s"; continue }
+    $src = Join-Path $ImgSource $s
+    if (-not (Test-Path $src)) { Write-Warning "Mascot set not found (skipped): $s  (put a clean copy in $src)"; continue }
     Copy-Tree $src (Join-Path $imgOut $s) $scrubFiles
     Get-ChildItem $src -Recurse -Filter *.xml -File | ForEach-Object {
         [regex]::Matches((Get-Content $_.FullName -Raw), '/([^"/\\<>]+\.wav)') | ForEach-Object { [void]$waves.Add($_.Groups[1].Value) }
@@ -84,22 +89,26 @@ foreach ($s in $sets) {
 # --- sound: only what the included mascots reference -----------------------------------------------
 $soundOut = Join-Path $out "sound"; New-Item -ItemType Directory -Path $soundOut | Out-Null
 foreach ($w in $waves) {
-    $p = Join-Path $InstallDir "sound\$w"
+    $p = Join-Path $repo "sound\$w"
+    if (-not (Test-Path $p)) { $p = Join-Path $InstallDir "sound\$w" }
     if (Test-Path $p) { Copy-Item $p $soundOut } else { Write-Warning "Sound referenced but missing: $w" }
 }
 
-# --- settings.properties: shipped as a default, scrubbed of per-user state ----------------------------
-$sp = Join-Path $InstallDir "settings.properties"
-if (Test-Path $sp) {
-    $lines = Get-Content $sp | Where-Object { $_ -notmatch '^\s*(PinnedMascot\.|[^#=]*\.mascot\d+\s*=)' }
-    $lines = $lines | ForEach-Object { if ($_ -match '^\s*WeatherLocation\s*=') { 'WeatherLocation=auto' } else { $_ } }
-    # Start with the showcase mascots that are actually in this bundle, never the personal install's list.
-    $showcase = @("2B", "CampfireOFF", "Holo", "Hornet", "Mosscreep (White)", "Paimon") | Where-Object { $sets -contains $_ }
-    $active = "ActiveShimeji=" + ($showcase -join "/")
-    $lines = @($lines | Where-Object { $_ -notmatch '^\s*ActiveShimeji\s*=' }) + $active
-    [IO.File]::WriteAllLines((Join-Path $out "settings.properties"), $lines, (New-Object Text.UTF8Encoding $false))
-    Write-Warning "settings.properties copied and scrubbed (PinnedMascot.*, *.mascotN, WeatherLocation; ActiveShimeji reset to the bundled mascots). Open dist\Shimeji\settings.properties and eyeball it before you publish."
-} else { Write-Warning "No settings.properties in the install folder; the app will create one on first run." }
+# --- settings: the repo's conf\settings.properties is the default; the app reads/writes conf\settings.properties ----
+# Shipped as settings.default.properties; the installer puts it at {app}\conf\settings.properties only if none exists yet.
+$sp = Join-Path $repo "conf\settings.properties"
+if (-not (Test-Path $sp)) { throw "Default settings not found: $sp" }
+$lines = Get-Content $sp | Where-Object { $_ -notmatch '^\s*(PinnedMascot\.|[^#=]*\.mascot\d+\s*=)' }
+$lines = $lines | ForEach-Object { if ($_ -match '^\s*WeatherLocation\s*=') { 'WeatherLocation=auto' } else { $_ } }
+[IO.File]::WriteAllLines((Join-Path $out "settings.default.properties"), $lines, (New-Object Text.UTF8Encoding $false))
+$activeLine = $lines | Where-Object { $_ -match '^\s*ActiveShimeji\s*=' } | Select-Object -First 1
+if ($activeLine) {
+    foreach ($a in (($activeLine -replace '^\s*ActiveShimeji\s*=', '') -split '/')) {
+        $a = $a.Trim()
+        if ($a -and -not (Test-Path (Join-Path $imgOut $a))) { throw "Default settings start with mascot '$a', but it is not in the bundle. Add it to mascots.txt (and put it in $ImgSource) or fix ActiveShimeji in conf\settings.properties." }
+    }
+}
+Write-Host "Default settings: $sp (ActiveShimeji: $(if ($activeLine) { $activeLine.Split('=', 2)[1] } else { 'none, chooser opens' }))"
 
 # --- scrub verification: refuse to build if any personal file slipped in ----------------------------
 $bad = Get-ChildItem $out -Recurse -File | Where-Object {

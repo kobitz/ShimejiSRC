@@ -841,7 +841,15 @@ public class Main
                                     getManager( ).togglePauseAll( ); // needed to stop the guys from potentially throwing away settings
                                 
                                 ImageSetChooser chooser = new ImageSetChooser( frame, true );
-                                setActiveImageSets( chooser.display( ) );
+                                ArrayList<String> chosen = chooser.display( );
+                                if( chosen != null )
+                                {
+                                    // hidden sets are not in the list, so keep any that are already running
+                                    for( String active : imageSets )
+                                        if( ImageSetChooser.isHidden( active ) && !chosen.contains( active ) )
+                                            chosen.add( active );
+                                }
+                                setActiveImageSets( chosen );
                                 
                                 if( getManager( ).isPaused( ) )
                                     getManager( ).togglePauseAll( );
@@ -1405,9 +1413,17 @@ public class Main
     // Randomly creates a mascot
     public void createMascot( )
     {
-        int length = imageSets.size( );
-        int random = ( int ) ( length * Math.random( ) );
-        createMascot( imageSets.get( random ) );
+        // sets with conf/hidden.txt are never picked here; fall back to all of them if nothing else is active
+        ArrayList<String> pool = new ArrayList<String>( );
+        for( String imageSet : imageSets )
+            if( !ImageSetChooser.isHidden( imageSet ) )
+                pool.add( imageSet );
+        if( pool.isEmpty( ) )
+            pool.addAll( imageSets );
+        if( pool.isEmpty( ) )
+            return;
+        int random = ( int ) ( pool.size( ) * Math.random( ) );
+        createMascot( pool.get( random ) );
     }
 
     /**
