@@ -1,9 +1,17 @@
 ; Inno Setup 6.3+ script for the ShimejiSRC installer. Build with installer\build-installer.bat
 ; (it assembles a clean bundle first), or by hand:
-;   ISCC.exe /DAppVersion=1.10 /DSourceDir=..\dist\Shimeji installer\ShimejiSRC.iss
+;   ISCC.exe /DAppVersion=2.0 /DSourceDir=..\dist\Shimeji /DJreUrl=<zip url> /DJreSha256=<sha256> installer\ShimejiSRC.iss
+; With /DJreUrl the installer downloads the Java runtime (SHA-256 verified) into {app}\jre instead of
+; the bundle carrying it. Without /DJreUrl the bundle must already contain jre\ (offline installer).
 
 #ifndef AppVersion
   #define AppVersion "1.0"
+#endif
+#ifndef JreUrl
+  #define JreUrl ""
+#endif
+#ifndef JreSha256
+  #define JreSha256 ""
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\Shimeji"
@@ -63,10 +71,76 @@ Name: "{userstartup}\ShimejiSRC"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{a
 Filename: "{app}\Shimeji.exe"; Description: "Launch ShimejiSRC"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\Setup.bat"; Description: "Set up AI features now (downloads Ollama + a ~4 GB model; optional, needs internet)"; WorkingDir: "{app}"; Flags: shellexec postinstall skipifsilent unchecked skipifdoesntexist
 
+[UninstallDelete]
+; The downloaded runtime is not in the file list, so remove it explicitly.
+Type: filesandordirs; Name: "{app}\jre"
+Type: filesandordirs; Name: "{app}\jre-tmp"
+
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM Shimeji.exe"; Flags: runhidden; RunOnceId: "KillShimeji"
 
 [Code]
+
+// ---- Java runtime: downloaded at install time (keeps the installer small) -----------------------------
+// Skipped when {app}\jre\bin\javaw.exe already exists (upgrade, or an offline installer that bundles it).
+function OnJreProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  if ProgressMax > 0 then
+    WizardForm.StatusLabel.Caption := 'Downloading the Java runtime... ' +
+      IntToStr(Progress div 1048576) + ' of ' + IntToStr(ProgressMax div 1048576) + ' MB'
+  else
+    WizardForm.StatusLabel.Caption := 'Downloading the Java runtime... ' + IntToStr(Progress div 1048576) + ' MB';
+  Result := True;
+end;
+
+function PsQuote(const S: String): String;
+var
+  T: String;
+begin
+  // single-quoted PowerShell literal: double any single quote inside the text
+  T := S;
+  StringChangeEx(T, '''', '''''', True);
+  Result := '''' + T + '''';
+end;
+
+procedure InstallJre;
+var
+  zip, appDir, tmpDir, jreDir, cmd: String;
+  rc: Integer;
+begin
+  appDir := ExpandConstant('{app}');
+  jreDir := appDir + '\jre';
+  tmpDir := appDir + '\jre-tmp';
+  if FileExists(jreDir + '\bin\javaw.exe') then Exit;
+  if '{#JreUrl}' = '' then Exit;
+
+  try
+    WizardForm.StatusLabel.Caption := 'Downloading the Java runtime...';
+    DownloadTemporaryFile('{#JreUrl}', 'jre.zip', '{#JreSha256}', @OnJreProgress);
+    zip := ExpandConstant('{tmp}\jre.zip');
+    WizardForm.StatusLabel.Caption := 'Unpacking the Java runtime...';
+    cmd := '-NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath ' + PsQuote(zip) +
+           ' -DestinationPath ' + PsQuote(tmpDir) + ' -Force; ' +
+           '$d = Get-ChildItem -LiteralPath ' + PsQuote(tmpDir) + ' -Directory | Select-Object -First 1; ' +
+           'Move-Item -LiteralPath $d.FullName -Destination ' + PsQuote(jreDir) + '; ' +
+           'Remove-Item -LiteralPath ' + PsQuote(tmpDir) + ' -Recurse -Force"';
+    if (not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), cmd, '', SW_HIDE, ewWaitUntilTerminated, rc))
+       or (rc <> 0) or (not FileExists(jreDir + '\bin\javaw.exe')) then
+      RaiseException('Could not unpack the Java runtime (exit code ' + IntToStr(rc) + ').');
+  except
+    DelTree(tmpDir, True, True, True);
+    SuppressibleMsgBox('ShimejiSRC could not set up its Java runtime:' + #13#10 + GetExceptionMessage + #13#10#13#10 +
+      'The app will use a Java 17+ you already have installed. If you have none, install one from ' +
+      'https://adoptium.net, or run this installer again with an internet connection.',
+      mbInformation, MB_OK, IDOK);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then InstallJre;
+end;
+
 // Settings, memories and chat history are the user's data: keep them unless asked.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin

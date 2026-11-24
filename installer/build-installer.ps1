@@ -1,7 +1,9 @@
 param(
-    [string]$Version = "1.10",
+    [string]$Version = "2.0",
     [string]$InstallDir = "",
-    [string]$Iscc = ""
+    [string]$Iscc = "",
+    [int]$JreFeature = 21,        # Java version the installer downloads (LTS)
+    [switch]$BundleJre            # old behaviour: ship jre\ inside the installer (big, works offline)
 )
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -57,8 +59,10 @@ foreach ($f in $optional) {
 Get-ChildItem $InstallDir -Filter *.dll -File | ForEach-Object { Copy-Item $_.FullName $out }   # MinGW runtime DLLs
 
 # --- allowlist: folders ---------------------------------------------------------------------------
-if (-not (Test-Path (Join-Path $InstallDir "jre"))) { throw "Missing jre\ in the install folder." }
-Copy-Tree (Join-Path $InstallDir "jre") (Join-Path $out "jre")
+if ($BundleJre) {
+    if (-not (Test-Path (Join-Path $InstallDir "jre"))) { throw "Missing jre\ in the install folder." }
+    Copy-Tree (Join-Path $InstallDir "jre") (Join-Path $out "jre")
+}
 Copy-Tree (Join-Path $InstallDir "conf") (Join-Path $out "conf") $scrubFiles
 
 # --- img: loose files + the sets in mascots.txt ----------------------------------------------------
@@ -101,8 +105,21 @@ if ($bad) { $bad | ForEach-Object { Write-Host "  PERSONAL FILE: $($_.FullName)"
 $mb = [math]::Round(((Get-ChildItem $out -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
 Write-Host "Bundle assembled: $out ($mb MB), scrub check passed."
 
+# --- Java runtime: pin the exact Temurin build the installer will download (URL + SHA-256) ---------------
+$isccArgs = @("/DAppVersion=$Version", "/DSourceDir=$out")
+if (-not $BundleJre) {
+    Write-Host "Looking up the latest Temurin $JreFeature JRE (x64, Windows)..."
+    $api = "https://api.adoptium.net/v3/assets/latest/$JreFeature/hotspot?architecture=x64&image_type=jre&os=windows"
+    $rel = (Invoke-RestMethod -Uri $api -UseBasicParsing) | Select-Object -First 1
+    $pkg = $rel.binary.package
+    if (-not $pkg -or -not $pkg.link -or -not $pkg.checksum) { throw "Adoptium API returned no JRE package; re-run with -BundleJre or check $api" }
+    Write-Host "  $($rel.release_name): $($pkg.name) ($([math]::Round($pkg.size / 1MB)) MB) sha256 $($pkg.checksum)"
+    $isccArgs += "/DJreUrl=$($pkg.link)"
+    $isccArgs += "/DJreSha256=$($pkg.checksum)"
+}
+
 # --- compile -----------------------------------------------------------------------------------------
-& $Iscc "/DAppVersion=$Version" "/DSourceDir=$out" (Join-Path $here "ShimejiSRC.iss")
+& $Iscc @isccArgs (Join-Path $here "ShimejiSRC.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed." }
 $exe = Join-Path $dist "ShimejiSRC-Setup-$Version.exe"
 $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
