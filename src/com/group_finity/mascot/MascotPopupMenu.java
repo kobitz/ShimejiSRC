@@ -716,6 +716,7 @@ final class MascotPopupMenu
             @Override public void nativeMouseReleased( NativeMouseEvent e ) { }
             @Override public void nativeMouseClicked( NativeMouseEvent e )  { }
         };
+        HotkeyManager.ensureHook( );
         GlobalScreen.addNativeMouseListener( m.popupDismissListener );
 
         popup.show( m.getWindow( ).asComponent( ), x, y );

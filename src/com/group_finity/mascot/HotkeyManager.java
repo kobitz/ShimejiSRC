@@ -131,35 +131,48 @@ public class HotkeyManager implements NativeKeyListener, NativeMouseListener
         this.manager = manager;
         loadAllBindings( );
 
+        // The native hook is also what closes the right-click menu when you click elsewhere, so it is
+        // registered even when there are no hotkey bindings (a fresh install ships none).
+        if( !ensureHook( ) )
+            return;
+
         if( bindings.isEmpty( ) && perMascotBindings.isEmpty( ) )
         {
-            log.log( Level.INFO, "HotkeyManager: no bindings found, skipping hook registration." );
+            log.log( Level.INFO, "HotkeyManager: no bindings found, hook registered for menu dismissal only." );
             return;
         }
 
-        // Silence JNativeHook's very noisy logger
-        Logger jnhLog = Logger.getLogger( GlobalScreen.class.getPackage( ).getName( ) );
-        jnhLog.setLevel( Level.WARNING );
-        jnhLog.setUseParentHandlers( false );
+        GlobalScreen.addNativeKeyListener( this );
+        GlobalScreen.addNativeMouseListener( this );
+        hooked = true;
+        log.log( Level.INFO, "HotkeyManager: global hook registered ({0} global combo(s), {1} per-mascot file(s)).",
+            new Object[]{ bindings.size( ), perMascotBindings.size( ) } );
+    }
 
+    /** Registers JNativeHook once for the whole process. Returns false when the OS refuses. */
+    public static synchronized boolean ensureHook( )
+    {
+        if( GlobalScreen.isNativeHookRegistered( ) )
+            return true;
         try
         {
+            // Silence JNativeHook's very noisy logger
+            Logger jnhLog = Logger.getLogger( GlobalScreen.class.getPackage( ).getName( ) );
+            jnhLog.setLevel( Level.WARNING );
+            jnhLog.setUseParentHandlers( false );
             GlobalScreen.registerNativeHook( );
-            GlobalScreen.addNativeKeyListener( this );
-            GlobalScreen.addNativeMouseListener( this );
-            hooked = true;
-            log.log( Level.INFO, "HotkeyManager: global hook registered ({0} global combo(s), {1} per-mascot file(s)).",
-                new Object[]{ bindings.size( ), perMascotBindings.size( ) } );
+            return true;
         }
         catch( NativeHookException e )
         {
-            log.log( Level.WARNING, "HotkeyManager: could not register global hook. Hotkeys will not work.", e );
+            log.log( Level.WARNING, "HotkeyManager: could not register global hook. Hotkeys and click-away menu dismissal will not work.", e );
+            return false;
         }
     }
 
     public void shutdown( )
     {
-        if( hooked )
+        if( hooked || GlobalScreen.isNativeHookRegistered( ) )
         {
             try
             {
