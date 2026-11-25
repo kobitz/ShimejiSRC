@@ -4,9 +4,9 @@
 # Sets are read from <repo>\img (clean copies), never from your personal install folder.
 # Sound files are picked up automatically from each set's XML (every /Something.wav it references).
 2B
-CampfireOFF
 CampfireON
 CampfireON_blue
+CampfireReactive
 Holo
 Hornet
 Mosscreep (White)
