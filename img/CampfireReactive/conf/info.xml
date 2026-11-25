@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Mascot>
+	<Information>
+		<Name>Campfire</Name>
+		<SplashImage>splash.png</SplashImage>
+		<Artist Name="Cachomon" URL="http://cachomon.com" />
+		<Scripter Name="JM-Luxro" URL="https://www.deviantart.com/jm-luxro" />
+		<!--<Commissioner Name="Kilkakon" URL="http://kilkakon.com" />-->
+		<Support Name="Patreon" URL="https://www.patreon.com/cachomon" />
+	</Information>
+</Mascot>

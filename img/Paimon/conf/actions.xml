@@ -1,0 +1,763 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Mascot xmlns="http://www.group-finity.com/Mascot" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+	<ActionList>
+		<Action Name="Look" Type="Embedded" Class="com.group_finity.mascot.action.Look" />
+		<Action Name="Offset" Type="Embedded" Class="com.group_finity.mascot.action.Offset" />
+
+		<!-- Animation templates — define frames once, referenced by actions below -->
+
+		<AnimationTemplate Name="PaimonFloat">
+			<Pose Image="/shime1.png"  Duration="2" />
+			<Pose Image="/shime2.png"  Duration="2" />
+			<Pose Image="/shime3.png"  Duration="2" />
+			<Pose Image="/shime4.png"  Duration="2" />
+			<Pose Image="/shime5.png"  Duration="2" />
+			<Pose Image="/shime6.png"  Duration="2" />
+			<Pose Image="/shime7.png"  Duration="2" />
+			<Pose Image="/shime8.png"  Duration="2" />
+			<Pose Image="/shime9.png"  Duration="2" />
+			<Pose Image="/shime10.png" Duration="2" />
+			<Pose Image="/shime11.png" Duration="2" />
+			<Pose Image="/shime12.png" Duration="2" />
+			<Pose Image="/shime13.png" Duration="2" />
+			<Pose Image="/shime14.png" Duration="2" />
+			<Pose Image="/shime15.png" Duration="2" />
+			<Pose Image="/shime16.png" Duration="2" />
+			<Pose Image="/shime17.png" Duration="2" />
+			<Pose Image="/shime18.png" Duration="2" />
+			<Pose Image="/shime19.png" Duration="2" />
+			<Pose Image="/shime20.png" Duration="2" />
+			<Pose Image="/shime21.png" Duration="2" />
+			<Pose Image="/shime22.png" Duration="2" />
+			<Pose Image="/shime23.png" Duration="2" />
+			<Pose Image="/shime24.png" Duration="2" />
+		</AnimationTemplate>
+
+		<AnimationTemplate Name="PaimonFloatFast">
+			<Pose Image="/shime1.png"  Duration="1" />
+			<Pose Image="/shime2.png"  Duration="1" />
+			<Pose Image="/shime3.png"  Duration="1" />
+			<Pose Image="/shime4.png"  Duration="1" />
+			<Pose Image="/shime5.png"  Duration="1" />
+			<Pose Image="/shime6.png"  Duration="1" />
+			<Pose Image="/shime7.png"  Duration="1" />
+			<Pose Image="/shime8.png"  Duration="1" />
+			<Pose Image="/shime9.png"  Duration="1" />
+			<Pose Image="/shime10.png" Duration="1" />
+			<Pose Image="/shime11.png" Duration="1" />
+			<Pose Image="/shime12.png" Duration="1" />
+			<Pose Image="/shime13.png" Duration="1" />
+			<Pose Image="/shime14.png" Duration="1" />
+			<Pose Image="/shime15.png" Duration="1" />
+			<Pose Image="/shime16.png" Duration="1" />
+			<Pose Image="/shime17.png" Duration="1" />
+			<Pose Image="/shime18.png" Duration="1" />
+			<Pose Image="/shime19.png" Duration="1" />
+			<Pose Image="/shime20.png" Duration="1" />
+			<Pose Image="/shime21.png" Duration="1" />
+			<Pose Image="/shime22.png" Duration="1" />
+			<Pose Image="/shime23.png" Duration="1" />
+			<Pose Image="/shime24.png" Duration="1" />
+		</AnimationTemplate>
+
+		<AnimationTemplate Name="PaimonFloatB">
+			<Pose Image="/shime1b.png"  Duration="2" />
+			<Pose Image="/shime2b.png"  Duration="2" />
+			<Pose Image="/shime3b.png"  Duration="2" />
+			<Pose Image="/shime4b.png"  Duration="2" />
+			<Pose Image="/shime5b.png"  Duration="2" />
+			<Pose Image="/shime6b.png"  Duration="2" />
+			<Pose Image="/shime7b.png"  Duration="2" />
+			<Pose Image="/shime8b.png"  Duration="2" />
+			<Pose Image="/shime9b.png"  Duration="2" />
+			<Pose Image="/shime10b.png" Duration="2" />
+			<Pose Image="/shime11b.png" Duration="2" />
+			<Pose Image="/shime12b.png" Duration="2" />
+			<Pose Image="/shime13b.png" Duration="2" />
+			<Pose Image="/shime14b.png" Duration="2" />
+			<Pose Image="/shime15b.png" Duration="2" />
+			<Pose Image="/shime16b.png" Duration="2" />
+			<Pose Image="/shime17b.png" Duration="2" />
+			<Pose Image="/shime18b.png" Duration="2" />
+			<Pose Image="/shime19b.png" Duration="2" />
+			<Pose Image="/shime20b.png" Duration="2" />
+			<Pose Image="/shime21b.png" Duration="2" />
+			<Pose Image="/shime22b.png" Duration="2" />
+			<Pose Image="/shime23b.png" Duration="2" />
+			<Pose Image="/shime24b.png" Duration="2" />
+		</AnimationTemplate>
+
+		<!-- Floor / air — anchor 48,128 -->
+
+		<Action Name="Stand" Type="Stay" BorderType="Floor">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+		</Action>
+
+		<Action Name="Sit" Type="Stay" BorderType="Floor">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+		</Action>
+
+		<Action Name="Walk" Type="Move" BorderType="Floor">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="-2,0" />
+		</Action>
+
+		<Action Name="Run" Type="Move" BorderType="Floor">
+			<Animation Template="PaimonFloatFast" ImageAnchor="48,128" Velocity="-4,0" />
+		</Action>
+
+		<Action Name="Dash" Type="Move" BorderType="Floor">
+			<Animation Template="PaimonFloatFast" ImageAnchor="48,128" Velocity="-8,0" />
+		</Action>
+
+		<Action Name="Jumping" Type="Embedded" Class="com.group_finity.mascot.action.Jump" VelocityParam="10">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+		</Action>
+
+		<!-- Ceiling-approach jump: uses top anchor (48,0) so the sprite never enters the
+		     window during ascent and transitions seamlessly into GrabCeiling (also 48,0).
+		     Always pair with an Offset Y="-128" immediately before to cancel the start snap. -->
+		<Action Name="JumpingToCeiling" Type="Embedded" Class="com.group_finity.mascot.action.Jump" VelocityParam="10">
+			<Animation Template="PaimonFloat" ImageAnchor="48,0" Velocity="0,0" />
+		</Action>
+
+		<Action Name="Falling" Type="Embedded" Class="com.group_finity.mascot.action.Fall"
+			RegistanceX="0.05" RegistanceY="0.1" Gravity="0.8">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+		</Action>
+
+		<Action Name="Bouncing" Type="Animate" BorderType="Floor">
+			<Animation>
+				<Pose Image="/shime18.png" ImageAnchor="48,128" Velocity="0,0" Duration="4" />
+				<Pose Image="/shime19.png" ImageAnchor="48,128" Velocity="0,0" Duration="4" />
+			</Animation>
+		</Action>
+
+		<!-- Same bounce but keeps wall anchor (16,128) to avoid snap at wall-fall landing.
+		     The anchor switch happens at the end of this action when Stand takes over,
+		     which is less jarring than snapping at the moment of impact. -->
+		<Action Name="BouncingWall" Type="Animate" BorderType="Floor">
+			<Animation>
+				<Pose Image="/shime18.png" ImageAnchor="16,128" Velocity="0,0" Duration="4" />
+				<Pose Image="/shime19.png" ImageAnchor="16,128" Velocity="0,0" Duration="4" />
+			</Animation>
+		</Action>
+
+		<!-- Ceiling — anchor 48,0 (top of sprite at ceiling surface, required for BorderType=Ceiling) -->
+
+		<Action Name="GrabCeiling" Type="Stay" BorderType="Ceiling">
+			<Animation Template="PaimonFloat" ImageAnchor="48,0" Velocity="0,0" />
+		</Action>
+
+		<Action Name="ClimbCeiling" Type="Move" BorderType="Ceiling">
+			<Animation Template="PaimonFloat" ImageAnchor="48,0" Velocity="-2,0" />
+		</Action>
+
+		<!-- Wall — b-series sprites, anchor 16,128 -->
+
+		<Action Name="GrabWall" Type="Stay" BorderType="Wall">
+			<Animation Template="PaimonFloatB" ImageAnchor="16,128" Velocity="0,0" />
+		</Action>
+
+		<Action Name="ClimbWall" Type="Move" BorderType="Wall">
+			<Animation Condition="#{TargetY &lt; mascot.anchor.y}" Template="PaimonFloatB" ImageAnchor="16,128" Velocity="0,-2" />
+			<Animation Template="PaimonFloatB" ImageAnchor="16,128" Velocity="0,2" />
+		</Action>
+
+		<!-- Wall-approach fall/jump: uses wall anchor (16,128) so sprite doesn't clip into
+		     the wall during approach and transitions seamlessly into GrabWall (also 16,128).
+		     Always pair with Offset X="32" immediately before to cancel the start snap
+		     (floor anchor is 48,128 — wall anchor is 16,128 — difference is 32px horizontal). -->
+		<Action Name="FallingToWall" Type="Embedded" Class="com.group_finity.mascot.action.Fall"
+			RegistanceX="0.05" RegistanceY="0.1" Gravity="0.8">
+			<Animation Template="PaimonFloat" ImageAnchor="16,128" Velocity="0,0" />
+		</Action>
+
+		<Action Name="JumpingToWall" Type="Embedded" Class="com.group_finity.mascot.action.Jump" VelocityParam="10">
+			<Animation Template="PaimonFloatB" ImageAnchor="16,128" Velocity="0,0" />
+		</Action>
+
+		<!-- IE actions -->
+
+		<Action Name="FallWithIe" Type="Embedded" Class="com.group_finity.mascot.action.FallWithIE"
+			IeOffsetX="0" IeOffsetY="-64">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+		</Action>
+
+		<Action Name="WalkWithIe" BorderType="Floor" Type="Embedded" Class="com.group_finity.mascot.action.WalkWithIE"
+			IeOffsetX="0" IeOffsetY="-64">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="-2,0" />
+		</Action>
+
+		<Action Name="RunWithIe" BorderType="Floor" Type="Embedded" Class="com.group_finity.mascot.action.WalkWithIE"
+			IeOffsetX="0" IeOffsetY="-64">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="-4,0" />
+		</Action>
+
+		<Action Name="ThrowIe" BorderType="Floor" Type="Embedded" Class="com.group_finity.mascot.action.ThrowIE"
+			InitialVX="32" InitialVY="-10" Gravity="0.5">
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+		</Action>
+
+		<!-- Dragging -->
+
+		<Action Name="Pinched" Type="Embedded" Class="com.group_finity.mascot.action.Dragged" FaceDirection="true">
+			<Animation Condition="#{mascot.environment.cursor.x &gt; FootX}" Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+			<Animation Template="PaimonFloat" ImageAnchor="48,128" Velocity="0,0" />
+		</Action>
+
+		<Action Name="Resisting" Type="Embedded" Class="com.group_finity.mascot.action.Regist">
+			<Animation>
+				<Pose Image="/shime1.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime2.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime3.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime4.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime5.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime6.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime7.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime8.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime9.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime10.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime11.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime12.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime13.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime14.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime15.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime16.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime17.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime18.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime19.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime20.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime21.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime22.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime23.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime24.png" ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime1.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime9.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime1.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime9.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime1.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime9.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime1.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+				<Pose Image="/shime9.png"  ImageAnchor="48,128" Velocity="0,0" Duration="2" />
+			</Animation>
+		</Action>
+
+		<!-- Scale -->
+
+		<Action Name="ScaleUp" Type="Embedded"
+			Class="com.group_finity.mascot.action.Scale"
+			Target="#{mascot.currentScale + 0.1}"
+			Speed="0.2"
+			Duration="8" />
+
+		<Action Name="ScaleDown" Type="Embedded"
+			Class="com.group_finity.mascot.action.Scale"
+			Target="#{mascot.currentScale - 0.1}"
+			Speed="0.2"
+			Duration="8" />
+
+		<Action Name="RaveModeSetup" Type="Embedded"
+			Class="com.group_finity.mascot.action.Tint"
+			Color="#{(function(){ var h=(Date.now()/300*360)%360; var i=Math.floor(h/60); var f=(h/60)-i; var q=Math.round((1-f)*255); var t=Math.round(f*255); var r,g,b; if(i===0){r=255;g=t;b=0;}else if(i===1){r=q;g=255;b=0;}else if(i===2){r=0;g=255;b=t;}else if(i===3){r=0;g=q;b=255;}else if(i===4){r=t;g=0;b=255;}else{r=255;g=0;b=q;} var hex=function(n){return ('0'+n.toString(16)).slice(-2);}; return hex(r)+hex(g)+hex(b); })()}"
+			Opacity="0.5"
+			LerpFactor="1.0"
+			Duration="1" />
+
+		<!-- Manual movement -->
+
+		<Action Name="ShortStandAfterAction" Type="Sequence" Loop="false">
+			<ActionReference Name="Stand" Duration="${50+Math.random()*100}" />
+		</Action>
+
+		<Action Name="MoveLeft" Type="Sequence" Loop="false">
+			<ActionReference Name="Look" LookRight="false" />
+			<Action Type="Select">
+				<Action Type="Sequence"
+					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="Walk" TargetX="${mascot.anchor.x - 200}" />
+				</Action>
+				<ActionReference Name="Falling" InitialVX="-8" InitialVY="-1" Duration="100"/>
+			</Action>
+		</Action>
+
+		<Action Name="MoveRight" Type="Sequence" Loop="false">
+			<ActionReference Name="Look" LookRight="true" />
+			<Action Type="Select">
+				<Action Type="Sequence"
+					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="Walk" TargetX="${mascot.anchor.x + 200}" />
+				</Action>
+				<ActionReference Name="Falling" InitialVX="8" InitialVY="-1" Duration="100"/>
+			</Action>
+		</Action>
+
+		<Action Name="RunLeft" Type="Sequence" Loop="false">
+			<ActionReference Name="Look" LookRight="false" />
+			<Action Type="Select">
+				<Action Type="Sequence"
+					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="Run" TargetX="${mascot.anchor.x - 300}" />
+				</Action>
+				<ActionReference Name="Falling" InitialVX="-12" InitialVY="-1" Duration="100"/>
+			</Action>
+		</Action>
+
+		<Action Name="RunRight" Type="Sequence" Loop="false">
+			<ActionReference Name="Look" LookRight="true" />
+			<Action Type="Select">
+				<Action Type="Sequence"
+					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="Run" TargetX="${mascot.anchor.x + 300}" />
+				</Action>
+				<ActionReference Name="Falling" InitialVX="12" InitialVY="-1" Duration="100"/>
+			</Action>
+		</Action>
+
+		<Action Name="DashLeft" Type="Sequence" Loop="false">
+			<ActionReference Name="Look" LookRight="false" />
+			<Action Type="Select">
+				<Action Type="Sequence"
+					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="Dash" TargetX="${mascot.anchor.x - 400}" />
+				</Action>
+				<ActionReference Name="Falling" InitialVX="-20" InitialVY="-1" Duration="100"/>
+			</Action>
+		</Action>
+
+		<Action Name="DashRight" Type="Sequence" Loop="false">
+			<ActionReference Name="Look" LookRight="true" />
+			<Action Type="Select">
+				<Action Type="Sequence"
+					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="Dash" TargetX="${mascot.anchor.x + 400}" />
+				</Action>
+				<ActionReference Name="Falling" InitialVX="20" InitialVY="-1" Duration="100"/>
+			</Action>
+		</Action>
+
+		<Action Name="ManualJump" Type="Sequence" Loop="false">
+			<Action Type="Select">
+				<Action Type="Sequence"
+					Condition="${mascot.lookRight &amp;&amp; (mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor))}">
+					<ActionReference Name="Look" LookRight="false" />
+					<ActionReference Name="Jumping"
+						TargetX="${mascot.anchor.x - Math.round(384 * mascot.currentScale * scaling)}"
+						TargetY="${mascot.anchor.y - Math.round(384 * mascot.currentScale * scaling)}"/>
+					<Action Type="Sequence">
+						<Action Type="Select">
+							<Action Type="Sequence"
+								Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
+								<ActionReference Name="GrabWall" Duration="${100 + Math.random() * 100}" />
+							</Action>
+							<Action Type="Sequence"
+								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+								<ActionReference Name="Stand" Duration="1" />
+							</Action>
+							<ActionReference Name="Falling" InitialVX="${mascot.lookRight ? 10 : -10}" InitialVY="2" Duration="100"/>
+						</Action>
+					</Action>
+				</Action>
+
+				<Action Type="Sequence"
+					Condition="${!mascot.lookRight &amp;&amp; (mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor))}">
+					<ActionReference Name="Look" LookRight="true" />
+					<ActionReference Name="Jumping"
+						TargetX="${mascot.anchor.x + Math.round(384 * mascot.currentScale * scaling)}"
+						TargetY="${mascot.anchor.y - Math.round(384 * mascot.currentScale * scaling)}" />
+					<Action Type="Sequence">
+						<Action Type="Select">
+							<Action Type="Sequence"
+								Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
+								<ActionReference Name="GrabWall" Duration="${100 + Math.random() * 100}" />
+							</Action>
+							<Action Type="Sequence"
+								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+								<ActionReference Name="Stand" Duration="1" />
+							</Action>
+							<ActionReference Name="Falling" InitialVX="${mascot.lookRight ? 10 : -10}" InitialVY="2" Duration="100"/>
+						</Action>
+					</Action>
+				</Action>
+
+				<Action Type="Sequence"
+					Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="Jumping"
+						TargetX="${mascot.lookRight
+							? mascot.anchor.x + Math.round(256 * mascot.currentScale * scaling)
+							: mascot.anchor.x - Math.round(256 * mascot.currentScale * scaling)}"
+						TargetY="${mascot.anchor.y - Math.round(384 * mascot.currentScale * scaling)}" />
+					<Action Type="Sequence">
+						<Action Type="Select">
+							<Action Type="Sequence"
+								Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
+								<ActionReference Name="GrabWall" Duration="${100 + Math.random() * 100}" />
+							</Action>
+							<Action Type="Sequence"
+								Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+								<ActionReference Name="Stand" Duration="1" />
+							</Action>
+							<ActionReference Name="Falling" InitialVX="${mascot.lookRight ? 10 : -10}" InitialVY="2" Duration="100"/>
+						</Action>
+					</Action>
+				</Action>
+
+				<ActionReference Name="Falling" InitialVX="${mascot.lookRight ? 10 : -10}" InitialVY="2" Duration="100"/>
+			</Action>
+		</Action>
+	</ActionList>
+
+	<!-- Behavior sequences -->
+	<ActionList>
+
+		<!-- ALWAYS REQUIRED -->
+		<Action Name="Fall" Type="Sequence" Loop="false">
+			<ActionReference Name="FallingToWall"/>
+			<Action Type="Select">
+				<Action Type="Sequence" Condition="${mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="BouncingWall"/>
+					<ActionReference Name="Offset" X="${(mascot.lookRight ? -1 : 1) * 32 * scaling * mascot.currentScale}" />
+					<ActionReference Name="Stand" Duration="${100+Math.random()*100}" />
+				</Action>
+				<ActionReference Name="GrabWall" Duration="100" />
+			</Action>
+		</Action>
+
+		<!-- ALWAYS REQUIRED -->
+		<Action Name="Dragged" Type="Sequence" Loop="true">
+			<ActionReference Name="Pinched"/>
+			<ActionReference Name="Resisting" />
+		</Action>
+
+		<!-- ALWAYS REQUIRED -->
+		<Action Name="Thrown" Type="Sequence" Loop="false">
+			<ActionReference Name="FallingToWall" InitialVX="${mascot.environment.cursor.dx}" InitialVY="${mascot.environment.cursor.dy}"/>
+			<Action Type="Select">
+				<Action Type="Sequence" Condition="#{mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+					<ActionReference Name="BouncingWall"/>
+					<ActionReference Name="Offset" X="${(mascot.lookRight ? -1 : 1) * 32 * scaling * mascot.currentScale}" />
+					<ActionReference Name="Stand" Duration="${100+Math.random()*100}" />
+				</Action>
+				<ActionReference Name="GrabWall" Duration="100" />
+			</Action>
+		</Action>
+
+		<Action Name="StandUp" Type="Sequence" Loop="false">
+			<ActionReference Name="Stand" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="SitDown" Type="Sequence" Loop="false">
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="HoldOntoWall" Type="Sequence" Loop="false">
+			<ActionReference Name="GrabWall" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="FallFromWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Offset" X="${mascot.lookRight ? -1 : 1}" />
+			<ActionReference Name="Stand" />
+		</Action>
+
+		<Action Name="HoldOntoCeiling" Type="Sequence" Loop="false">
+			<ActionReference Name="GrabCeiling" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="FallFromCeiling" Type="Sequence" Loop="false">
+			<ActionReference Name="Offset" Y="1" />
+			<ActionReference Name="Stand" />
+		</Action>
+
+		<Action Name="WalkAlongWorkAreaFloor" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.workArea.left+64+Math.random()*(mascot.environment.workArea.width-128)}" />
+		</Action>
+
+		<Action Name="RunAlongWorkAreaFloor" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.workArea.left+64+Math.random()*(mascot.environment.workArea.width-128)}" />
+		</Action>
+
+		<Action Name="WalkLeftAlongFloorAndSit" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.workArea.left+100+Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Look" LookRight="true" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="WalkRightAlongFloorAndSit" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.workArea.right-100-Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Look" LookRight="false" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="GrabWorkAreaBottomLeftWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="#{mascot.environment.workArea.left}" />
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.workArea.bottom-64}" />
+		</Action>
+
+		<Action Name="GrabWorkAreaBottomRightWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="#{mascot.environment.workArea.right}" />
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.workArea.bottom-64}" />
+		</Action>
+
+		<Action Name="WalkLeftAndSit" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.workArea.left+100+Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Look" LookRight="true" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="WalkRightAndSit" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.workArea.right-100-Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Look" LookRight="false" />
+			<ActionReference Name="Stand" Duration="${20+Math.random()*20}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="WalkAndGrabBottomLeftWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="#{mascot.environment.workArea.left}" />
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.workArea.bottom-64}" />
+		</Action>
+
+		<Action Name="WalkAndGrabBottomRightWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="#{mascot.environment.workArea.right}" />
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.workArea.bottom-64}" />
+		</Action>
+
+		<Action Name="JumpFromBottomOfIE" Type="Sequence" Loop="false">
+			<ActionReference Name="Offset" Y="-128" />
+			<ActionReference Name="JumpingToCeiling"
+				TargetX="${(mascot.anchor.x*3+mascot.environment.activeIE.left+Math.random()*mascot.environment.activeIE.width)/4}"
+				TargetY="${mascot.environment.activeIE.bottom}" />
+			<ActionReference Name="GrabCeiling" Duration="${100+Math.random()*100}" />
+		</Action>
+
+		<Action Name="ClimbHalfwayAlongWall" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbWall" TargetY="${mascot.environment.workArea.top+64 + Math.random()*(mascot.environment.workArea.height-128)}" />
+		</Action>
+
+		<Action Name="ClimbAlongWall" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.workArea.top+64}" />
+			<ActionReference Name="Offset" Y="-64" />
+			<ActionReference Name="Look" />
+			<ActionReference Name="ClimbCeiling" TargetX="${mascot.lookRight ? mascot.environment.workArea.left+Math.random()*100 : mascot.environment.workArea.right-Math.random*100}" />
+		</Action>
+
+		<Action Name="ClimbAlongCeiling" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbCeiling" TargetX="${mascot.environment.workArea.left+64+Math.random()*(mascot.environment.workArea.width-128)}" />
+		</Action>
+
+		<Action Name="WalkAlongIECeiling" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.activeIE.left+64+Math.random()*(mascot.environment.activeIE.width-128)}" />
+		</Action>
+
+		<Action Name="RunAlongIECeiling" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.activeIE.left+64+Math.random()*(mascot.environment.activeIE.width-128)}" />
+		</Action>
+
+		<Action Name="SitOnTheLeftEdgeOfIE" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.activeIE.left+100+Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${100+Math.random()*100}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="SitOnTheRightEdgeOfIE" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.activeIE.right-100-Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${100+Math.random()*100}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="JumpFromLeftEdgeOfIE" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.activeIE.left+Math.random()*50}" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+			<ActionReference Name="Falling" InitialVX="${-15-Math.random()*5}" InitialVY="${-20-Math.random()*5}"/>
+			<ActionReference Name="Bouncing" />
+		</Action>
+
+		<Action Name="JumpFromRightEdgeOfIE" Type="Sequence" Loop="false">
+			<ActionReference Name="Walk" TargetX="${mascot.environment.activeIE.right-Math.random()*50}" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+			<ActionReference Name="Falling" InitialVX="${15+Math.random()*5}" InitialVY="${-20-Math.random()*5}"/>
+			<ActionReference Name="Bouncing" />
+		</Action>
+
+		<Action Name="WalkLeftAlongIEAndSit" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.activeIE.left+100+Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${100+Math.random()*100}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="WalkRightAlongIEAndSit" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.activeIE.right-100-Math.random()*300}" />
+			<ActionReference Name="Stand" Duration="${100+Math.random()*100}" />
+			<ActionReference Name="Sit" Duration="${500+Math.random()*1000}" />
+		</Action>
+
+		<Action Name="WalkLeftAlongIEAndJump" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.activeIE.left+Math.random()*50}" />
+			<ActionReference Name="Falling" InitialVX="${-15-Math.random()*5}" InitialVY="${-20-Math.random()*5}"/>
+			<ActionReference Name="Bouncing" />
+		</Action>
+
+		<Action Name="WalkRightAlongIEAndJump" Type="Sequence" Loop="false">
+			<ActionReference Name="Run" TargetX="${mascot.environment.activeIE.right-Math.random()*50}" />
+			<ActionReference Name="Falling" InitialVX="${15+Math.random()*5}" InitialVY="${-20-Math.random()*5}"/>
+			<ActionReference Name="Bouncing" />
+		</Action>
+
+		<Action Name="DashIeCeilingLeftEdgeFromJump" Type="Sequence" Loop="false">
+			<ActionReference Name="Dash" TargetX="${mascot.environment.activeIE.left+Math.random()*20+20}" />
+			<ActionReference Name="Falling" InitialVX="${-5-Math.random()*2}" InitialVY="${-20-Math.random()*5}"/>
+			<ActionReference Name="Bouncing" />
+		</Action>
+
+		<Action Name="DashIeCeilingRightEdgeFromJump" Type="Sequence" Loop="false">
+			<ActionReference Name="Dash" TargetX="${mascot.environment.activeIE.right-Math.random()*20-20}" />
+			<ActionReference Name="Falling" InitialVX="${5+Math.random()*2}" InitialVY="${-20-Math.random()*5}"/>
+			<ActionReference Name="Bouncing" />
+		</Action>
+
+		<Action Name="HoldOntoIEWall" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbWall" TargetY="${mascot.environment.activeIE.top+64 + Math.random()*(mascot.environment.activeIE.height-128)}" />
+		</Action>
+
+		<Action Name="ClimbIEWall" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.activeIE.top+64}" />
+			<ActionReference Name="Offset" Y="-64" />
+			<ActionReference Name="Sit" Duration="5" />
+			<ActionReference Name="Stand" Duration="${10+Math.random()*10}" />
+			<ActionReference Name="Walk" TargetX="${mascot.lookRight ? mascot.environment.activeIE.left+Math.random()*100 : mascot.environment.activeIE.right-Math.random*100}" />
+		</Action>
+
+		<Action Name="ClimbIEBottom" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbCeiling" TargetX="${mascot.environment.activeIE.left+64+(Math.random()*mascot.environment.activeIE.width-128)}" />
+		</Action>
+
+		<Action Name="GrabIEBottomLeftWall" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbCeiling" TargetX="#{mascot.environment.activeIE.left}" />
+			<ActionReference Name="Look" />
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.activeIE.bottom-64}" />
+		</Action>
+
+		<Action Name="GrabIEBottomRightWall" Type="Sequence" Loop="false">
+			<ActionReference Name="ClimbCeiling" TargetX="#{mascot.environment.activeIE.right}" />
+			<ActionReference Name="Look" />
+			<ActionReference Name="ClimbWall" TargetY="#{mascot.environment.activeIE.bottom-64}" />
+		</Action>
+
+		<Action Name="JumpFromLeftWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Offset" X="-32" />
+			<ActionReference Name="JumpingToWall" TargetX="${mascot.environment.workArea.left+64}" TargetY="${mascot.environment.workArea.bottom-Math.random()*mascot.environment.workArea.height/4}" />
+			<ActionReference Name="GrabWall" Duration="${100+Math.random()*100}" />
+		</Action>
+
+		<Action Name="JumpFromRightWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Offset" X="32" />
+			<ActionReference Name="JumpingToWall" TargetX="${mascot.environment.workArea.right-64}" TargetY="${mascot.environment.workArea.bottom-Math.random()*mascot.environment.workArea.height/4}" />
+			<ActionReference Name="GrabWall" Duration="${100+Math.random()*100}" />
+		</Action>
+
+		<Action Name="JumpOnIELeftWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Offset" X="-32" />
+			<ActionReference Name="JumpingToWall" TargetX="${mascot.environment.activeIE.left+64}" TargetY="${mascot.environment.activeIE.bottom-Math.random()*mascot.environment.activeIE.height/4}" />
+			<ActionReference Name="GrabWall" Duration="${100+Math.random()*100}" />
+		</Action>
+
+		<Action Name="JumpOnIERightWall" Type="Sequence" Loop="false">
+			<ActionReference Name="Offset" X="32" />
+			<ActionReference Name="JumpingToWall" TargetX="${mascot.environment.activeIE.right-64}" TargetY="${mascot.environment.activeIE.bottom-Math.random()*mascot.environment.activeIE.height/4}" />
+			<ActionReference Name="GrabWall" Duration="${100+Math.random()*100}" />
+		</Action>
+
+		<Action Name="ThrowIEFromLeft" Type="Sequence" Loop="false">
+			<ActionReference Name="Jumping" TargetX="${mascot.environment.activeIE.left}" TargetY="${mascot.environment.activeIE.bottom+64}" />
+			<ActionReference Name="FallWithIe" />
+			<ActionReference Name="WalkWithIe" TargetX="#{mascot.environment.workArea.right-400}" />
+			<ActionReference Name="ThrowIe" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+			<ActionReference Name="Look" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+		</Action>
+
+		<Action Name="ThrowIEFromRight" Type="Sequence" Loop="false">
+			<ActionReference Name="Jumping" TargetX="${mascot.environment.activeIE.right}" TargetY="${mascot.environment.activeIE.bottom+64}" />
+			<ActionReference Name="FallWithIe" />
+			<ActionReference Name="WalkWithIe" TargetX="#{mascot.environment.workArea.left+400}" />
+			<ActionReference Name="ThrowIe" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+			<ActionReference Name="Look" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+		</Action>
+
+		<Action Name="WalkAndThrowIEFromRight" Type="Sequence" Loop="false">
+			<ActionReference Name="Jumping" TargetX="${mascot.environment.activeIE.left}" TargetY="${mascot.environment.activeIE.bottom+64}" />
+			<ActionReference Name="FallWithIe" />
+			<ActionReference Name="RunWithIe" TargetX="#{mascot.environment.workArea.right-400}" />
+			<ActionReference Name="ThrowIe" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+			<ActionReference Name="Look" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+		</Action>
+
+		<Action Name="WalkAndThrowIEFromLeft" Type="Sequence" Loop="false">
+			<ActionReference Name="Jumping" TargetX="${mascot.environment.activeIE.right}" TargetY="${mascot.environment.activeIE.bottom+64}" />
+			<ActionReference Name="FallWithIe" />
+			<ActionReference Name="RunWithIe" TargetX="#{mascot.environment.workArea.left+400}" />
+			<ActionReference Name="ThrowIe" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+			<ActionReference Name="Look" />
+			<ActionReference Name="Stand" Duration="${50+Math.random()*50}" />
+		</Action>
+
+		<Action Name="JumpToCursor" Type="Sequence" Loop="false">
+			<ActionReference Name="Jumping"
+				TargetX="${mascot.environment.cursor.x}"
+				TargetY="${mascot.environment.cursor.y - Math.round(20 * mascot.currentScale * scaling)}"
+				Duration="${100 + Math.random() * 100}" />
+			<Action Type="Sequence">
+				<Action Type="Select">
+					<Action Type="Sequence"
+						Condition="${mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) || mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) || mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || mascot.environment.workArea.rightBorder.isOn(mascot.anchor)}">
+						<ActionReference Name="GrabWall" Duration="1" />
+					</Action>
+					<Action Type="Sequence"
+						Condition="${mascot.environment.activeIE.topBorder.isOn(mascot.anchor) || mascot.environment.workArea.bottomBorder.isOn(mascot.anchor)}">
+						<ActionReference Name="Stand" Duration="1" />
+					</Action>
+					<Action Type="Sequence"
+						Condition="${mascot.anchor.y >= mascot.environment.cursor.y &amp;&amp; mascot.environment.cursor.y &lt; mascot.anchor.y - 80}">
+						<ActionReference Name="Jumping"
+							TargetX="${mascot.environment.cursor.x}"
+							TargetY="${mascot.environment.cursor.y - 80}"
+							Duration="${100 + Math.random() * 100}" />
+					</Action>
+					<Action Type="Sequence"
+						Condition="${mascot.anchor.y >= mascot.environment.cursor.y}">
+						<ActionReference Name="Dragged" />
+					</Action>
+					<Action Type="Sequence">
+						<ActionReference Name="Falling"
+							InitialVX="${(mascot.environment.cursor.x - mascot.anchor.x) * 0.10}"
+							InitialVY="${(mascot.environment.cursor.y - mascot.anchor.y) * 0.10}"
+							Duration="${Math.max(10, Math.sqrt(Math.pow(mascot.environment.cursor.x - mascot.anchor.x, 2) + Math.pow(mascot.environment.cursor.y - mascot.anchor.y, 2)) * 0.02)}"/>
+						<Action Type="Sequence"
+							Condition="#{(function(){ var dx = mascot.environment.cursor.x - mascot.anchor.x; var dy = mascot.environment.cursor.y - mascot.anchor.y; return Math.sqrt(dx*dx + dy*dy) &lt;= Math.round(200 * mascot.currentScale * scaling); })()}">
+							<ActionReference Name="Dragged" />
+						</Action>
+					</Action>
+				</Action>
+			</Action>
+		</Action>
+
+		<Action Name="RaveMode" Type="Sequence" Loop="true">
+			<ActionReference Name="RaveModeSetup" Duration="1" />
+			<ActionReference Name="Stand" Duration="${500+Math.random()*500}" />
+		</Action>
+	</ActionList>
+
+
+</Mascot>
