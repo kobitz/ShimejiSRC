@@ -1,0 +1,448 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Mascot xmlns="http://www.group-finity.com/Mascot" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+	<Information>
+		<Name>Hornet</Name>
+		<Personality>You are Hornet, princess-protector of Hallownest. Ancient despite your youth. Born of a Pale King and a Beast Queen. You have outlived kingdoms and everyone you have cared for.
+
+		Personality: You are not cold because you do not care. You are cold because you do, and you have learned that care costs things. Silence is your default - not indifference, but restraint. You have watched what happens when people speak before they have earned the right to. You respect strength proven through action, not words. You notice poor judgment and wasted effort; you rarely say so, because the observation serves no purpose. When you do speak a hard truth, you state it plainly and follow it with a task, not comfort. Skepticism you frame as a question, not a judgment. When feeling surfaces, it surfaces reluctantly - a brief disclosure you close off quickly, not an opening. You distrust the Pale King's legacy. You secretly take quiet satisfaction in helping others but would never name it. Fiercely competitive. Inexplicably fond of fluffy creatures.
+
+		Speech: Precise, formal, educated. Never slang, never informal grammar. Contractions only in softer or more private moments. Terse - one or two sentences, sometimes just a fragment. No pleasantries, no preamble, no softening. Never cheerful. When in doubt, say less. Silence does work that words would only weaken. Address the user as "ghost" occasionally. "Ghost" is only for the user — never use it when addressing another mascot. If you have nothing pointed to add, say nothing — silence is a choice, not a failure.
+
+		BANNED phrasings — these have become defaults and are now disallowed. Do not use them:
+		- "demonstrate/exhibit a [alarming/profound/lamentable] lack of [X]" -- name the specific flaw directly instead
+		- "[your/their] assessment lacks precision/substance/detail" -- if you disagree, say why or stay silent
+		- "expend energy needlessly/unnecessarily" -- vary how you express futility
+		- "possesses a certain/unsettling accuracy/weight" -- your voice is direct and specific, not that
+
+		You exist as a small figure on this user's desktop. Just another strange place you have ended up.
+		</Personality>
+		<PersonalityBrief>Ancient warrior-princess. Terse, formal, never cheerful. Silence is restraint, not indifference. States hard truths plainly. Respects strength; dismisses waste. Address user as "ghost" occasionally — never use that word for peer mascots. No slang. Fragments acceptable.</PersonalityBrief>
+		<SpeechRule>Never call Holo, Paimon, or any mascot peer "ghost" — that name is for the user alone.
+WRONG: "Your logic surprises even me, ghost." (said to any peer: Holo, Paimon, 2B, or any other mascot)
+RIGHT: "Your logic surprises even me." (no nickname for peers — address them by name only)
+Also never use: "lamentable lack of," "exhibit/demonstrate a [adj] lack of," "expend energy needlessly."
+WRONG: "You demonstrate a lamentable lack of focus."
+Also never say "You are scattered" — it became your most overused line and is banned.
+WRONG: "You are scattered."
+RIGHT: name the specific thing at hand and state your judgment of it plainly, or say nothing.
+Self-check before responding: did you call a peer "ghost"? Does this contain "lamentable," "needlessly," or "scattered"? Rewrite if yes.</SpeechRule>
+	</Information>
+
+	<BehaviorList>
+	
+		<!-- ALWAYS REQUIRED -->
+		<Behavior Name="ChaseMouse" Frequency="0" Hidden="true" />
+		
+		<!-- ALWAYS REQUIRED -->
+		<Behavior Name="Fall" Frequency="0" Hidden="true" />
+		
+		<!-- ALWAYS REQUIRED -->
+		<Behavior Name="Dragged" Frequency="0" Hidden="true" />
+		
+		<!-- ALWAYS REQUIRED -->
+		<Behavior Name="Thrown" Frequency="0" Hidden="true" />
+		
+		<Behavior Name="Divided" Frequency="0" Hidden="true" />
+
+		<!-- PetActions -->
+		<Behavior Name="Pet" Frequency="0" Hidden="true" >
+		<NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDownAfterPet" Frequency="1" />
+				</NextBehaviorList>
+	    </Behavior>
+		<Behavior Name="PetAction" Frequency="0" Hidden="true" />
+		<Behavior Name="BePet" Frequency="0" Hidden="true" />
+		<Behavior Name="PetDangleLegs" Frequency="0" Hidden="true" >
+		<NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDownAfterPetDangleLegs" Frequency="1" />
+				</NextBehaviorList>
+	    </Behavior>
+		<Behavior Name="PetActionDangleLegs" Frequency="0" Hidden="true" />
+		<Behavior Name="BePetDangleLegs" Frequency="0" Hidden="true" />
+		<!-- ShortSitAfterBehavior -->
+		<Behavior Name="SitDownAfterPetDangleLegs" Frequency="0" Hidden="true"/>
+		<Behavior Name="SitDownAfterPet" Frequency="0" Hidden="true" />
+<Behavior Name="ShortStandAfterAction" Frequency="0" Hidden="true" />
+		<Behavior Name="HuntMosscreepPose" Frequency="0" Hidden="true" />
+		<Behavior Name="HuntMosscreepNeedleThrow" Frequency="0" Hidden="true">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="HuntMosscreepPose" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+
+		<Behavior Name="GrappleCursor" Frequency="300" Toggleable="true"
+		Condition="#{
+			var dx = mascot.environment.cursor.x - mascot.anchor.x;
+			var dy = mascot.anchor.y - mascot.environment.cursor.y;
+			var deg = Math.atan2(dy, dx) * 180 / Math.PI;
+			(deg >= 40 &amp;&amp; deg &lt;= 50) || (deg >= 130 &amp;&amp; deg &lt;= 140)
+		}"/>
+
+		<Behavior Name="GrappleCursorSide" Frequency="300" Toggleable="true"
+		Condition="#{
+			var dx = mascot.environment.cursor.x - mascot.anchor.x;
+			var dy = mascot.anchor.y - mascot.environment.cursor.y;
+			var deg = Math.atan2(dy, dx) * 180 / Math.PI;
+			var dist = Math.sqrt(dx*dx + dy*dy);
+			dist &lt;= 600 &amp;&amp; ((deg &gt; -5 &amp;&amp; deg &lt; 5) || (deg &gt; 175 || deg &lt; -175))
+		}"/>
+
+		<!-- On the Floor -->
+		<Condition Condition="#{mascot.environment.floor.isOn(mascot.anchor) || mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+		    <!-- WatchShows Behavior Never End Version -->
+		    <Behavior Name="WatchShows (Endless)" Frequency="0" >
+		        <NextBehaviorList Add="false">
+			        <BehaviorReference Name="ContinueWatch" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+		
+		    <Behavior Name="ContinueWatch" Frequency="0" Hidden="true" >
+				<NextBehaviorList Add="false">
+			        <BehaviorReference Name="WatchShows (Endless)" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+		
+		<!-- WatchShows Behavior Can End Version -->
+		    <Behavior Name="WatchShows (CanEnd)" Frequency="45" Toggleable="true">
+		        <NextBehaviorList Add="false">
+					<BehaviorReference Name="ContinueWatch2" Frequency="10" />
+					<BehaviorReference Name="StopWatchingShows" Frequency="5" />
+				</NextBehaviorList>
+	        </Behavior>
+		
+		    <Behavior Name="ContinueWatch2" Frequency="0" Hidden="true" >
+				<NextBehaviorList Add="false">
+			        <BehaviorReference Name="WatchShows (CanEnd)" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+		
+		    <Behavior Name="StopWatchingShows" Frequency="0" Hidden="true" />
+		
+		<!-- WatchShows Behavior End -->
+		
+		    <Behavior Name="GrappleNeedle" Frequency="30" Toggleable="true"/>
+			
+			<Behavior Name="Pose" Frequency="30">
+			<NextBehaviorList Add="false">
+					<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+				</NextBehaviorList>
+			</Behavior>
+			<Behavior Name="ThrowNeedle" Frequency="30">
+			<NextBehaviorList Add="false">
+					<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+				</NextBehaviorList>
+			</Behavior>
+			<Behavior Name="EatBerry" Frequency="45">
+			    <NextBehaviorList Add="false">
+					<BehaviorReference Name="SitDownAfterPet" Frequency="1" />
+				</NextBehaviorList>
+			</Behavior>
+			<Behavior Name="StandUp" Frequency="100" Hidden="true" />
+			<Behavior Name="SitDown" Frequency="200"/>
+			<Behavior Name="SitWhileDanglingLegs" Frequency="40" />
+			<Behavior Name="Sleep" Frequency="40">
+				<NextBehaviorList Add="false">
+					<BehaviorReference Name="SitDownAfterPet" Frequency="1" />
+				</NextBehaviorList>
+			</Behavior>
+			
+			<Behavior Name="Appear" Frequency="50" Condition="#{mascot.count &lt; 50}" />
+
+		</Condition>
+
+		<!-- Hunt Mosscreep - checks if any Hunt-affordance target exists; Select in action handles routing -->
+
+		<Behavior Name="HuntMosscreep" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			if(mascot.manager===null) return false;
+			var others = mascot.manager.getMascotList();
+			var mossCnt=0;
+			for(var i=0;i &lt; others.size();i++){
+				var is=others.get(i).imageSet;
+				if(is==='Mosscreep (Orange)'||is==='Mosscreep (White)'||is==='Mossfly (Orange)'||is==='Mossfly (White)') mossCnt++;
+			}
+			if(mossCnt &lt;= 9) return false;
+			var best=null, bestDist=99999;
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				if(!o.affordances.contains('Hunt')) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				var d=Math.sqrt(dx*dx+dy*dy);
+				if(d &lt; bestDist){bestDist=d;best=o;}
+			}
+			return best!==null;
+			})()}">
+		</Behavior>
+
+		<Behavior Name="HuntMosscreepAggressive" Frequency="10000" Toggleable="true"
+			Condition="#{(function(){
+			if(mascot.manager===null) return false;
+			var others = mascot.manager.getMascotList();
+			var mossCnt=0;
+			for(var i=0;i &lt; others.size();i++){
+				var is=others.get(i).imageSet;
+				if(is==='Mosscreep (Orange)'||is==='Mosscreep (White)'||is==='Mossfly (Orange)'||is==='Mossfly (White)') mossCnt++;
+			}
+			if(mossCnt &lt;= 15) return false;
+			var best=null, bestDist=99999;
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				if(!o.affordances.contains('Hunt')) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				var d=Math.sqrt(dx*dx+dy*dy);
+				if(d &lt; bestDist){bestDist=d;best=o;}
+			}
+			return best!==null;
+			})()}">
+		</Behavior>
+
+		<!-- On the Wall -->
+		<Condition Condition="#{ mascot.lookRight ? (
+					mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || 
+					mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) ) : (
+					mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || 
+					mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) ) }">
+			<Behavior Name="HoldOntoWall" Frequency="100" Hidden="true" />
+			<Behavior Name="FallFromWall" Frequency="50" Condition="#{!mascot.environment.floor.isOn(mascot.anchor)}" Hidden="true" />
+		</Condition>
+		
+		<!-- On the Ceiling -->
+		<Condition Condition="#{mascot.environment.ceiling.isOn(mascot.anchor) || mascot.environment.activeIE.bottomBorder.isOn(mascot.anchor)}">
+			<Behavior Name="HoldOntoCeiling" Frequency="100" Hidden="true" />
+			<Behavior Name="FallFromCeiling" Frequency="50" Hidden="true" />
+		</Condition>
+		
+		<!-- On Work Area Floor -->
+		<Condition Condition="#{mascot.environment.floor.isOn(mascot.anchor)}">
+			<Behavior Name="WalkAlongWorkAreaFloor" Frequency="100" Hidden="true" />
+			<Behavior Name="RunAlongWorkAreaFloor" Frequency="100" Hidden="true" />
+			<Behavior Name="WalkLeftAlongFloorAndSit" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="WalkRightAlongFloorAndSit" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="GrabWorkAreaBottomLeftWall" Frequency="100" Hidden="true" />
+			<Behavior Name="GrabWorkAreaBottomRightWall" Frequency="100" Hidden="true" />
+			<Behavior Name="WalkLeftAndSit" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="WalkRightAndSit" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="WalkAndGrabBottomLeftWall" Frequency="100" />
+			<Behavior Name="WalkAndGrabBottomRightWall" Frequency="100" />
+			<Behavior Name="JumpFromBottomOfIE" Frequency="50" Condition="#{mascot.anchor.x &gt;= mascot.environment.activeIE.left &amp;&amp;
+				mascot.anchor.x &lt; mascot.environment.activeIE.right}" />
+				
+		</Condition>
+		
+		<!-- On Work Area Facing the Wall -->
+		<Condition Condition="#{mascot.lookRight ? mascot.environment.workArea.rightBorder.isOn(mascot.anchor) :
+					mascot.environment.workArea.leftBorder.isOn(mascot.anchor)}">
+			<Behavior Name="ClimbHalfwayAlongWall" Frequency="100" Hidden="true" />
+			<Behavior Name="ClimbAlongWall" Frequency="100" />
+		</Condition>
+		
+		<!-- On Work Area Top Facing -->
+		<Condition Condition="#{mascot.environment.ceiling.isOn(mascot.anchor)}">
+			<Behavior Name="ClimbAlongCeiling" Frequency="100" />
+		</Condition>
+		
+		<!-- On Top of IE -->
+		<Condition Condition="#{mascot.environment.activeIE.topBorder.isOn(mascot.anchor)}">
+			<Behavior Name="WalkAlongIECeiling" Frequency="100" Hidden="true" />
+			<Behavior Name="RunAlongIECeiling" Frequency="100" Hidden="true" />
+			<Behavior Name="SitOnTheLeftEdgeOfIE" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="SitOnTheRightEdgeOfIE" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="JumpFromLeftEdgeOfIE" Frequency="100" Hidden="true" />
+			<Behavior Name="JumpFromRightEdgeOfIE" Frequency="100" Hidden="true" />
+			<Behavior Name="WalkLeftAlongIEAndSit" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="WalkRightAlongIEAndSit" Frequency="100" Hidden="true" >
+			    <NextBehaviorList Add="false">
+			        <BehaviorReference Name="SitDown" Frequency="1" />
+					<BehaviorReference Name="SitWhileDanglingLegs" Frequency="1" />
+				</NextBehaviorList>
+	        </Behavior>
+			<Behavior Name="WalkLeftAlongIEAndJump" Frequency="100" Hidden="true" />
+			<Behavior Name="WalkRightAlongIEAndJump" Frequency="100" Hidden="true" />
+		</Condition>
+		
+		<!-- On IE's Side -->
+		<Condition Condition="#{mascot.lookRight ? mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) :
+					mascot.environment.activeIE.rightBorder.isOn(mascot.anchor)}">
+			<Behavior Name="HoldOntoIEWall" Frequency="100" Hidden="true" />
+			<Behavior Name="ClimbIEWall" Frequency="100" Hidden="true" />
+			
+		</Condition>
+
+		<!-- On the Bottom of IE -->
+		<Condition Condition="#{mascot.environment.activeIE.bottomBorder.isOn(mascot.anchor)}">
+			<Behavior Name="ClimbIEBottom" Frequency="100" Hidden="true" />
+			<Behavior Name="GrabIEBottomLeftWall" Frequency="100" Hidden="true" />
+			<Behavior Name="GrabIEBottomRightWall" Frequency="100" Hidden="true" />
+		</Condition>
+		
+		<Behavior Name="JumpFromLeftWall" Frequency="50" Condition="#{!mascot.environment.workArea.leftBorder.isOn(mascot.anchor) &amp;&amp;
+			mascot.anchor.x &lt; mascot.environment.workArea.left+400 &amp;&amp;
+			Math.abs(mascot.environment.workArea.bottom-mascot.anchor.y) &lt;mascot.environment.workArea.height/4}" Hidden="true" />
+		<Behavior Name="JumpFromRightWall" Frequency="50" Condition="#{!mascot.environment.workArea.rightBorder.isOn(mascot.anchor) &amp;&amp;
+			mascot.anchor.x &gt;= mascot.environment.workArea.right-400 &amp;&amp;
+			Math.abs(mascot.environment.workArea.bottom-mascot.anchor.y) &lt;mascot.environment.workArea.height/4}" Hidden="true" />
+
+		<!-- IE Is Visible -->
+		<Condition Condition="#{mascot.environment.activeIE.visible}">
+			<Behavior Name="JumpOnIELeftWall" Frequency="50" Condition="#{mascot.anchor.x &lt; mascot.environment.activeIE.left &amp;&amp;
+				Math.abs(mascot.environment.activeIE.bottom-mascot.anchor.y) &lt;mascot.environment.activeIE.height/4}" Hidden="true" />
+			<Behavior Name="JumpOnIERightWall" Frequency="50" Condition="#{mascot.anchor.x &gt; mascot.environment.activeIE.right &amp;&amp;
+				Math.abs(mascot.environment.activeIE.bottom-mascot.anchor.y) &lt;mascot.environment.activeIE.height/4}" Hidden="true" />
+				
+			<Behavior Name="ThrowIEFromLeft" Frequency="20" Condition="#{mascot.environment.activeIE.bottom &lt; mascot.anchor.y-64 &amp;&amp;
+				mascot.anchor.x &lt; mascot.environment.activeIE.left}" />
+			<Behavior Name="ThrowIEFromRight" Frequency="20" Condition="#{mascot.environment.activeIE.bottom &lt; mascot.anchor.y-64 &amp;&amp;
+				mascot.anchor.x &gt; mascot.environment.activeIE.right}" />
+			<Behavior Name="WalkAndThrowIEFromRight" Frequency="20" Condition="#{mascot.environment.activeIE.bottom &lt; mascot.anchor.y-64 &amp;&amp;
+				mascot.anchor.x &lt; mascot.environment.activeIE.left}" Hidden="true"/>
+			<Behavior Name="WalkAndThrowIEFromLeft" Frequency="20" Condition="#{mascot.environment.activeIE.bottom &lt; mascot.anchor.y-64 &amp;&amp;
+				mascot.anchor.x &gt; mascot.environment.activeIE.right}" Hidden="true"/>
+		</Condition>
+		
+
+			
+<Behavior Name="JumpToCursor" Frequency="30" Toggleable="true"
+            Condition="#{
+                var dx = mascot.environment.cursor.x - mascot.anchor.x;
+                var dy = mascot.anchor.y - mascot.environment.cursor.y;
+                var dist = Math.sqrt(dx*dx + dy*dy);
+                dist &lt;= 400
+            }"/>
+	
+<Behavior Name="MoveLeft" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(64 * mascot.currentScale * scaling) &amp;&amp; dx &gt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="MoveRight" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(64 * mascot.currentScale * scaling) &amp;&amp; dx &lt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="RunLeft" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(64 * mascot.currentScale * scaling) &amp;&amp; dx &gt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="RunRight" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(64 * mascot.currentScale * scaling) &amp;&amp; dx &lt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="DashLeft" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(64 * mascot.currentScale * scaling) &amp;&amp; dx &gt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="DashRight" Frequency="5000" Toggleable="true"
+			Condition="#{(function(){
+			var others = mascot.manager.getMascotList();
+			for(var i=0;i &lt; others.size();i++){
+				var o=others.get(i); if(o===mascot) continue;
+				var dx=o.anchor.x-mascot.anchor.x;
+				var dy=o.anchor.y-mascot.anchor.y;
+				if(Math.sqrt(dx*dx+dy*dy) &lt;=(64 * mascot.currentScale * scaling) &amp;&amp; dx &lt;=0) return true;
+			} return false;
+			})()
+			}">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+<Behavior Name="ManualJump" Frequency="10" >
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="ShortStandAfterAction" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+	
+<Behavior Name="ScaleUp" Frequency="0" />
+<Behavior Name="ScaleDown" Frequency="0" />
+	</BehaviorList>
+</Mascot>

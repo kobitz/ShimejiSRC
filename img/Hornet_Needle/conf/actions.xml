@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Mascot xmlns="http://www.group-finity.com/Mascot" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+	<ActionList>
+		<Action Name="Look" Type="Embedded" Class="com.group_finity.mascot.action.Look" />
+		<Action Name="Offset" Type="Embedded" Class="com.group_finity.mascot.action.Offset" />
+
+		<!-- Standing -->
+
+		<Action Name="Stand" Type="Stay" Draggable="false" >
+			<Animation>
+				<Pose Image="/invis.png" ImageAnchor="40,40" Velocity="0,0" Duration="1" />
+			</Animation>
+		</Action>
+
+		<Action Name="Fly" Type="Move" Draggable="false" >
+			<Animation>
+				<Pose Image="/shime2.png" ImageAnchor="40,40" Velocity="-150,-150" Duration="4" />
+			</Animation>
+		</Action>
+
+		<Action Name="FlyCursor" Type="Move" Draggable="false" >
+    		<Animation>
+        		<Pose Image="/shime2.png" ImageAnchor="40,80" Velocity="-150,-150" Duration="4" />
+    		</Animation>
+		</Action>
+
+		<Action Name="FlyCursorSide" Type="Move" Draggable="false" >
+			<Animation>
+				<Pose Image="/shime2_side.png" ImageAnchor="40,80" Velocity="-150,0" Duration="4" />
+			</Animation>
+		</Action>
+
+		<Action Name="GrabWall" Type="Stay" BorderType="Wall" Draggable="false" >
+			<Animation>
+				<Pose Image="/shime1.png" ImageAnchor="40,40" Velocity="0,0" Duration="4" />
+			</Animation>
+		</Action>
+
+		<Action Name="GrabCeiling" Type="Stay" BorderType="Ceiling" Draggable="false" >
+			<Animation>
+				<Pose Image="/shime1.png" ImageAnchor="40,40" Velocity="0,0" Duration="4" />
+			</Animation>
+		</Action>
+
+		<Action Name="Jumping" Type="Embedded" Class="com.group_finity.mascot.action.Jump"
+            VelocityParam="20" Draggable="false">
+			<Animation>
+				<Pose Image="/invis.png" ImageAnchor="40,40" Velocity="0,0" Duration="1" />
+			</Animation>
+		</Action>
+
+		<Action Name="Falling" Type="Embedded" Class="com.group_finity.mascot.action.Fall"
+            RegistanceX="0.05" RegistanceY="0.1" Gravity="4">
+            <Animation>
+                <Pose Image="/invis.png" ImageAnchor="40,40" Velocity="0,0" Duration="1" />
+            </Animation>
+        </Action>
+
+		<Action Name="SelfDestruct" Type="Embedded" Class="com.group_finity.mascot.action.SelfDestruct" Draggable="false">
+			<Animation>
+				<Pose ImageAnchor="40,40" Velocity="0,0" Duration="1" />
+			</Animation>
+		</Action>
+
+	
+		<Action Name="PersonalSpace"
+				Type="Embedded"
+				Class="com.group_finity.mascot.action.PersonalSpace"
+				Threshold="200"
+				FleeDistance="300">
+			<Animation>
+				<Pose Image="/shime1.png" ImageAnchor="64,128" Velocity="-4,0" Duration="6" />
+			</Animation>
+		</Action>
+	</ActionList>
+
+	<!-- Actual Behavior -->
+	<ActionList>
+
+		<Action Name="StandUp" Type="Sequence" Loop="false">
+			<ActionReference Name="Stand" Duration="1" />
+            <ActionReference Name="SelfDestruct" />
+		</Action>
+
+		<Action Name="Spawn" Type="Sequence" Loop="false">
+			<ActionReference Name="Stand" Duration="1" />
+			<ActionReference Name="Fly" TargetX="${
+				mascot.environment.activeIE.visible &amp;&amp; mascot.anchor.y &gt; mascot.environment.activeIE.top &amp;&amp; !mascot.environment.activeIE.contains( mascot.anchor.x, mascot.anchor.y ) &amp;&amp; mascot.environment.activeIE.contains( mascot.lookRight ? mascot.anchor.x + mascot.environment.workArea.bottom - mascot.environment.activeIE.bottom : mascot.anchor.x - mascot.environment.workArea.bottom + mascot.environment.activeIE.bottom, mascot.anchor.y - mascot.environment.workArea.bottom + mascot.environment.activeIE.bottom )
+					? ( mascot.lookRight ? mascot.anchor.x + mascot.environment.workArea.bottom - mascot.environment.activeIE.bottom : mascot.anchor.x - mascot.environment.workArea.bottom + mascot.environment.activeIE.bottom )
+					: mascot.environment.activeIE.visible &amp;&amp; mascot.anchor.y &gt; mascot.environment.activeIE.top &amp;&amp; !mascot.environment.activeIE.contains( mascot.anchor.x, mascot.anchor.y ) &amp;&amp; mascot.environment.activeIE.contains( mascot.lookRight ? mascot.environment.activeIE.left : mascot.environment.activeIE.right, mascot.lookRight ? mascot.anchor.y - mascot.environment.activeIE.left + mascot.anchor.x : mascot.anchor.y + mascot.environment.activeIE.right - mascot.anchor.x )
+						? ( mascot.lookRight ? mascot.environment.activeIE.left : mascot.environment.activeIE.right )
+						: ( mascot.lookRight ? ( mascot.environment.workArea.right - mascot.anchor.x ) : ( mascot.anchor.x - mascot.environment.workArea.left ) ) &lt;= ( mascot.environment.workArea.top + mascot.anchor.y )
+							? ( mascot.lookRight ? mascot.environment.workArea.right : mascot.environment.workArea.left )
+							: ( mascot.lookRight ? ( mascot.anchor.x + ( mascot.environment.workArea.top + mascot.anchor.y ) ) : ( mascot.anchor.x - ( mascot.environment.workArea.top + mascot.anchor.y ) ) )}"
+				TargetY="${
+				mascot.environment.activeIE.visible &amp;&amp; mascot.anchor.y &gt; mascot.environment.activeIE.top &amp;&amp; !mascot.environment.activeIE.contains( mascot.anchor.x, mascot.anchor.y ) &amp;&amp; mascot.environment.activeIE.contains( mascot.lookRight ? mascot.anchor.x + mascot.environment.workArea.bottom - mascot.environment.activeIE.bottom : mascot.anchor.x - mascot.environment.workArea.bottom + mascot.environment.activeIE.bottom, mascot.anchor.y - mascot.environment.workArea.bottom + mascot.environment.activeIE.bottom )
+					? mascot.environment.activeIE.bottom
+					: mascot.environment.activeIE.visible&amp;&amp; mascot.anchor.y &gt; mascot.environment.activeIE.top &amp;&amp; mascot.environment.activeIE.contains( mascot.lookRight ? mascot.environment.activeIE.left : mascot.environment.activeIE.right, mascot.lookRight ? mascot.anchor.y - mascot.environment.activeIE.left + mascot.anchor.x : mascot.anchor.y + mascot.environment.activeIE.right - mascot.anchor.x )
+						? ( mascot.lookRight ? mascot.anchor.y - mascot.environment.activeIE.left + mascot.anchor.x : mascot.anchor.y + mascot.environment.activeIE.right - mascot.anchor.x )
+						: ( mascot.lookRight ? ( mascot.environment.workArea.right - mascot.anchor.x ) : ( mascot.anchor.x - mascot.environment.workArea.left ) ) &lt;= ( mascot.environment.workArea.top + mascot.anchor.y )
+							? mascot.anchor.y - ( mascot.lookRight ? ( mascot.environment.workArea.right - mascot.anchor.x ) : ( mascot.anchor.x - mascot.environment.workArea.left ) )
+							: mascot.environment.workArea.top}" />
+			<ActionReference Name="HoldOntoWall" Condition="#{
+				mascot.environment.workArea.rightBorder.isOn(mascot.anchor) ||
+				mascot.environment.workArea.leftBorder.isOn(mascot.anchor) ||
+				mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) ||
+				mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) }" />
+			<ActionReference Name="HoldOntoCeiling" />
+			<ActionReference Name="Stand" Duration="100" />
+		</Action>
+
+		<Action Name="SpawnToCursor" Type="Sequence" Loop="false">
+			<ActionReference Name="FlyCursor"
+				TargetX="${mascot.environment.cursor.x}"
+				TargetY="${mascot.environment.cursor.y}" />
+			<ActionReference Name="StickAtCursor" Duration="12" />
+			<ActionReference Name="SelfDestruct" />
+		</Action>
+		
+		<Action Name="SpawnToCursorSide" Type="Sequence" Loop="false">
+			<ActionReference Name="FlyCursorSide"
+				TargetX="${mascot.environment.cursor.x}"
+				TargetY="${mascot.environment.cursor.y}" />
+			<ActionReference Name="StickAtCursorSide" Duration="12" />
+			<ActionReference Name="SelfDestruct" />
+		</Action>
+
+		<Action Name="HoldOntoWall" Type="Sequence" Loop="false">
+			<ActionReference Name="GrabWall" Duration="25" />
+			<ActionReference Name="SelfDestruct" />
+		</Action>
+
+		<Action Name="HoldOntoCeiling" Type="Sequence" Loop="false">
+			<ActionReference Name="GrabCeiling" Duration="15" />
+			<ActionReference Name="SelfDestruct" />
+		</Action>
+
+		<Action Name="Fall" Type="Sequence" Loop="false">
+            <ActionReference Name="Falling" Duration="1" />
+            <ActionReference Name="SelfDestruct" />
+        </Action>
+		<Action Name="StickAtCursor" Type="Stay" Draggable="false" >
+			<Animation>
+				<Pose Image="/shime1.png" ImageAnchor="40,80" Velocity="0,0" Duration="12" />
+			</Animation>
+		</Action>
+
+		<Action Name="Dragged" Type="Embedded" Class="com.group_finity.mascot.action.Dragged" Draggable="true" >
+			<Animation>
+				<Pose Image="/shime1.png" ImageAnchor="40,80" Velocity="0,0" Duration="12" />
+			</Animation>
+		</Action>
+
+		<Action Name="StickAtCursorSide" Type="Stay" Draggable="false" >
+			<Animation>
+				<Pose Image="/shime1_side.png" ImageAnchor="91,80" Velocity="0,0" Duration="24" />
+			</Animation>
+		</Action>
+
+	</ActionList>
+
+</Mascot>

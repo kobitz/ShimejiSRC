@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Mascot xmlns="http://www.group-finity.com/Mascot" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+	<BehaviorList>
+	
+		<Behavior Name="StandUp" Frequency="200" Hidden="true" />
+
+		<Behavior Name="Spawn" Frequency="0" Hidden="true" >
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="StandUp" Frequency="100" />
+			</NextBehaviorList>
+		</Behavior>
+
+		<Behavior Name="SpawnToCursor" Frequency="0" Hidden="true" >
+    		<NextBehaviorList Add="false">
+        		<BehaviorReference Name="StandUp" Frequency="100" />
+    		</NextBehaviorList>
+		</Behavior>
+
+		<Behavior Name="SpawnToCursorSide" Frequency="0" Hidden="true" >
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="StandUp" Frequency="100" />
+			</NextBehaviorList>
+		</Behavior>
+
+		<Behavior Name="Fall" Frequency="0" Hidden="true" />
+
+		<Behavior Name="Dragged" Frequency="0" Hidden="true" />
+
+		<!-- On the Wall -->
+		<Condition Condition="#{ mascot.lookRight ? (
+					mascot.environment.workArea.rightBorder.isOn(mascot.anchor) || 
+					mascot.environment.activeIE.leftBorder.isOn(mascot.anchor) ) : (
+					mascot.environment.workArea.leftBorder.isOn(mascot.anchor) || 
+					mascot.environment.activeIE.rightBorder.isOn(mascot.anchor) ) }">
+			<Behavior Name="HoldOntoWall" Frequency="100" Hidden="true" />
+		</Condition>
+		
+		<!-- On the Ceiling -->
+		<Condition Condition="#{mascot.environment.ceiling.isOn(mascot.anchor) || mascot.environment.activeIE.bottomBorder.isOn(mascot.anchor)}">
+			<Behavior Name="HoldOntoCeiling" Frequency="100" Hidden="true" />
+		</Condition>
+
+	
+		<Behavior Name="PersonalSpace" Frequency="15" Toggleable="true">
+			<NextBehaviorList Add="false">
+				<BehaviorReference Name="Fall" Frequency="1" />
+			</NextBehaviorList>
+		</Behavior>
+	</BehaviorList>
+</Mascot>
