@@ -16,11 +16,3 @@ driveembed.txt
 dist/
 cache/
 tools/
-
-# Mascot art is local-only (binary, bloats history); only the default Shimeji set and the icons are tracked.
-# Clean copies of the sets the installer ships live in img/ but stay untracked.
-img/*
-!img/Shimeji/
-!img/icon.ico
-!img/icon.png
-!img/profile.png
