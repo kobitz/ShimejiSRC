@@ -87,6 +87,12 @@ public class SettingsWindow extends javax.swing.JDialog
     private boolean bubbleBg      = false;
     private String ollamaModel    = "gemma4:e2b-it-qat";
     private String visionModel    = "gemma4:e2b-it-qat";
+    private String aiProvider     = "ollama";
+    private String aiBaseUrl      = "";
+    private String aiApiKey       = "";
+    private String aiTextModel    = "";
+    private String aiVisionModel  = "";
+    private String aiEmbeddingModel = "";
     private String whisperModel   = "tiny";
     private int    whisperThreads = 1;
     private int    voicePollMs    = 6000;
@@ -103,6 +109,72 @@ public class SettingsWindow extends javax.swing.JDialog
         initComponents( );
     }
     
+    /**
+     * Fetch model IDs from the selected AI provider for the Settings dropdowns.
+     * Returns an empty list on any error, so the existing entries stay visible.
+     */
+    private static java.util.List<String> fetchModelIds( final String provider,
+                                                         final String baseUrl,
+                                                         final String apiKey )
+    {
+        final java.util.List<String> models = new java.util.ArrayList<>();
+        try
+        {
+            final boolean openai = "openai".equalsIgnoreCase( provider );
+            final String urlStr = openai
+                ? com.group_finity.mascot.assistant.AiSettings.normalizeOpenAiBase( baseUrl ) + "/models"
+                : com.group_finity.mascot.assistant.AiSettings.ollamaBaseFrom( baseUrl ) + "/api/tags";
+            final java.net.URL url = new java.net.URL( urlStr );
+            final java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection( );
+            conn.setRequestMethod( "GET" );
+            conn.setConnectTimeout( 5000 );
+            conn.setReadTimeout( 5000 );
+            if( openai && apiKey != null && !apiKey.trim( ).isEmpty( ) )
+                conn.setRequestProperty( "Authorization", "Bearer " + apiKey.trim( ) );
+
+            final java.io.BufferedReader br = new java.io.BufferedReader(
+                new java.io.InputStreamReader( conn.getInputStream( ), java.nio.charset.StandardCharsets.UTF_8 ) );
+            final StringBuilder sb = new StringBuilder( );
+            String line;
+            while( ( line = br.readLine( ) ) != null ) sb.append( line );
+            br.close( );
+
+            final String json = sb.toString( );
+            final String key = openai ? "\"id\":" : "\"name\":";
+            int idx = 0;
+            while( ( idx = json.indexOf( key, idx ) ) >= 0 )
+            {
+                final int q1 = json.indexOf( '"', idx + key.length( ) );
+                if( q1 < 0 ) break;
+                final int q2 = json.indexOf( '"', q1 + 1 );
+                if( q2 <= q1 ) break;
+                models.add( json.substring( q1 + 1, q2 ) );
+                idx = q2 + 1;
+            }
+        }
+        catch( final Exception ignored )
+        {
+            // Provider unreachable — caller keeps the current dropdown contents.
+        }
+        return models;
+    }
+
+    /**
+     * Keep an instance field in sync with a text field as the user types.
+     * Used so the Save path (which only reads fields) sees edits to controls
+     * built locally inside init().
+     */
+    private static void onDocumentChange( final javax.swing.text.JTextComponent field,
+                                          final java.util.function.Consumer<String> setter )
+    {
+        field.getDocument( ).addDocumentListener( new javax.swing.event.DocumentListener( )
+        {
+            @Override public void insertUpdate( final javax.swing.event.DocumentEvent e ) { setter.accept( field.getText( ) ); }
+            @Override public void removeUpdate( final javax.swing.event.DocumentEvent e ) { setter.accept( field.getText( ) ); }
+            @Override public void changedUpdate( final javax.swing.event.DocumentEvent e ) { setter.accept( field.getText( ) ); }
+        } );
+    }
+
     public boolean init( )
     {
         // initialise controls
@@ -159,6 +231,12 @@ public class SettingsWindow extends javax.swing.JDialog
         bubbleBg       = Boolean.parseBoolean( properties.getProperty( "BubbleBackground", "false" ) );
         ollamaModel    = properties.getProperty( "OllamaModel",   "gemma4:e2b-it-qat" );
         visionModel    = properties.getProperty( "VisionModel",   "gemma4:e2b-it-qat" );
+        aiProvider     = properties.getProperty( "AiProvider",    "ollama" );
+        aiBaseUrl      = properties.getProperty( "AiBaseUrl",     "" );
+        aiApiKey       = com.group_finity.mascot.assistant.AiSettings.storedApiKey( );
+        aiTextModel    = properties.getProperty( "AiTextModel",   "" );
+        aiVisionModel  = properties.getProperty( "AiVisionModel", "" );
+        aiEmbeddingModel = properties.getProperty( "AiEmbeddingModel", "" );
         whisperModel   = properties.getProperty( "WhisperModel",  "tiny" );
         try { whisperThreads = Math.max( 1, Math.min( 16,
             Integer.parseInt( properties.getProperty( "WhisperThreads", "1" ) ) ) ); }
@@ -398,90 +476,190 @@ public class SettingsWindow extends javax.swing.JDialog
         pnlChatBubbles.add(chkBubbleBg);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
 
-        // ── Ollama model selector ─────────────────────────────────────────
-        final javax.swing.JLabel lblModel = new javax.swing.JLabel("Ollama Model:");
+        // ── AI provider / model selectors ─────────────────────────────────
+        final boolean remoteInit = "openai".equalsIgnoreCase( aiProvider );
+        final String initText = remoteInit
+            ? ( aiTextModel.isEmpty( ) ? com.group_finity.mascot.assistant.AiSettings.DEFAULT_OPENAI_MODEL : aiTextModel )
+            : ollamaModel;
+        final String initVision = remoteInit
+            ? ( aiVisionModel.isEmpty( ) ? initText : aiVisionModel )
+            : visionModel;
+        if( remoteInit )
+        {
+            aiTextModel   = initText;
+            aiVisionModel = initVision;
+        }
+
+        final javax.swing.JLabel lblProvider = new javax.swing.JLabel("AI Provider:");
+        lblProvider.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JComboBox<String> cmbProvider = new javax.swing.JComboBox<>(
+            new String[]{ "Local Ollama", "OpenAI-compatible API" });
+        cmbProvider.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        cmbProvider.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
+        cmbProvider.setSelectedIndex( remoteInit ? 1 : 0 );
+
+        final javax.swing.JLabel lblBaseUrl = new javax.swing.JLabel("API Base URL:");
+        lblBaseUrl.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JTextField txtBaseUrl = new javax.swing.JTextField(
+            aiBaseUrl.isEmpty( ) ? com.group_finity.mascot.assistant.AiSettings.DEFAULT_OPENAI_BASE_URL : aiBaseUrl );
+        txtBaseUrl.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        txtBaseUrl.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
+
+        final javax.swing.JLabel lblApiKey = new javax.swing.JLabel("API Key:");
+        lblApiKey.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final javax.swing.JPasswordField txtApiKey = new javax.swing.JPasswordField(aiApiKey, 20);
+        txtApiKey.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        txtApiKey.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
+
+        final javax.swing.JLabel lblKeyHint = new javax.swing.JLabel(
+            "<html>Stored in conf/api.properties (not committed). Set SHIMEJI_AI_API_KEY<br>"
+            + "to keep the key entirely out of the install folder.</html>");
+        lblKeyHint.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        lblKeyHint.setFont(lblKeyHint.getFont().deriveFont(lblKeyHint.getFont().getSize2D() - 1f));
+
+        final javax.swing.JButton btnRefreshModels = new javax.swing.JButton("Load models");
+        btnRefreshModels.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+
+        // ── Text / vision model selectors ─────────────────────────────────
+        final javax.swing.JLabel lblModel = new javax.swing.JLabel("Text Model:");
         lblModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         final javax.swing.JComboBox<String> cmbModel = new javax.swing.JComboBox<>();
         cmbModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         cmbModel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
-        cmbModel.addItem(ollamaModel); // always start with current
+        cmbModel.addItem(initText); // always start with current
 
-        // ── Vision model selector ─────────────────────────────────────────
         final javax.swing.JLabel lblVisionModel = new javax.swing.JLabel("Vision Model:");
         lblVisionModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         final javax.swing.JComboBox<String> cmbVisionModel = new javax.swing.JComboBox<>();
         cmbVisionModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
         cmbVisionModel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
-        cmbVisionModel.addItem(visionModel);
+        cmbVisionModel.addItem(initVision);
 
-        // Fetch available models from Ollama in background — populates both dropdowns.
-        // Capture saved values now: addItem() fires the action listener and would
-        // overwrite the fields before setSelectedItem() runs otherwise.
-        final String savedModel = ollamaModel;
-        final String savedVisionModel = visionModel;
-        new Thread(() -> {
-            try {
-                final String endpoint = Main.getInstance().getProperties()
-                    .getProperty("OllamaEndpoint", "http://localhost:11434");
-                final java.net.URL url = new java.net.URL(endpoint + "/api/tags");
-                final java.net.HttpURLConnection conn =
-                    (java.net.HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(3000);
-                conn.setReadTimeout(3000);
-                final java.io.BufferedReader br = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(conn.getInputStream()));
-                final StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                // Parse "name" fields from JSON
-                final java.util.List<String> models = new java.util.ArrayList<>();
-                final String json = sb.toString();
-                int idx = 0;
-                while ((idx = json.indexOf("\"name\":", idx)) >= 0) {
-                    final int q1 = json.indexOf('"', idx + 7);
-                    final int q2 = json.indexOf('"', q1 + 1);
-                    if (q1 >= 0 && q2 > q1) models.add(json.substring(q1 + 1, q2));
-                    idx = q2 + 1;
-                }
-                if (!models.isEmpty()) {
-                    javax.swing.SwingUtilities.invokeLater(() -> {
-                        cmbModel.removeAllItems();
-                        for (final String m : models) cmbModel.addItem(m);
-                        cmbModel.setSelectedItem(savedModel);
-                        if (cmbModel.getSelectedIndex() < 0) cmbModel.setSelectedIndex(0);
+        final javax.swing.JLabel lblEmbeddingModel = new javax.swing.JLabel(
+            "Embedding Model (optional, semantic drive search):");
+        lblEmbeddingModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        final String initEmbedding = remoteInit && aiEmbeddingModel.isEmpty( )
+            ? com.group_finity.mascot.assistant.AiSettings.DEFAULT_OPENAI_EMBEDDING
+            : aiEmbeddingModel;
+        if( remoteInit && aiEmbeddingModel.isEmpty( ) ) aiEmbeddingModel = initEmbedding;
+        final javax.swing.JTextField txtEmbeddingModel = new javax.swing.JTextField(
+            initEmbedding, 20);
+        txtEmbeddingModel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        txtEmbeddingModel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, 30));
 
-                        cmbVisionModel.removeAllItems();
-                        for (final String m : models) cmbVisionModel.addItem(m);
-                        cmbVisionModel.setSelectedItem(savedVisionModel);
-                        if (cmbVisionModel.getSelectedIndex() < 0) cmbVisionModel.setSelectedIndex(0);
-                    });
-                }
-            } catch (final Exception ex) {
-                // Ollama not running or unreachable — keep current models in dropdowns
-            }
-        }, "ollama-model-fetch").start();
+        // Toggle the remote-only controls.
+        final Runnable updateProviderControls = () -> {
+            final boolean remote = cmbProvider.getSelectedIndex( ) == 1;
+            txtBaseUrl.setEnabled( remote );
+            txtApiKey.setEnabled( remote );
+            txtEmbeddingModel.setEnabled( remote );
+            lblKeyHint.setVisible( remote );
+            btnRefreshModels.setEnabled( true );
+        };
 
-        cmbModel.addActionListener(e -> {
-            final String sel = (String) cmbModel.getSelectedItem();
-            if (sel != null) ollamaModel = sel;
+        // Fetch model IDs for the selected provider in the background.
+        final Runnable refreshModels = () -> new Thread( () -> {
+            final boolean remote = "openai".equals( aiProvider );
+            final java.util.List<String> models = fetchModelIds(
+                remote ? "openai" : "ollama",
+                txtBaseUrl.getText( ).trim( ),
+                new String( txtApiKey.getPassword( ) ).trim( ) );
+            if( models.isEmpty( ) ) return;
+            javax.swing.SwingUtilities.invokeLater( () -> {
+                final String wantText = remote
+                    ? ( aiTextModel.isEmpty( ) ? com.group_finity.mascot.assistant.AiSettings.DEFAULT_OPENAI_MODEL : aiTextModel )
+                    : ollamaModel;
+                final String wantVision = remote
+                    ? ( aiVisionModel.isEmpty( ) ? wantText : aiVisionModel )
+                    : visionModel;
+
+                cmbModel.removeAllItems( );
+                for( final String m : models ) cmbModel.addItem( m );
+                cmbModel.setSelectedItem( wantText );
+                if( cmbModel.getSelectedIndex( ) < 0 && cmbModel.getItemCount( ) > 0 )
+                    cmbModel.setSelectedIndex( 0 );
+
+                cmbVisionModel.removeAllItems( );
+                for( final String m : models ) cmbVisionModel.addItem( m );
+                cmbVisionModel.setSelectedItem( wantVision );
+                if( cmbVisionModel.getSelectedIndex( ) < 0 && cmbVisionModel.getItemCount( ) > 0 )
+                    cmbVisionModel.setSelectedIndex( 0 );
+            });
+        }, "ai-model-fetch" ).start( );
+
+        cmbProvider.addActionListener( e -> {
+            final boolean remote = cmbProvider.getSelectedIndex( ) == 1;
+            aiProvider = remote ? "openai" : "ollama";
+            updateProviderControls.run( );
+            // Show the model names saved for the newly selected provider, then refresh.
+            cmbModel.removeAllItems( );
+            cmbModel.addItem( remote
+                ? ( aiTextModel.isEmpty( ) ? com.group_finity.mascot.assistant.AiSettings.DEFAULT_OPENAI_MODEL : aiTextModel )
+                : ollamaModel );
+            cmbVisionModel.removeAllItems( );
+            cmbVisionModel.addItem( remote
+                ? ( aiVisionModel.isEmpty( )
+                    ? ( aiTextModel.isEmpty( )
+                        ? com.group_finity.mascot.assistant.AiSettings.DEFAULT_OPENAI_MODEL
+                        : aiTextModel )
+                    : aiVisionModel )
+                : visionModel );
+            refreshModels.run( );
         });
 
+        btnRefreshModels.addActionListener( e -> refreshModels.run( ) );
+
+        cmbModel.addActionListener( e -> {
+            final String sel = (String) cmbModel.getSelectedItem( );
+            if( sel == null || sel.isEmpty( ) ) return;
+            if( "openai".equals( aiProvider ) ) aiTextModel = sel;
+            else ollamaModel = sel;
+        });
+
+        cmbVisionModel.addActionListener( e -> {
+            final String sel = (String) cmbVisionModel.getSelectedItem( );
+            if( sel == null || sel.isEmpty( ) ) return;
+            if( "openai".equals( aiProvider ) ) aiVisionModel = sel;
+            else visionModel = sel;
+        });
+
+        updateProviderControls.run( );
+
+        onDocumentChange( txtBaseUrl,        v -> aiBaseUrl = v.trim( ) );
+        onDocumentChange( txtApiKey,         v -> aiApiKey = v );
+        onDocumentChange( txtEmbeddingModel, v -> aiEmbeddingModel = v.trim( ) );
+
+        pnlChatBubbles.add(lblProvider);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(cmbProvider);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(10));
+        pnlChatBubbles.add(lblBaseUrl);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(txtBaseUrl);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(10));
+        pnlChatBubbles.add(lblApiKey);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(txtApiKey);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(lblKeyHint);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(8));
+        pnlChatBubbles.add(btnRefreshModels);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(10));
         pnlChatBubbles.add(lblModel);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
         pnlChatBubbles.add(cmbModel);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
-
-        cmbVisionModel.addActionListener(e -> {
-            final String sel = (String) cmbVisionModel.getSelectedItem();
-            if (sel != null) visionModel = sel;
-        });
-
         pnlChatBubbles.add(lblVisionModel);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
         pnlChatBubbles.add(cmbVisionModel);
         pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+        pnlChatBubbles.add(lblEmbeddingModel);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(2));
+        pnlChatBubbles.add(txtEmbeddingModel);
+        pnlChatBubbles.add(javax.swing.Box.createVerticalStrut(12));
+
+        // Populate the dropdowns for the initially selected provider.
+        refreshModels.run( );
 
         // ── Voice poll interval ───────────────────────────────────────────
         // Snap to multiples of 40 ms; round loaded value to nearest multiple
@@ -549,8 +727,12 @@ public class SettingsWindow extends javax.swing.JDialog
         pnlChatBubbles.add(sldThreads);
         pnlChatBubbles.add(javax.swing.Box.createVerticalGlue());
 
-        // Add Chat Bubbles tab, then ensure About stays last
-        pnlTabs.addTab("Chat Bubbles", pnlChatBubbles);
+        // Add Chat Bubbles tab in a scroll pane: the AI/provider controls make the
+        // tab taller than the dialog on smaller screens.
+        final javax.swing.JScrollPane scrChatBubbles = new javax.swing.JScrollPane( pnlChatBubbles );
+        scrChatBubbles.setBorder( null );
+        scrChatBubbles.getVerticalScrollBar( ).setUnitIncrement( 16 );
+        pnlTabs.addTab("Chat Bubbles", scrChatBubbles);
         // Move About to end if it exists
         final int aboutIdx = pnlTabs.indexOfTab("About");
         if( aboutIdx >= 0 && aboutIdx != pnlTabs.getTabCount() - 1 )
@@ -2211,6 +2393,31 @@ public class SettingsWindow extends javax.swing.JDialog
                 properties.setProperty( "BubbleBackground", String.valueOf( bubbleBg ) );
                 properties.setProperty( "OllamaModel",  ollamaModel );
                 properties.setProperty( "VisionModel",  visionModel );
+                if( "openai".equals( aiProvider ) && !"true".equals( properties.getProperty( "AiRemoteAcknowledged" ) ) )
+                {
+                    final int answer = JOptionPane.showConfirmDialog( this,
+                        "API mode sends data to the provider you chose (and its logs may keep it):\n"
+                        + "  - what you type and say to a mascot, and its memory of you\n"
+                        + "  - screenshots when a mascot looks at your screen\n"
+                        + "  - transcripts of your microphone and of audio playing on this computer\n"
+                        + "  - window titles, what you are working on, and your recent-days activity summary\n"
+                        + "  - file names from your drives when you ask about files\n\n"
+                        + "Speech-to-text, window and file actions, and sensors stay on this computer.\n"
+                        + "Use API mode anyway? (No keeps the local Ollama setup.)",
+                        "Use a cloud / API provider?", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE );
+                    if( answer == JOptionPane.YES_OPTION )
+                        properties.setProperty( "AiRemoteAcknowledged", "true" );
+                    else
+                        aiProvider = "ollama";
+                }
+                properties.setProperty( "AiProvider",   aiProvider );
+                properties.setProperty( "AiBaseUrl",    aiBaseUrl );
+                // The key is deliberately NOT written to settings.properties (tracked in
+                // git). AiSettings.storeApiKey writes conf/api.properties, which is ignored.
+                properties.remove( "AiApiKey" );
+                properties.setProperty( "AiTextModel",  aiTextModel );
+                properties.setProperty( "AiVisionModel", aiVisionModel );
+                properties.setProperty( "AiEmbeddingModel", aiEmbeddingModel );
                 properties.setProperty( "WhisperModel",   whisperModel );
                 properties.setProperty( "WhisperThreads", String.valueOf( whisperThreads ) );
                 properties.setProperty( "VoicePollMs",    String.valueOf( voicePollMs ) );
@@ -2223,7 +2430,17 @@ public class SettingsWindow extends javax.swing.JDialog
             {
                 output.close( );
             }
-            
+
+            // Persist the API key separately in the gitignored conf/api.properties.
+            // Keep a write failure from aborting the rest of the settings save.
+            try { com.group_finity.mascot.assistant.AiSettings.storeApiKey( aiApiKey ); }
+            catch( final Exception ignored ) {}
+
+            // AI provider/credentials may have changed — drop cached clients so the
+            // next request uses the new settings without requiring a restart.
+            com.group_finity.mascot.assistant.AssistantShared.ollamaClient = null;
+            com.group_finity.mascot.assistant.SituationModel.resetConfig( );
+
             FileOutputStream themeOutput = new FileOutputStream( themePath.toFile( ) );
             try
             {

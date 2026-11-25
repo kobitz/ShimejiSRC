@@ -2,7 +2,9 @@
 
 A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an English edition of Group Finity's original Shimeji) — Java desktop mascots for Windows — with a fully local AI assistant layer added on top. You get the complete classic Shimeji experience *and* mascots that perceive your environment and react in character: what's on screen, what's playing through the speakers, what you say (to them or near them), system load, the weather, even the contents of local drives.
 
-**Your data stays local.** No subscriptions, no accounts, no telemetry — LLM inference runs through [Ollama](https://ollama.com) and speech-to-text through [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU, and nothing about your screen, voice, files, or chats leaves the machine. The one exception is the weather lookup: when you ask a mascot about the weather, it contacts `api.open-meteo.com` — and with the default `WeatherLocation=auto`, also `ip-api.com` (falling back to `ipapi.co`), which sees your public IP to guess your city. Set `WeatherLocation` to a city name to skip the IP lookup, or `WeatherEnabled=false` to turn weather off entirely.
+**Your data stays local by default.** No subscriptions, no accounts, no telemetry — LLM inference runs through [Ollama](https://ollama.com) and speech-to-text through [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU, and nothing about your screen, voice, files, or chats leaves the machine. The one exception is the weather lookup: when you ask a mascot about the weather, it contacts `api.open-meteo.com` — and with the default `WeatherLocation=auto`, also `ip-api.com` (falling back to `ipapi.co`), which sees your public IP to guess your city. Set `WeatherLocation` to a city name to skip the IP lookup, or `WeatherEnabled=false` to turn weather off entirely.
+
+**Optional cloud mode.** You can instead point the assistant at an OpenAI-compatible API (see *Using a cloud / OpenAI-compatible API* below). In that mode your chats, screenshots, transcripts and window titles are sent to the provider you choose, so leave it off if that matters to you.
 
 **▶ [Download from the releases page](https://github.com/kobitz/ShimejiSRC/releases)** — grab `ShimejiSRC-Setup-<version>.exe` and run it. No admin rights needed; the setup asks where to install (the default is per-user) and downloads a small Java runtime the first time, so it needs internet once. Tick **Set up AI features** on the last page (or run it later from the Start menu) to install Ollama and the local models. Then launch **ShimejiSRC** from the Start menu, or use the *Administrator - hardware sensors* shortcut for fan control and CPU-temperature features. Your settings, memories and chat history are kept when you reinstall or upgrade; the uninstaller asks before deleting them.
 
@@ -153,7 +155,8 @@ The original Shimeji, Hornet (Hollow Knight), Holo (Spice and Wolf), Paimon (Gen
 - Windows 10/11 (the AI layer is Windows-only: WASAPI loopback, JNA Win32)
 - Java 17+ (the installer downloads a Temurin 21 runtime into the install folder when needed; running from source or the portable build uses a Java you already have)
 - [Ollama](https://ollama.com) with a small instruct model (tuned for ~4B class, e.g. `gemma4:e2b-it-qat`, which doubles as the multimodal model for vision); `nomic-embed-text` (CPU-only, ~280 MB) powers semantic drive recall and is optional — keyword retrieval continues without it
-- Python with `faster-whisper` for voice/audio features (`whisper_server.py` runs beside the JAR)
+- *Optional instead of Ollama:* any OpenAI-compatible API plus a base URL and key (billed by the provider)
+- Python with `faster-whisper` for voice/audio features (`whisper_server.py` runs beside the JAR; transcription stays local in both modes)
 - NVIDIA GPU optional — GPU telemetry uses `nvidia-smi`; everything degrades gracefully without it
 
 A 6 GB VRAM / 16 GB RAM laptop is the reference hardware; the engine is tuned to stay out of the way (process priority separation, request spacing, short model keep-alive, and CPU-load-gated reactions that defer while you're busy) so inference never makes the desktop stutter or overheat.
@@ -171,6 +174,25 @@ A 6 GB VRAM / 16 GB RAM laptop is the reference hardware; the engine is tuned to
 ## Configuration
 
 XML-driven behaviors (`conf/actions.xml`, `conf/behaviors.xml`, per-mascot overrides in `img/<name>/conf/`) with Nashorn JS expressions for conditions and velocities. Assistant and agent settings (models, bubble styling, voice polling, drive indexing, resource caps, `AgentEnabled`) live in `conf/settings.properties` and the in-app settings UI; a fresh install gets the defaults from the repo's `conf/settings.properties`.
+
+### Using a cloud / OpenAI-compatible API
+
+Open **Settings → Chat Bubbles**, set **AI Provider** to *OpenAI-compatible API*, enter the base URL and key, click **Load models**, then pick the text, vision and (optionally) embedding models. Any server that implements `POST /chat/completions` and `GET /models` works.
+
+| Provider | Base URL |
+|---|---|
+| OpenAI | `https://api.openai.com/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| Groq | `https://api.groq.com/openai/v1` |
+| Together | `https://api.together.xyz/v1` |
+| LM Studio | `http://localhost:1234/v1` |
+| llama.cpp server | `http://localhost:8080/v1` |
+
+The first time you save with API mode on, a notice lists what gets sent: what you type and say to a mascot and its memory of you, screenshots when a mascot looks at your screen, microphone and system-audio transcripts, window titles and your activity summary, and file names when you ask about files. Speech-to-text, window and file actions, sensors and fan control stay on your computer.
+
+The key is written to `conf/api.properties` (gitignored), not `conf/settings.properties`. To keep it off disk, set the `SHIMEJI_AI_API_KEY` environment variable, which takes precedence. Settings keys: `AiProvider`, `AiBaseUrl`, `AiTextModel`, `AiVisionModel`, `AiEmbeddingModel`.
+
+In API mode, **semantic drive search is off** (it would send file and folder names to the provider); set `DriveSemanticRemote=true` to allow it. Remote calls skip the local CPU-load deferral and use a 1-second dispatch floor. Prefer `https://` for anything that isn't on your own machine: the key is sent as a Bearer header, and a plain-`http` remote URL logs a warning.
 
 ## Lineage & license
 

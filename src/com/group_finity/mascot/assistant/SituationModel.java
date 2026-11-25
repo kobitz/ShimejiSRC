@@ -166,7 +166,7 @@ public class SituationModel
     private long lastActivityPulseMs = 0;      // last ambient activity pulse (loop thread only)
     private volatile String synthSummary = "";  // Layer B LLM narrative (written on worker thread, read on loop thread)
     private volatile String synthMood    = "";
-    private OllamaClient synthClient = null;     // lazy; only the loop thread touches the reference
+    private volatile OllamaClient synthClient = null;     // lazy; reset when AI settings change
     private long nextSynthAtMs = System.currentTimeMillis( ) + SYNTH_INITIAL_DELAY_MS; // loop thread only
 
     // ── Relationship journal: a persisted, dated log of what the user did each day, so the
@@ -213,6 +213,14 @@ public class SituationModel
 
     /** True once the daemon is running (respects SituationModelEnabled). */
     public static boolean isActive( ) { return started; }
+
+    /** Drop the cached synthesis client so the next cycle picks up new AI settings
+     *  (provider, base URL, key, model). Safe to call from any thread. */
+    public static void resetConfig( )
+    {
+        final SituationModel m = instance;
+        if( m != null ) m.synthClient = null;
+    }
 
     /** ms since the last salient change (>= SALIENT_THRESHOLD), or a large value if none yet. */
     public long msSinceSalientChange( )
@@ -567,11 +575,7 @@ public class SituationModel
 
         if( synthClient == null )
         {
-            final String model = Main.getInstance( ).getProperties( )
-                .getProperty( "OllamaModel", OllamaClient.DEFAULT_MODEL );
-            final String endpoint = Main.getInstance( ).getProperties( )
-                .getProperty( "OllamaEndpoint", "http://localhost:11434/api/generate" );
-            synthClient = new OllamaClient( endpoint, model );
+            synthClient = OllamaClient.fromSettings( );
         }
 
         final String user = buildSynthPrompt( );

@@ -213,6 +213,8 @@ public class DriveIndexTool
     private static final java.util.Map<String, EmbeddedVec> embedStore =
         new java.util.concurrent.ConcurrentHashMap<>();
     private static volatile boolean embedStoreLoaded = false;
+    /** Provider:model the vectors in embedStore were made with (see AiSettings.embeddingTag). */
+    private static volatile String embedStoreTag = null;
 
     /** The install/working dir (where the app runs). Files here are excluded from deletion
      *  suggestions so the mascot never recommends deleting its own install. */
@@ -956,12 +958,16 @@ public class DriveIndexTool
 
     private static boolean isSemanticOn()
     {
-        return "true".equalsIgnoreCase( getProperty( "DriveSemanticEnabled", "true" ) );
+        if( !"true".equalsIgnoreCase( getProperty( "DriveSemanticEnabled", "true" ) ) ) return false;
+        // File and folder names would go to the remote embeddings API: opt-in only.
+        return !AiSettings.isRemote( ) || AiSettings.semanticRemoteAllowed( );
     }
 
     private static String semanticModel()
     {
-        return getProperty( "DriveSemanticModel", DEFAULT_SEMANTIC_MODEL ).trim();
+        // Provider-aware: local nomic-embed-text by default, or the configured
+        // OpenAI-compatible embedding model when AiProvider=openai.
+        return AiSettings.embeddingModel( );
     }
 
     private static double semanticThreshold()
@@ -1018,6 +1024,14 @@ public class DriveIndexTool
     private static void runEmbedPass()
     {
         if( !embedStoreLoaded ) loadEmbeddings();
+        // The embedding model/provider changed since these vectors were made: they are not
+        // comparable with new ones, so start over rather than keep dead entries.
+        final String tag = AiSettings.embeddingTag( );
+        if( !tag.equals( embedStoreTag ) )
+        {
+            embedStore.clear( );
+            embedStoreTag = tag;
+        }
         final List<Entry> snapshot = entries;
         if( snapshot.isEmpty() ) return;
 
@@ -1061,7 +1075,10 @@ public class DriveIndexTool
             if( vecs == null )
             {
                 log.info( "[DriveSemantic] Embedding unavailable (model=" + model
-                    + "); keyword retrieval only. Pull it with: ollama pull " + model );
+                    + "); keyword retrieval only. "
+                    + ( "openai".equals( AiSettings.provider( ) )
+                        ? "Check AiEmbeddingModel / AiApiKey."
+                        : "Pull it with: ollama pull " + model ) );
                 break;
             }
             for( int j = 0; j < batch.size() && j < vecs.length; j++ )
@@ -1131,6 +1148,8 @@ public class DriveIndexTool
         try( final BufferedWriter w = new BufferedWriter( new OutputStreamWriter(
                 new FileOutputStream( EMBED_FILE ), "UTF-8" ) ) )
         {
+            w.write( "#model=" + ( embedStoreTag != null ? embedStoreTag : AiSettings.embeddingTag( ) ) );
+            w.newLine( );
             for( final java.util.Map.Entry<String, EmbeddedVec> en : embedStore.entrySet() )
             {
                 final EmbeddedVec v = en.getValue();
@@ -1153,8 +1172,27 @@ public class DriveIndexTool
                 new FileInputStream( EMBED_FILE ), "UTF-8" ) ) )
         {
             String line;
+            boolean first = true;
             while( ( line = r.readLine() ) != null )
             {
+                if( first )
+                {
+                    first = false;
+                    if( line.startsWith( "#model=" ) )
+                    {
+                        embedStoreTag = line.substring( 7 );
+                        // Made by a different provider/model: unusable, so do not load it.
+                        if( !embedStoreTag.equals( AiSettings.embeddingTag( ) ) )
+                        {
+                            embedStoreTag = null;
+                            log.info( "[DriveSemantic] Cached embeddings are from another model; they will be rebuilt." );
+                            return;
+                        }
+                        continue;
+                    }
+                    // Old file without a tag: it was made by local Ollama.
+                    if( AiSettings.isRemote( ) ) return;
+                }
                 final int p1 = line.indexOf( '|' );
                 final int p2 = line.indexOf( '|', p1 + 1 );
                 final int p3 = line.indexOf( '|', p2 + 1 );

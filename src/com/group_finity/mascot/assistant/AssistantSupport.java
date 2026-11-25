@@ -131,14 +131,12 @@ public final class AssistantSupport
         }
     }
 
-    /** Create OllamaClient using the model selected in Settings. */
+    /** Create the assistant client for the provider selected in Settings.
+     *  Local Ollama remains the default; an OpenAI-compatible endpoint is used
+     *  when {@code AiProvider=openai}. See {@link AiSettings}. */
     public static OllamaClient createOllamaClient()
     {
-        final String model = Main.getInstance().getProperties()
-            .getProperty( "OllamaModel", OllamaClient.DEFAULT_MODEL );
-        final String endpoint = Main.getInstance().getProperties()
-            .getProperty( "OllamaEndpoint", "http://localhost:11434/api/generate" );
-        return new OllamaClient( endpoint, model );
+        return OllamaClient.fromSettings();
     }
 
     /**

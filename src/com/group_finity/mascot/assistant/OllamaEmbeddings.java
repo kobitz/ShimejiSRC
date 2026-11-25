@@ -12,20 +12,20 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Minimal client for Ollama's /api/embed endpoint, used by {@link DriveIndexTool}
- * for semantic drive search. Kept separate from {@link OllamaClient} because
- * embeddings use a different endpoint, a different (tiny) model, and a batched
- * request/response shape.
+ * Minimal client for the configured embedding endpoint, used by {@link DriveIndexTool}
+ * for semantic drive search. Kept separate from {@link OllamaClient} because embeddings
+ * use a different endpoint, a different (tiny) model, and a batched request/response
+ * shape.
  *
- * CPU-ONLY by design (num_gpu:0): the embed model must never compete for the 6 GB
- * VRAM the chat model fills. It is a SEPARATE model, so forcing it to CPU does NOT
- * split the chat model's weights across system RAM -- the project rule that bans
- * num_gpu caps applies to the chat model's own layers, not to a tiny sidecar
- * embedder. Keeping it off the GPU means a glance at the drive index never evicts
- * the warm chat model.
+ * <p>Two transports are supported (selected by {@link AiSettings}):
+ * <ul>
+ *   <li>Ollama {@code /api/embed} — CPU-only by design ({@code num_gpu:0}) so the embed
+ *       model never competes for chat-model VRAM.</li>
+ *   <li>OpenAI-compatible {@code /embeddings} — bearer key, {@code data[].embedding}.</li>
+ * </ul>
  *
- * No JSON library: the request is built by hand and the embeddings array is parsed
- * with a small numeric scanner (same house style as OllamaClient).
+ * No JSON library: requests are built by hand and arrays parsed with a small numeric
+ * scanner (same house style as OllamaClient).
  */
 public final class OllamaEmbeddings
 {
@@ -39,36 +39,29 @@ public final class OllamaEmbeddings
 
     private OllamaEmbeddings() {}
 
-    /** Resolve the /api/embed endpoint from the configured generate endpoint. */
-    private static String endpoint()
-    {
-        String gen = OllamaClient.DEFAULT_ENDPOINT;
-        try
-        {
-            gen = com.group_finity.mascot.Main.getInstance().getProperties()
-                .getProperty( "OllamaEndpoint", OllamaClient.DEFAULT_ENDPOINT );
-        }
-        catch( final Exception ignored ) {}
-        final int i = gen.indexOf( "/api/" );
-        return ( i >= 0 ? gen.substring( 0, i ) : "http://localhost:11434" ) + "/api/embed";
-    }
-
     /**
      * Embed a batch of inputs. Returns a float[inputs.size()][dims] array, or null on
-     * ANY failure (model not pulled, Ollama down, parse error, count mismatch). Callers
+     * ANY failure (model not pulled, endpoint down, parse error, count mismatch). Callers
      * treat null as "semantic unavailable" and fall back to keyword retrieval, so this
      * never throws.
      */
     public static float[][] embed( final String model, final List<String> inputs )
     {
         if( inputs == null || inputs.isEmpty() ) return new float[0][];
-        final String body = buildBody( model, inputs );
+        final boolean remote = AiSettings.isRemote( );
+        final String body = remote ? buildOpenAiBody( model, inputs ) : buildBody( model, inputs );
         try
         {
-            final URL url = new URL( endpoint() );
+            final URL url = new URL( AiSettings.embeddingsUrl( ) );
             final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod( "POST" );
             conn.setRequestProperty( "Content-Type", "application/json; charset=utf-8" );
+            if( remote )
+            {
+                final String key = AiSettings.apiKey( );
+                if( !key.isEmpty( ) )
+                    conn.setRequestProperty( "Authorization", "Bearer " + key );
+            }
             conn.setConnectTimeout( TIMEOUT_MS );
             conn.setReadTimeout( TIMEOUT_MS );
             conn.setDoOutput( true );
@@ -92,13 +85,27 @@ public final class OllamaEmbeddings
                 String line;
                 while( ( line = br.readLine() ) != null ) sb.append( line );
             }
-            return parseEmbeddings( sb.toString(), inputs.size() );
+            return remote ? parseOpenAiEmbeddings( sb.toString(), inputs.size( ) )
+                          : parseEmbeddings( sb.toString(), inputs.size( ) );
         }
         catch( final Exception e )
         {
             log.log( Level.WARNING, "[DriveSemantic] embed failed: {0}", e.getMessage() );
             return null;
         }
+    }
+
+    private static String buildOpenAiBody( final String model, final List<String> inputs )
+    {
+        final StringBuilder sb = new StringBuilder();
+        sb.append( "{\"model\":" ).append( jsonStr( model ) ).append( ",\"input\":[" );
+        for( int i = 0; i < inputs.size(); i++ )
+        {
+            if( i > 0 ) sb.append( ',' );
+            sb.append( jsonStr( inputs.get( i ) ) );
+        }
+        sb.append( "]}" );
+        return sb.toString();
     }
 
     private static String buildBody( final String model, final List<String> inputs )
@@ -114,6 +121,44 @@ public final class OllamaEmbeddings
         // num_gpu:0 -> CPU only. Never touch the chat model's VRAM.
         sb.append( "\"options\":{\"num_gpu\":0}}" );
         return sb.toString();
+    }
+
+    /**
+     * Parse an OpenAI-compatible {"data":[{"embedding":[..]},…]} reply.
+     * Returns null unless the row count matches the request.
+     */
+    private static float[][] parseOpenAiEmbeddings( final String json, final int expected )
+    {
+        final int key = json.indexOf( "\"data\"" );
+        if( key < 0 ) return null;
+        final List<float[]> rows = new ArrayList<>();
+        int i = key + 6;
+        while( ( i = json.indexOf( "\"embedding\"", i ) ) >= 0 )
+        {
+            final int open = json.indexOf( '[', i );
+            if( open < 0 ) break;
+            final int close = json.indexOf( ']', open );
+            if( close < 0 ) break;
+            rows.add( parseFloatArray( json.substring( open + 1, close ) ) );
+            i = close + 1;
+        }
+        if( rows.size() != expected ) return null;
+        return rows.toArray( new float[0][] );
+    }
+
+    private static float[] parseFloatArray( final String csv )
+    {
+        final String[] parts = csv.split( "," );
+        final float[] vec = new float[ parts.length ];
+        int n = 0;
+        for( final String p : parts )
+        {
+            final String t = p.trim();
+            if( t.isEmpty() ) continue;
+            try { vec[ n++ ] = Float.parseFloat( t ); }
+            catch( final NumberFormatException ignored ) {}
+        }
+        return n == vec.length ? vec : java.util.Arrays.copyOf( vec, n );
     }
 
     /**

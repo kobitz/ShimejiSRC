@@ -195,8 +195,7 @@ public final class AssistantReactions
 
         if( AssistantShared.ollamaClient == null ) AssistantShared.ollamaClient = AssistantSupport.createOllamaClient();
         final OllamaClient client = AssistantShared.ollamaClient;
-        final String vModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", AssistantShared.DEFAULT_VISION_MODEL );
+        final String vModel = AiSettings.visionModel();
 
         new Thread( () ->
         {
@@ -292,8 +291,7 @@ public final class AssistantReactions
 
         if( AssistantShared.ollamaClient == null ) AssistantShared.ollamaClient = AssistantSupport.createOllamaClient();
         final OllamaClient client = AssistantShared.ollamaClient;
-        final String vModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", AssistantShared.DEFAULT_VISION_MODEL );
+        final String vModel = AiSettings.visionModel();
 
         // Snapshot window title now — focus may shift during Whisper's run
         final String windowTitleSnapshot = m.lastActiveWindowTitle();

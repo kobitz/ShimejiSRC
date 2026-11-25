@@ -16,3 +16,6 @@ driveembed.txt
 dist/
 cache/
 tools/
+
+# API key for the optional cloud / OpenAI-compatible provider - never commit
+conf/api.properties

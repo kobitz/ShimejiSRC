@@ -13,13 +13,23 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Thin async client for a locally-running Ollama instance.
+ * Thin async client for the configured AI provider.
  *
- * Calls POST http://localhost:11434/api/generate (non-streaming).
- * The callback is always invoked on the calling executor thread —
- * callers must dispatch to EDT themselves if they update Swing.
+ * <p>Two transports share the same queue/callback surface:
+ * <ul>
+ *   <li><b>ollama</b> (default) — POST {@code /api/generate} to a local Ollama server,
+ *       keeping the original {@code system}/{@code prompt}/{@code images} body,
+ *       keep-alive, resource caps and CPU-load gating.</li>
+ *   <li><b>openai</b> — POST {@code /chat/completions} to any OpenAI-compatible
+ *       endpoint (OpenAI, OpenRouter, Groq, Together, LM Studio, llama.cpp, vLLM…)
+ *       using a bearer API key and {@code messages} with {@code image_url} content.
+ *       Remote calls are not CPU-gated and use a shorter dispatch floor, since they
+ *       do not compete with the local tick loop.</li>
+ * </ul>
+ * Provider selection lives in {@link AiSettings}. The callback is always invoked on
+ * the queue worker thread — callers must dispatch to EDT themselves if they update Swing.
  *
- * If Ollama is not running, the error callback receives a friendly message
+ * If the provider is unreachable, the error callback receives a friendly message
  * rather than a stack trace.
  */
 public class OllamaClient
@@ -27,7 +37,11 @@ public class OllamaClient
     private static final Logger log = Logger.getLogger( OllamaClient.class.getName() );
 
     /** Default endpoint — change if the user runs Ollama on a different port. */
-    public static final String DEFAULT_ENDPOINT = "http://localhost:11434/api/generate";
+    public static final String DEFAULT_ENDPOINT = AiSettings.DEFAULT_OLLAMA_ENDPOINT;
+
+    /** Remote (cloud) endpoints are cheap locally but cost money per call; keep a
+     *  small floor so reaction storms cannot burst the provider's rate limit. */
+    private static final long REMOTE_DISPATCH_INTERVAL_MS = 1_000L;
 
     /** Default model. gemma4:e2b-it-qat — elastic E2B QAT build: multimodal (covers
      *  chat + vision), fully VRAM-resident on a 6 GB GPU (~1.5 GB, 100% GPU), and faster
@@ -145,8 +159,11 @@ public class OllamaClient
                                               : System.currentTimeMillis( ) - lastGlobalDispatchMs;
     }
 
-    private final String endpoint;
-    private final String model;
+    private final String provider;   // AiSettings.PROVIDER_OLLAMA or PROVIDER_OPENAI
+    private final String endpoint;   // full chat URL for the selected provider
+    private final String model;      // text model
+    private final String apiKey;     // bearer token (remote only; may be "")
+    private final boolean remote;    // true = OpenAI-compatible cloud/remote provider
 
     /**
      * Bounded queue — holds pending requests while the worker is busy.
@@ -155,18 +172,40 @@ public class OllamaClient
     private final BlockingQueue<Request> requestQueue =
         new ArrayBlockingQueue<>( MAX_QUEUE_DEPTH );
 
-    /** Single worker thread that drains the queue at DISPATCH_INTERVAL_MS cadence. */
+    /** Single worker thread that drains the queue at the provider's dispatch cadence. */
     private final Thread queueWorker;
 
-    public OllamaClient()
+    /** Client built from the current settings (the normal construction path). */
+    public static OllamaClient fromSettings( )
     {
-        this( DEFAULT_ENDPOINT, DEFAULT_MODEL );
+        return new OllamaClient( AiSettings.provider( ), AiSettings.chatUrl( ),
+                                 AiSettings.textModel( ), AiSettings.apiKey( ) );
     }
 
+    /** Local Ollama client (back-compat; endpoint is the full /api/generate URL). */
+    public OllamaClient()
+    {
+        this( AiSettings.PROVIDER_OLLAMA, DEFAULT_ENDPOINT, DEFAULT_MODEL, "" );
+    }
+
+    /** Local Ollama client (back-compat). */
     public OllamaClient( final String endpoint, final String model )
     {
+        this( AiSettings.PROVIDER_OLLAMA, endpoint, model, "" );
+    }
+
+    /** Explicit provider constructor. */
+    public OllamaClient( final String provider, final String endpoint,
+                         final String model, final String apiKey )
+    {
+        this.provider = AiSettings.PROVIDER_OPENAI.equalsIgnoreCase( provider )
+            ? AiSettings.PROVIDER_OPENAI : AiSettings.PROVIDER_OLLAMA;
+        this.remote   = AiSettings.PROVIDER_OPENAI.equals( this.provider );
+        if( remote && AiSettings.isInsecureRemote( ) )
+            log.warning( "[AI] The API base URL uses plain http to a non-local host; the key and your prompts travel unencrypted. Use https." );
         this.endpoint = endpoint;
         this.model    = model;
+        this.apiKey   = apiKey == null ? "" : apiKey;
         // Start the queue worker immediately.
         queueWorker = new Thread( this::runQueueWorker, "ollama-queue-worker" );
         queueWorker.setDaemon( true );
@@ -188,8 +227,10 @@ public class OllamaClient
                 // Block until a request is available
                 final Request req = requestQueue.take();
 
-                // Enforce minimum interval from the last dispatch start
-                final long wait = DISPATCH_INTERVAL_MS
+                // Enforce minimum interval from the last dispatch start. Remote
+                // providers do not burn local CPU/GPU, so they get a shorter floor.
+                final long interval = remote ? REMOTE_DISPATCH_INTERVAL_MS : DISPATCH_INTERVAL_MS;
+                final long wait = interval
                     - ( System.currentTimeMillis() - lastDispatchMs );
                 if( wait > 0 )
                     Thread.sleep( wait );
@@ -199,7 +240,10 @@ public class OllamaClient
                 // and push the CPU toward the campfire's 80C cooler-boost trigger. Load
                 // leads temperature, so gating on load acts before the heat exists. Direct
                 // user-initiated replies are never deferrable and skip this entirely.
-                if( req.deferrable && !awaitCpuHeadroom( req ) )
+                //
+                // Remote API calls run no local inference, so they are never gated on
+                // local CPU/GPU load — a cloud model does not heat this machine.
+                if( req.deferrable && !remote && !awaitCpuHeadroom( req ) )
                     continue;   // dropped (system stayed busy) — onError already fired
 
                 lastDispatchMs = System.currentTimeMillis();
@@ -441,23 +485,34 @@ public class OllamaClient
                                  final String imageBase64, final String modelOverride,
                                  final int maxTokens ) throws IOException
     {
-        final int    numGpu        = computeNumGpuLayers();
-        final int    numThread     = computeNumThreads();
         final String effectiveModel = modelOverride != null ? modelOverride : model;
-        // Vision requests normally unload immediately (rare + large), but when the
-        // vision model IS the text model (shared multimodal setup), keep_alive:0
-        // would evict the model the text path is paying TEXT_KEEP_ALIVE_SEC to
-        // keep warm — so shared models always use the text linger.
-        final boolean isVision     = imageBase64 != null && !effectiveModel.equals( model );
-        final int    keepAlive     = isVision ? VISION_KEEP_ALIVE_SEC : textKeepAliveSec();
-        final String body          = buildJson( system, user, numGpu, numThread, maxTokens,
-                                               imageBase64, effectiveModel, keepAlive );
+        final String body;
+        if( remote )
+        {
+            body = buildOpenAiJson( system, user, maxTokens, imageBase64, effectiveModel );
+        }
+        else
+        {
+            final int    numGpu    = computeNumGpuLayers();
+            final int    numThread = computeNumThreads();
+            // Vision requests normally unload immediately (rare + large), but when the
+            // vision model IS the text model (shared multimodal setup), keep_alive:0
+            // would evict the model the text path is paying TEXT_KEEP_ALIVE_SEC to
+            // keep warm — so shared models always use the text linger.
+            final boolean isVision  = imageBase64 != null && !effectiveModel.equals( model );
+            final int     keepAlive = isVision ? VISION_KEEP_ALIVE_SEC : textKeepAliveSec();
+            body = buildJson( system, user, numGpu, numThread, maxTokens,
+                              imageBase64, effectiveModel, keepAlive );
+        }
         final byte[] bodyBytes = body.getBytes( StandardCharsets.UTF_8 );
 
         final URL url = new URL( endpoint );
         final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod( "POST" );
         conn.setRequestProperty( "Content-Type", "application/json; charset=utf-8" );
+        conn.setRequestProperty( "Accept", "application/json" );
+        if( remote && !apiKey.isEmpty() )
+            conn.setRequestProperty( "Authorization", "Bearer " + apiKey );
         conn.setConnectTimeout( TIMEOUT_MS );
         conn.setReadTimeout( TIMEOUT_MS );
         conn.setDoOutput( true );
@@ -471,8 +526,8 @@ public class OllamaClient
         if( status != 200 )
         {
             // Read the error body (also drains the stream so the keep-alive
-            // connection can be reused) — Ollama's message names the real cause,
-            // e.g. a crashed llama-server, which "HTTP 500" alone hides.
+            // connection can be reused) — the provider's message names the real
+            // cause, e.g. a bad key or an unknown model, which "HTTP 401" hides.
             String detail = "";
             try( final java.io.InputStream es = conn.getErrorStream() )
             {
@@ -488,7 +543,8 @@ public class OllamaClient
                 }
             }
             catch( final IOException ignored ) {}
-            throw new IOException( "HTTP " + status + " from Ollama (model=" + effectiveModel + ")"
+            throw new IOException( "HTTP " + status + " from "
+                + ( remote ? "AI API" : "Ollama" ) + " (model=" + effectiveModel + ")"
                 + ( detail.isEmpty() ? "" : ": " + detail ) );
         }
 
@@ -501,7 +557,39 @@ public class OllamaClient
                 sb.append( line );
         }
 
-        return parseResponse( sb.toString() );
+        return remote ? parseOpenAiResponse( sb.toString() ) : parseResponse( sb.toString() );
+    }
+
+    /**
+     * Build an OpenAI-compatible /chat/completions body.
+     * Text-only requests send a plain string content; vision requests send the
+     * multipart content array with a data: URL image, which is the format every
+     * major compatible provider (OpenAI, OpenRouter, Groq, llama.cpp, vLLM, …) accepts.
+     */
+    private String buildOpenAiJson( final String system, final String user,
+                                    final int maxTokens, final String imageBase64,
+                                    final String modelName )
+    {
+        final StringBuilder sb = new StringBuilder( 256 + user.length( ) );
+        sb.append( "{\"model\":" ).append( jsonStr( modelName ) ).append( ',' );
+        sb.append( "\"messages\":[" );
+        if( system != null && !system.isEmpty( ) )
+            sb.append( "{\"role\":\"system\",\"content\":" ).append( jsonStr( system ) ).append( "}," );
+        sb.append( "{\"role\":\"user\",\"content\":" );
+        if( imageBase64 != null )
+        {
+            sb.append( "[{\"type\":\"text\",\"text\":" ).append( jsonStr( user ) ).append( "}," );
+            sb.append( "{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64," )
+              .append( imageBase64 ).append( "\"}}]" );
+        }
+        else
+        {
+            sb.append( jsonStr( user ) );
+        }
+        sb.append( "}]," );
+        sb.append( '"' ).append( AiSettings.maxTokensField( ) ).append( "\":" ).append( maxTokens ).append( ',' );
+        sb.append( "\"stream\":false}" );
+        return sb.toString( );
     }
 
     /**
@@ -690,6 +778,136 @@ public class OllamaClient
         return sb.toString().trim();
     }
 
+    /**
+     * Parse an OpenAI-compatible /chat/completions reply.
+     * Standard shape: {"choices":[{"message":{"role":"assistant","content":"..."}}]}
+     * Some providers return content as an array of text parts; both are handled.
+     */
+    private String parseOpenAiResponse( final String json )
+    {
+        final int choices = json.indexOf( "\"choices\"" );
+        if( choices < 0 )
+            return "(no choices field in AI reply)";
+
+        int key = json.indexOf( "\"content\"", choices );
+        if( key < 0 )
+            return "(no content field in AI reply)";
+
+        int i = key + "\"content\"".length( );
+        while( i < json.length( ) && isJsonSpace( json.charAt( i ) ) ) i++;
+        if( i < json.length( ) && json.charAt( i ) == ':' ) i++;
+        while( i < json.length( ) && isJsonSpace( json.charAt( i ) ) ) i++;
+        if( i >= json.length( ) )
+            return "";
+
+        if( json.charAt( i ) == '"' )
+        {
+            final int[] next = new int[ 1 ];
+            final String text = readJsonString( json, i, next );
+            return text == null ? "" : text.trim( );
+        }
+
+        if( json.charAt( i ) == '[' )
+        {
+            // Content-parts array: concatenate every "text" value.
+            final StringBuilder out = new StringBuilder( );
+            int p = i;
+            while( ( p = json.indexOf( "\"text\"", p ) ) >= 0 )
+            {
+                int colon = json.indexOf( ':', p + 6 );
+                if( colon < 0 ) break;
+                int q = colon + 1;
+                while( q < json.length( ) && isJsonSpace( json.charAt( q ) ) ) q++;
+                if( q < json.length( ) && json.charAt( q ) == '"' )
+                {
+                    final int[] next = new int[ 1 ];
+                    final String part = readJsonString( json, q, next );
+                    if( part != null ) out.append( part );
+                    p = next[ 0 ];
+                }
+                else
+                {
+                    p = colon + 1;
+                }
+            }
+            return out.toString( ).trim( );
+        }
+
+        if( json.startsWith( "null", i ) )
+            return "";
+        return "(unexpected AI response format)";
+    }
+
+    private static boolean isJsonSpace( final char c )
+    {
+        return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+    }
+
+    /**
+     * Read a JSON string starting at {@code openQuote}. Handles the standard escapes
+     * and {@code \\uXXXX}. Sets {@code next[0]} to the index after the closing quote.
+     * Returns null on malformed input.
+     */
+    private static String readJsonString( final String json, final int openQuote, final int[] next )
+    {
+        if( openQuote >= json.length( ) || json.charAt( openQuote ) != '"' ) return null;
+        final StringBuilder sb = new StringBuilder( );
+        int i = openQuote + 1;
+        while( i < json.length( ) )
+        {
+            final char c = json.charAt( i );
+            if( c == '\\' && i + 1 < json.length( ) )
+            {
+                final char n = json.charAt( i + 1 );
+                switch( n )
+                {
+                    case '"':  sb.append( '"' );  i += 2; break;
+                    case '\\': sb.append( '\\' ); i += 2; break;
+                    case '/':  sb.append( '/' );  i += 2; break;
+                    case 'b':  sb.append( '\b' ); i += 2; break;
+                    case 'f':  sb.append( '\f' ); i += 2; break;
+                    case 'n':  sb.append( '\n' ); i += 2; break;
+                    case 'r':  sb.append( '\r' ); i += 2; break;
+                    case 't':  sb.append( '\t' ); i += 2; break;
+                    case 'u':
+                        if( i + 6 <= json.length( ) )
+                        {
+                            try
+                            {
+                                sb.append( (char) Integer.parseInt(
+                                    json.substring( i + 2, i + 6 ), 16 ) );
+                                i += 6;
+                            }
+                            catch( final NumberFormatException e )
+                            {
+                                sb.append( n );
+                                i += 2;
+                            }
+                        }
+                        else
+                        {
+                            sb.append( n );
+                            i += 2;
+                        }
+                        break;
+                    default: sb.append( n ); i += 2; break;
+                }
+            }
+            else if( c == '"' )
+            {
+                next[ 0 ] = i + 1;
+                return sb.toString( );
+            }
+            else
+            {
+                sb.append( c );
+                i++;
+            }
+        }
+        next[ 0 ] = i;
+        return sb.toString( );
+    }
+
     /** Escape a Java string for inclusion in a JSON string literal. */
     private static String jsonStr( final String s )
     {
@@ -712,25 +930,44 @@ public class OllamaClient
         return sb.toString();
     }
 
-    private static String buildFriendlyError( final IOException e )
+    private String buildFriendlyError( final IOException e )
     {
-        final String msg = e.getMessage();
-        if( msg != null && msg.contains( "Connection refused" ) )
-            return "Ollama isn't running. Start it with: ollama serve";
-        if( msg != null && msg.contains( "HTTP 404" ) )
+        final String msg = e.getMessage( );
+        final String lower = msg == null ? "" : msg.toLowerCase( java.util.Locale.ROOT );
+
+        if( lower.contains( "connection refused" ) )
         {
-            // Extract the model name from "HTTP 404 from Ollama (model=NAME)..."
-            // — an error-body detail may follow the closing parenthesis.
-            String name = DEFAULT_MODEL;
+            if( remote )
+                return "AI API isn't reachable. Check AiBaseUrl (" + endpoint + ").";
+            return "Ollama isn't running. Start it with: ollama serve";
+        }
+        if( lower.contains( "http 401" ) || lower.contains( "http 403" ) )
+        {
+            if( remote )
+                return "AI API rejected the key (HTTP " + ( lower.contains( "http 401" ) ? "401" : "403" )
+                    + "). Check AiApiKey in Settings.";
+            return "Ollama rejected the request (HTTP " + ( lower.contains( "http 401" ) ? "401" : "403" )
+                + "). Check AiApiKey / OllamaEndpoint.";
+        }
+        if( lower.contains( "http 429" ) )
+            return "AI provider rate limit hit (HTTP 429). Try again shortly or use a smaller model.";
+        if( lower.contains( "http 404" ) )
+        {
+            // Extract the model name from "... (model=NAME)..."
+            String name = model;
             final int m = msg.indexOf( "model=" );
             if( m >= 0 )
             {
                 final int close = msg.indexOf( ')', m );
                 name = ( close > m ? msg.substring( m + 6, close )
-                                   : msg.substring( m + 6 ) ).trim();
+                                   : msg.substring( m + 6 ) ).trim( );
             }
+            if( remote )
+                return "Model or endpoint not found: " + name
+                    + ". Check AiTextModel/AiBaseUrl (some providers need the /v1 suffix).";
             return "Model not found: " + name + ". Run: ollama pull " + name;
         }
-        return "Couldn't reach Ollama: " + ( msg != null ? msg : e.getClass().getSimpleName() );
+        return "Couldn't reach " + ( remote ? "the AI API" : "Ollama" ) + ": "
+            + ( msg != null ? msg : e.getClass( ).getSimpleName( ) );
     }
 }

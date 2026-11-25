@@ -1,0 +1,20 @@
+# Shimeji AI credentials (optional)
+#
+# Copy this file to conf/api.properties and fill in your key. The file is
+# gitignored so it never gets committed. Alternatively set the
+# SHIMEJI_AI_API_KEY environment variable (it takes precedence over this file).
+#
+# Select the API provider in Settings > Chat Bubbles, or set:
+#   AiProvider=openai
+#   AiBaseUrl=https://api.openai.com/v1
+# in conf/settings.properties.
+#
+# Any OpenAI-compatible endpoint works, for example:
+#   OpenAI     https://api.openai.com/v1
+#   OpenRouter https://openrouter.ai/api/v1
+#   Groq       https://api.groq.com/openai/v1
+#   Together   https://api.together.xyz/v1
+#   LM Studio  http://localhost:1234/v1
+#   llama.cpp  http://localhost:8080/v1
+
+apiKey=

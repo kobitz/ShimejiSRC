@@ -375,8 +375,7 @@ public final class AssistantReplies
                                     final String system,
                                     final OllamaClient client )
     {
-        final String visionModel = Main.getInstance().getProperties()
-            .getProperty( "VisionModel", AssistantShared.DEFAULT_VISION_MODEL );
+        final String visionModel = AiSettings.visionModel();
         new Thread( () ->
         {
             try
