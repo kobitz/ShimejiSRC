@@ -4,7 +4,7 @@ A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an Engli
 
 **Your data stays local.** No subscriptions, no accounts, no telemetry — LLM inference runs through [Ollama](https://ollama.com) and speech-to-text through [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU, and nothing about your screen, voice, files, or chats leaves the machine. The one exception is the weather lookup: when you ask a mascot about the weather, it contacts `api.open-meteo.com` — and with the default `WeatherLocation=auto`, also `ip-api.com` (falling back to `ipapi.co`), which sees your public IP to guess your city. Set `WeatherLocation` to a city name to skip the IP lookup, or `WeatherEnabled=false` to turn weather off entirely.
 
-**▶ [Download from the releases page](https://github.com/kobitz/ShimejiSRC/releases)** — grab `Shimeji-Install-Windows.zip`, extract anywhere, run `Setup.bat` once (installs Ollama + the local models), then launch `Shimeji.exe` (or `Admin.bat` for fan control and CPU-temperature features).
+**▶ [Download from the releases page](https://github.com/kobitz/ShimejiSRC/releases)** — grab `ShimejiSRC-Setup-<version>.exe` and run it. No admin rights needed; the setup asks where to install (the default is per-user) and downloads a small Java runtime the first time, so it needs internet once. Tick **Set up AI features** on the last page (or run it later from the Start menu) to install Ollama and the local models. Then launch **ShimejiSRC** from the Start menu, or use the *Administrator - hardware sensors* shortcut for fan control and CPU-temperature features. Your settings, memories and chat history are kept when you reinstall or upgrade; the uninstaller asks before deleting them.
 
 ## The basics
 
@@ -22,10 +22,10 @@ Mascots are animated sprites rendered as borderless, always-on-top windows, move
 - **Follow Cursor** — it chases your mouse.
 - **Set Behaviour** — directly trigger any animation/behavior (sit, climb, jump, and so on).
 - **Restore Windows** — put back any windows the mascots have moved.
-- **Dismiss** — remove that one.
+- **Dismiss** — remove that one. Clicking anywhere else closes the menu.
 - …plus this fork's extras: a tooltip toggle, a per-character sound-effects volume slider, and the AI **assistant mode** toggle with its personal-behaviour checkboxes.
 
-**The system-tray icon** manages all active mascots: add mascots, choose which image sets are active, *Reduce to One*, *Restore Windows*, *Allowed Behaviours* (globally enable or disable individual behaviors), open *Settings*, and quit (the classic "Bye bye").
+**The system-tray icon** manages all active mascots: add mascots, choose which image sets are active, *Reduce to One*, *Restore Windows*, *Allowed Behaviours* (globally enable or disable individual behaviors), open the **Mascot Shop**, open *Settings*, and quit (the classic "Bye bye"). Sets that carry a `hidden.txt` marker (see *Making your own*) don't appear in the chooser or get picked by *Call Shimeji*.
 
 **Settings** cover global scale, always-on-top, multi-monitor mode, which apps' windows are interactive, and all of the assistant options below.
 
@@ -70,6 +70,21 @@ Everything stays on localhost; no page data leaves the machine. Load `shimeji-vi
 - **Know your files** — a local drive index answers file-aware questions through a query router: keyword (exact), semantic (vague topical recall via local `nomic-embed-text` embeddings), recency ("last thing I downloaded"), aggregate (counts/sizes/"what can I delete"), and folder listing. The index and embeddings never leave the machine.
 - **Sense the situation** — a shared, continuously-sampled situational model fuses what you're doing (app sessions, activity tempo, audio, system load) into one read, so mascots react to your *state* — focused, multitasking, winding down — and speak when something actually changes, not on a blind timer. An optional small periodic LLM pass adds a one-line narrative + conservative mood.
 
+## Agent tools (opt-in)
+
+Off by default. Set `AgentEnabled=true` in `conf/settings.properties` and restart, and a mascot can act on your computer when you ask it to in your own words (typed or spoken to it):
+
+- **Windows** — focus, minimize, maximize, snap left/right/top/bottom, center, send to another monitor, or *carry* a window around on its head for a while.
+- **Files** — tidy your Downloads folder by type, or move a named file to a folder, with a preview and a confirmation bubble first. Moves are journalled so you can say "undo", and nothing is ever deleted or overwritten. The mascot can walk a file between Explorer windows (`AgentVisualMoves=false` turns that off).
+- **Scheduling** — "play a sound in 20 minutes", reminders with a countdown bubble, "open youtube.com tomorrow at 9am", calendar events (`.ics`), "what's scheduled", cancel. `AgentTypeEnabled=true` additionally allows "type this into the focused window at 8:40pm" (the focus is verified right before typing).
+- **System controls** — volume up/down/set/mute and play/pause/next/previous. Anything destructive (shut down, restart, close, delete, install...) is refused with *"This action is not within my parameters."*
+
+Only your own words trigger these: text from the screen, other people's audio, or anything a mascot reads can never give it an order. See `CLAUDE.md` for the safety rules.
+
+## Mascot Shop
+
+Tray menu → **Mascot Shop...** browses a catalog of community mascots. Entries either link to the creator's own page (you download, then use *Import .zip*) or install in place when the creator allows redistribution; installs are checksum-verified and never overwrite an existing mascot. The shop only touches the network while it's open (`ShopThumbnails=false` skips preview images).
+
 ## Making your own
 
 Each mascot is a folder under `img/<name>/` containing sprite PNGs and two XML files that define how it moves and speaks. No recompilation required for either.
@@ -82,9 +97,12 @@ img/
     ├── conf/
     │   ├── actions.xml       ← animations and physical behaviors
     │   ├── behaviors.xml     ← when and how often each behavior fires
-    │   └── hotkeys.properties  ← optional per-mascot keybinds
+    │   ├── hotkeys.properties  ← optional per-mascot keybinds
+    │   └── hidden.txt          ← optional: empty file that hides this set from the menus
     └── *.png                 ← sprite sheets
 ```
+
+**Helper sets:** drop an empty file named `hidden.txt` into a mascot's `conf` folder and it won't appear in *Choose Shimeji* or be picked by *Call Shimeji* or a tray click. It still loads, and other mascots can still spawn it, which suits sidekick or effect sets (Hornet's Needle uses it).
 
 Sprites are referenced by filename from within `actions.xml`. The engine handles rendering, physics, and window interaction — you only describe what the mascot does and when.
 
@@ -128,12 +146,12 @@ Memory is stored per-mascot in `img/<name>/conf/memory.json` and accumulates aut
 
 ## Current cast
 
-Hornet (Hollow Knight), Holo (Spice and Wolf), Paimon (Genshin Impact), 2B (NieR: Automata), plus an ambient ecosystem (Mosscreep/Mossfly colonies that Hornet hunts, CPU-reactive campfires). Each has a hand-tuned personality, speech rules, and voice trigger.
+The original Shimeji, Hornet (Hollow Knight), Holo (Spice and Wolf), Paimon (Genshin Impact), 2B (NieR: Automata), plus an ambient ecosystem (Mosscreep/Mossfly colonies in two colors that Hornet hunts, CPU-reactive campfires). Each has a hand-tuned personality, speech rules, and voice trigger.
 
 ## Requirements
 
 - Windows 10/11 (the AI layer is Windows-only: WASAPI loopback, JNA Win32)
-- Java 17+ (a JRE is bundled in release builds)
+- Java 17+ (the installer downloads a Temurin 21 runtime into the install folder when needed; running from source or the portable build uses a Java you already have)
 - [Ollama](https://ollama.com) with a small instruct model (tuned for ~4B class, e.g. `gemma4:e2b-it-qat`, which doubles as the multimodal model for vision); `nomic-embed-text` (CPU-only, ~280 MB) powers semantic drive recall and is optional — keyword retrieval continues without it
 - Python with `faster-whisper` for voice/audio features (`whisper_server.py` runs beside the JAR)
 - NVIDIA GPU optional — GPU telemetry uses `nvidia-smi`; everything degrades gracefully without it
@@ -142,14 +160,17 @@ A 6 GB VRAM / 16 GB RAM laptop is the reference hardware; the engine is tuned to
 
 ## Building
 
-1. `Build.bat` at the repo root — `[1]` Release, `[2]` Test build + launch, `[3]` Ant only.
-2. The script runs `ant jar` and wraps the result with Launch4j into `Shimeji.exe` / `ShimejiTest.exe` in the install folder.
+`Build.bat` at the repo root (needs a JDK 17+ and Apache Ant) offers:
 
-Plain `ant jar` produces the fat JAR if you don't need the exe wrapper.
+- **`[4]` Portable build** — works on any machine: builds the jar, finds or downloads Launch4j into `tools\`, and produces a runnable `dist\ShimejiSRC\Shimeji.exe` with `conf\` and `img\` beside it.
+- **`[1]` Release / `[2]` Test** — use your own Launch4j configs and install folder, set in a gitignored `Build.local.bat` (copy `Build.local.bat.example`).
+- **`[3]` Ant only** — the fat JAR in `target\`.
+
+**Making the installer:** run `Build.bat` → `[1]`, then `installer\build-installer.bat <version>` (needs [Inno Setup 6.3+](https://jrsoftware.org/isinfo.php)). It assembles a clean bundle from this repo's `conf\` and `img\` (the mascot sets listed in `installer\mascots.txt` — put clean copies in `img\`, which is otherwise untracked), scrubs anything personal, and writes `dist\ShimejiSRC-Setup-<version>.exe`. Add `test` (`installer\build-installer.bat 2.0 test`) for a throwaway installer with its own name and a `dist\test-install` target that can't touch a real install.
 
 ## Configuration
 
-XML-driven behaviors (`conf/actions.xml`, `conf/behaviors.xml`, per-mascot overrides in `img/<name>/conf/`) with Nashorn JS expressions for conditions and velocities. Assistant settings (models, bubble styling, voice polling, drive indexing, resource caps) live in `conf/settings.properties` and the in-app settings UI.
+XML-driven behaviors (`conf/actions.xml`, `conf/behaviors.xml`, per-mascot overrides in `img/<name>/conf/`) with Nashorn JS expressions for conditions and velocities. Assistant and agent settings (models, bubble styling, voice polling, drive indexing, resource caps, `AgentEnabled`) live in `conf/settings.properties` and the in-app settings UI; a fresh install gets the defaults from the repo's `conf/settings.properties`.
 
 ## Lineage & license
 
