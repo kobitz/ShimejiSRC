@@ -571,9 +571,9 @@ public final class AgentTools
      */
     private boolean runWindowErrand( final long handle, final WindowErrandPlan.Goal goal )
     {
-        if( windowStage == null ) return false;
+        if( windowStage == null ) { log.info( "[WindowErrand] not staged: visual window errands unavailable (AgentVisualMoves=false, headless or no window backend)" ); return false; }
         final WindowErrand.Stage st = windowStage.apply( handle );
-        if( st == null ) return false;
+        if( st == null ) { log.info( "[WindowErrand] not staged: Window Interaction is off for this mascot's set" ); return false; }
         final WindowErrand.Outcome o = WindowErrand.run( st, goal, windows.monitors(), 1.0 );
         switch( o )
         {

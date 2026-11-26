@@ -18,6 +18,7 @@ import com.group_finity.mascot.behavior.UserBehavior;
  */
 public final class WindowErrandStage implements WindowErrand.Stage
 {
+    private static final java.util.logging.Logger log = java.util.logging.Logger.getLogger( WindowErrandStage.class.getName() );
     private final AssistantHost host;
     private final WindowControl windows;
     private final long handle;
@@ -45,7 +46,12 @@ public final class WindowErrandStage implements WindowErrand.Stage
             }
             catch( final Throwable t ) { latch.countDown(); }
         } );
-        try { return latch.await( timeoutMs, TimeUnit.MILLISECONDS ) && ok[ 0 ]; }
+        try
+        {
+            final boolean done = latch.await( timeoutMs, TimeUnit.MILLISECONDS ) && ok[ 0 ];
+            if( !done ) log.warning( "[WindowErrand] leg '" + action + "' " + params + " did not complete (action missing for this set, unreachable, or timed out)" );
+            return done;
+        }
         catch( final InterruptedException e ) { Thread.currentThread().interrupt(); return false; }
     }
 
@@ -77,6 +83,7 @@ public final class WindowErrandStage implements WindowErrand.Stage
     @Override
     public boolean press( final WindowErrandPlan.Step step )
     {
+        log.info( "[WindowErrand] press " + step.op + ( step.direct ? " (direct)" : " at " + step.at ) );
         if( !step.direct && step.at != null )
             jumpTo( step.at.x, step.at.y );      // if the mascot can't get there the press still happens, just without the leap
         final WindowControl.Info cur = windows.current( handle );
