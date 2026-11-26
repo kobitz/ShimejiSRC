@@ -1,4 +1,4 @@
-# Shimeji AI — Environment-Aware Desktop Mascots
+# koAIbo — Environment-Aware Desktop Mascots
 
 A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an English edition of Group Finity's original Shimeji) — Java desktop mascots for Windows — with a local-first AI assistant layer added on top. You get the complete classic Shimeji experience *and* mascots that perceive your environment and react in character: what's on screen, what's playing through the speakers, what you say (to them or near them), system load, the weather, even the contents of local drives.
 
