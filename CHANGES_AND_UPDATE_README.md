@@ -323,6 +323,6 @@ recipient-facing **readme.txt** documents usage for end users.
 
 - `Build.bat` (repo root) → `ant jar` + Launch4j wrap into `Shimeji.exe`/`ShimejiTest.exe`.
 - The runnable app ships as a **GitHub Release** install zip; the public repo
-  (`github.com/kobitz/ShimejiSRC`) is **code-only** (MIT) — image/sound/JRE assets are not
+  (`github.com/kobitz/koaibo`) is **code-only** (MIT) — image/sound/JRE assets are not
   tracked in git and ride along in the release. `Setup.bat` installs Ollama + Python +
   faster-whisper and pulls the default models (`gemma4:e2b-it-qat` + `nomic-embed-text`).

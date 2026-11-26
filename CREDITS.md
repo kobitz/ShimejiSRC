@@ -1,6 +1,6 @@
 # Credits
 
-ShimejiSRC stands on a lot of other people's work. Thank you to all of them.
+koaibo stands on a lot of other people's work. Thank you to all of them.
 
 ## Shimeji lineage
 

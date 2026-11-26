@@ -28,8 +28,8 @@ public final class AgentCalendar
     {
         final String t = title.length() > 120 ? title.substring( 0, 120 ) : title;
         final StringBuilder sb = new StringBuilder();
-        sb.append( "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ShimejiSRC//Agent//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n" )
-          .append( "BEGIN:VEVENT\r\nUID:" ).append( UUID.randomUUID() ).append( "@shimejisrc\r\n" )
+        sb.append( "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//koaibo//Agent//EN\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n" )
+          .append( "BEGIN:VEVENT\r\nUID:" ).append( UUID.randomUUID() ).append( "@koaibo\r\n" )
           .append( "DTSTAMP:" ).append( UTC.format( Instant.ofEpochMilli( nowMs ) ) ).append( "\r\n" )
           .append( "DTSTART:" ).append( UTC.format( Instant.ofEpochMilli( startMs ) ) ).append( "\r\n" )
           .append( "DTEND:" ).append( UTC.format( Instant.ofEpochMilli( startMs + durMs ) ) ).append( "\r\n" )

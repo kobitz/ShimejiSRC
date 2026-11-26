@@ -44,7 +44,7 @@ import com.group_finity.mascot.Main;
  */
 public final class ShopWindow extends JDialog
 {
-    static final String DEFAULT_CATALOG_URL = "https://raw.githubusercontent.com/kobitz/ShimejiSRC/main/conf/shop_catalog.json";
+    static final String DEFAULT_CATALOG_URL = "https://raw.githubusercontent.com/kobitz/koaibo/main/conf/shop_catalog.json";
     private static ShopWindow open;
 
     /** A vertical list that always matches the viewport width, so cards wrap instead of forcing a horizontal scrollbar. */

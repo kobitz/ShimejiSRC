@@ -29,7 +29,7 @@ public final class ShopDownloader
             c.setInstanceFollowRedirects( false );
             c.setConnectTimeout( 10_000 );
             c.setReadTimeout( 20_000 );
-            c.setRequestProperty( "User-Agent", "ShimejiSRC-Shop" );
+            c.setRequestProperty( "User-Agent", "koaibo-Shop" );
             final int code = c.getResponseCode();
             if( code >= 300 && code < 400 )
             {

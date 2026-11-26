@@ -351,7 +351,7 @@ public class SettingsWindow extends javax.swing.JDialog
         pnlTabs.setTitleAt( 2, language.getString( "Theme" ) );
         pnlTabs.setTitleAt( 3, language.getString( "WindowMode" ) );
         pnlTabs.setTitleAt( pnlTabs.indexOfTab( "About" ) >= 0 ? pnlTabs.indexOfTab( "About" ) : 4, language.getString( "About" ) );
-        lblShimejiEE.setText( "ShimejiSRC" );
+        lblShimejiEE.setText( "koaibo" );
         lblDevelopedBy.setText( language.getString( "DevelopedBy" ) );
         chkAlwaysShowShimejiChooser.setText( language.getString( "AlwaysShowShimejiChooser" ) );
         chkAlwaysShowInformationScreen.setText( language.getString( "AlwaysShowInformationScreen" ) );
@@ -388,7 +388,7 @@ public class SettingsWindow extends javax.swing.JDialog
         cmbBackgroundImageMode.addItem( language.getString( "BackgroundModeStretch" ) );
         btnBackgroundImageRemove.setText( language.getString( "Remove" ) );
         // About tab: this fork's own identity (the localized strings still name upstream Shimeji-ee)
-        lblShimejiEE.setText( "ShimejiSRC" );
+        lblShimejiEE.setText( "koaibo" );
         lblDevelopedBy.setText( language.getString( "DevelopedBy" ) );
         btnWebsite.setText( "GitHub" );
         btnDiscord.setText( "Shimeji-ee" );
@@ -2221,7 +2221,7 @@ public class SettingsWindow extends javax.swing.JDialog
                                                                         pnlAbout.add(rigid1);
 
                                                                         lblShimejiEE.setFont(lblShimejiEE.getFont().deriveFont(lblShimejiEE.getFont().getStyle() | java.awt.Font.BOLD, lblShimejiEE.getFont().getSize()+10));
-                                                                        lblShimejiEE.setText("ShimejiSRC");
+                                                                        lblShimejiEE.setText("koaibo");
                                                                         lblShimejiEE.setAlignmentX(0.5F);
                                                                         pnlAbout.add(lblShimejiEE);
                                                                         pnlAbout.add(rigid2);
@@ -2576,7 +2576,7 @@ public class SettingsWindow extends javax.swing.JDialog
 
     private void btnWebsiteActionPerformed(java.awt.event.ActionEvent evt)//GEN-FIRST:event_btnWebsiteActionPerformed
     {//GEN-HEADEREND:event_btnWebsiteActionPerformed
-        browseToUrl( "https://github.com/kobitz/ShimejiSRC" );
+        browseToUrl( "https://github.com/kobitz/koaibo" );
     }//GEN-LAST:event_btnWebsiteActionPerformed
 
     private void btnDiscordActionPerformed(java.awt.event.ActionEvent evt)//GEN-FIRST:event_btnDiscordActionPerformed

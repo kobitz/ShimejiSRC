@@ -6,7 +6,7 @@ A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an Engli
 
 **Optional cloud mode.** You can instead point the assistant at an OpenAI-compatible API (see *Using a cloud / OpenAI-compatible API* below). In that mode your chats, screenshots, transcripts and window titles are sent to the provider you choose, so leave it off if that matters to you.
 
-**▶ [Download from the releases page](https://github.com/kobitz/ShimejiSRC/releases)** — grab `ShimejiSRC-Setup-<version>.exe` and run it. No admin rights needed; the setup asks where to install (the default is per-user) and downloads a small Java runtime the first time, so it needs internet once. Tick **Set up AI features** on the last page (or run it later from the Start menu) to install Ollama and the local models. Then launch **ShimejiSRC** from the Start menu, or use the *Administrator - hardware sensors* shortcut for fan control and CPU-temperature features. Your settings, memories and chat history are kept when you reinstall or upgrade; the uninstaller asks before deleting them.
+**▶ [Download from the releases page](https://github.com/kobitz/koaibo/releases)** — grab `koaibo-Setup-<version>.exe` and run it. No admin rights needed; the setup asks where to install (the default is per-user) and downloads a small Java runtime the first time, so it needs internet once. Tick **Set up AI features** on the last page (or run it later from the Start menu) to install Ollama and the local models. Then launch **koaibo** from the Start menu, or use the *Administrator - hardware sensors* shortcut for fan control and CPU-temperature features. Your settings, memories and chat history are kept when you reinstall or upgrade; the uninstaller asks before deleting them.
 
 ## The basics
 
@@ -165,11 +165,11 @@ A 6 GB VRAM / 16 GB RAM laptop is the reference hardware; the engine is tuned to
 
 `Build.bat` at the repo root (needs a JDK 17+ and Apache Ant) offers:
 
-- **`[4]` Portable build** — works on any machine: builds the jar, finds or downloads Launch4j into `tools\`, and produces a runnable `dist\ShimejiSRC\Shimeji.exe` with `conf\` and `img\` beside it.
+- **`[4]` Portable build** — works on any machine: builds the jar, finds or downloads Launch4j into `tools\`, and produces a runnable `dist\koaibo\Shimeji.exe` with `conf\` and `img\` beside it.
 - **`[1]` Release / `[2]` Test** — use your own Launch4j configs and install folder, set in a gitignored `Build.local.bat` (copy `Build.local.bat.example`).
 - **`[3]` Ant only** — the fat JAR in `target\`.
 
-**Making the installer:** run `Build.bat` → `[1]`, then `installer\build-installer.bat <version>` (needs [Inno Setup 6.3+](https://jrsoftware.org/isinfo.php)). It assembles a clean bundle from this repo's `conf\` and `img\` (the mascot sets listed in `installer\mascots.txt` — put clean copies in `img\`, which is otherwise untracked), scrubs anything personal, and writes `dist\ShimejiSRC-Setup-<version>.exe`. Add `test` (`installer\build-installer.bat 2.0 test`) for a throwaway installer with its own name and a `dist\test-install` target that can't touch a real install.
+**Making the installer:** run `Build.bat` → `[1]`, then `installer\build-installer.bat <version>` (needs [Inno Setup 6.3+](https://jrsoftware.org/isinfo.php)). It assembles a clean bundle from this repo's `conf\` and `img\` (the mascot sets listed in `installer\mascots.txt` — put clean copies in `img\`, which is otherwise untracked), scrubs anything personal, and writes `dist\koaibo-Setup-<version>.exe`. Add `test` (`installer\build-installer.bat 2.0 test`) for a throwaway installer with its own name and a `dist\test-install` target that can't touch a real install.
 
 ## Configuration
 

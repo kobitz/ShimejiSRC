@@ -135,10 +135,10 @@ if (-not $BundleJre) {
 }
 
 # --- compile -----------------------------------------------------------------------------------------
-& $Iscc @isccArgs (Join-Path $here "ShimejiSRC.iss")
+& $Iscc @isccArgs (Join-Path $here "koaibo.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed." }
 $suffix = if ($Test) { "-TEST" } else { "" }
-$exe = Join-Path $dist "ShimejiSRC-Setup-$Version$suffix.exe"
+$exe = Join-Path $dist "koaibo-Setup-$Version$suffix.exe"
 $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
 Write-Host ""
 Write-Host "Installer: $exe"

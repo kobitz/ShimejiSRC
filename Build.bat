@@ -5,7 +5,7 @@ setlocal EnableExtensions
 :: Shimeji fork build.
 ::
 ::   [4] Portable build (works on any machine): builds the jar with Ant, finds or
-::       downloads Launch4j, and produces a runnable dist\ShimejiSRC\Shimeji.exe
+::       downloads Launch4j, and produces a runnable dist\koaibo\Shimeji.exe
 ::       (with conf\ and img\ beside it). Needs only JDK 17+ and Apache Ant.
 ::   [1][2] Release / Test builds: your own Launch4j configs and install folder,
 ::       set in Build.local.bat (gitignored; template: Build.local.bat.example).
@@ -36,7 +36,7 @@ echo ================================
 echo  [1] Release build  (your Launch4j config)
 echo  [2] Test build     (your Launch4j config)
 echo  [3] Ant only (jar, no exe)
-echo  [4] Portable build (exe in dist\ShimejiSRC)
+echo  [4] Portable build (exe in dist\koaibo)
 echo ================================
 set "CHOICE="
 set /p CHOICE=Choose (1/2/3/4, Enter = %DEFAULT%):
@@ -100,7 +100,7 @@ exit /b 0
 
 :: ---- [4] portable build -----------------------------------------------------------
 :portable
-set "DIST=%ROOT%\dist\ShimejiSRC"
+set "DIST=%ROOT%\dist\koaibo"
 set "L4J="
 if defined LAUNCH4J if exist "%LAUNCH4J%" set "L4J=%LAUNCH4J%"
 if not defined L4J if exist "%ROOT%\tools\launch4j\launch4jc.exe" set "L4J=%ROOT%\tools\launch4j\launch4jc.exe"
@@ -157,7 +157,7 @@ echo ================================
 echo  Build complete!
 echo  %DIST%\Shimeji.exe
 echo ================================
-echo  The whole dist\ShimejiSRC folder is the app: zip it or copy it anywhere.
+echo  The whole dist\koaibo folder is the app: zip it or copy it anywhere.
 set "RUNCHOICE="
 set /p RUNCHOICE=Press 1 to launch it, or Enter to close:
 if "%RUNCHOICE%"=="1" start "" /d "%DIST%" "%DIST%\Shimeji.exe"

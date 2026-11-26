@@ -1,6 +1,6 @@
-; Inno Setup 6.3+ script for the ShimejiSRC installer. Build with installer\build-installer.bat
+; Inno Setup 6.3+ script for the koaibo installer. Build with installer\build-installer.bat
 ; (it assembles a clean bundle first), or by hand:
-;   ISCC.exe /DAppVersion=2.0 /DSourceDir=..\dist\Shimeji /DJreUrl=<zip url> /DJreSha256=<sha256> installer\ShimejiSRC.iss
+;   ISCC.exe /DAppVersion=2.0 /DSourceDir=..\dist\Shimeji /DJreUrl=<zip url> /DJreSha256=<sha256> installer\koaibo.iss
 ; With /DJreUrl the installer downloads the Java runtime (SHA-256 verified) into {app}\jre instead of
 ; the bundle carrying it. Without /DJreUrl the bundle must already contain jre\ (offline installer).
 
@@ -17,17 +17,17 @@
   ; Throwaway test installer: its own app id, folder, shortcut names and file name, so running it can
   ; never touch (or replace the uninstall entry of) a real install. Build with build-installer.bat <ver> test.
   #define SetupId "{{6D1B7C52-3A4E-4F0B-9C81-2E5A7B0D4F13}"
-  #define DisplayName "ShimejiSRC (test)"
-  #define OutName "ShimejiSRC-Setup-" + AppVersion + "-TEST"
+  #define DisplayName "koaibo (test)"
+  #define OutName "koaibo-Setup-" + AppVersion + "-TEST"
   #ifndef TestDir
     #define TestDir "..\dist\test-install"
   #endif
   #define DefaultDir TestDir
 #else
   #define SetupId "{{1F6928A0-56AC-49AF-9D6D-A8CDC0A17D6E}"
-  #define DisplayName "ShimejiSRC"
-  #define OutName "ShimejiSRC-Setup-" + AppVersion
-  #define DefaultDir "{autopf}\ShimejiSRC"
+  #define DisplayName "koaibo"
+  #define OutName "koaibo-Setup-" + AppVersion
+  #define DefaultDir "{autopf}\koaibo"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\dist\Shimeji"
@@ -38,8 +38,8 @@ AppId={#SetupId}
 AppName={#DisplayName}
 AppVersion={#AppVersion}
 AppPublisher=Ko (kobitz)
-AppPublisherURL=https://github.com/kobitz/ShimejiSRC
-AppSupportURL=https://github.com/kobitz/ShimejiSRC/issues
+AppPublisherURL=https://github.com/kobitz/koaibo
+AppSupportURL=https://github.com/kobitz/koaibo/issues
 ; Per-user by default (no admin prompt). The app writes settings.properties, memory.json and logs
 ; next to itself, so it must NOT live under C:\Program Files. "Install for all users" is offered
 ; by the dialog but then needs a writable folder of your choosing.
@@ -72,7 +72,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "startupicon"; Description: "Start ShimejiSRC when I sign in to Windows"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "startupicon"; Description: "Start koaibo when I sign in to Windows"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
 ; Everything except the default settings: reinstalling/upgrading must never clobber the user's settings.
@@ -90,7 +90,7 @@ Name: "{autodesktop}\{#DisplayName}"; Filename: "{app}\Shimeji.exe"; WorkingDir:
 Name: "{userstartup}\{#DisplayName}"; Filename: "{app}\Shimeji.exe"; WorkingDir: "{app}"; Tasks: startupicon
 
 [Run]
-Filename: "{app}\Shimeji.exe"; Description: "Launch ShimejiSRC"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Shimeji.exe"; Description: "Launch koaibo"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\Setup.bat"; Description: "Set up AI features now (downloads Ollama + a ~4 GB model; optional, needs internet)"; WorkingDir: "{app}"; Flags: shellexec postinstall skipifsilent unchecked skipifdoesntexist
 
 [UninstallDelete]
@@ -151,7 +151,7 @@ begin
       RaiseException('Could not unpack the Java runtime (exit code ' + IntToStr(rc) + ').');
   except
     DelTree(tmpDir, True, True, True);
-    SuppressibleMsgBox('ShimejiSRC could not set up its Java runtime:' + #13#10 + GetExceptionMessage + #13#10#13#10 +
+    SuppressibleMsgBox('koaibo could not set up its Java runtime:' + #13#10 + GetExceptionMessage + #13#10#13#10 +
       'The app will use a Java 17+ you already have installed. If you have none, install one from ' +
       'https://adoptium.net, or run this installer again with an internet connection.',
       mbInformation, MB_OK, IDOK);
