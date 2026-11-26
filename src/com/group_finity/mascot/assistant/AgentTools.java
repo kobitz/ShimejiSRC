@@ -569,6 +569,17 @@ public final class AgentTools
         }
         if( ( op == WindowControl.Op.MAXIMIZE || op == WindowControl.Op.MINIMIZE || op == WindowControl.Op.RESTORE )
             && runWindowErrand( m.match.handle, new WindowErrandPlan.Goal( null, op ) ) ) return;
+        if( op == WindowControl.Op.LEFT || op == WindowControl.Op.RIGHT || op == WindowControl.Op.TOP
+            || op == WindowControl.Op.BOTTOM || op == WindowControl.Op.CENTER )
+        {
+            final WindowControl.Info cur = windows.current( m.match.handle );
+            final List<java.awt.Rectangle> mons = windows.monitors();
+            if( cur != null && !mons.isEmpty() )
+            {
+                final java.awt.Rectangle region = AgentLayout.target( AgentLayout.screenFor( mons, cur.bounds, mons.get( 0 ) ), op );
+                if( runWindowErrand( m.match.handle, new WindowErrandPlan.Goal( null, null, region ) ) ) return;
+            }
+        }
         if( !windows.apply( m.match, op ) ) reporter.say( "Windows wouldn't let me do that." );
     }
 

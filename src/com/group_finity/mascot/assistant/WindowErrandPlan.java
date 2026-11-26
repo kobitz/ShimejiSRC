@@ -24,11 +24,19 @@ public final class WindowErrandPlan
     {
         public final Rectangle toMonitor;
         public final WindowControl.Op finalOp;
+        /** Snap goal: the exact rectangle the window ends up in (carried there, then thrown into place). */
+        public final Rectangle region;
 
         public Goal( final Rectangle toMonitor, final WindowControl.Op finalOp )
         {
+            this( toMonitor, finalOp, null );
+        }
+
+        public Goal( final Rectangle toMonitor, final WindowControl.Op finalOp, final Rectangle region )
+        {
             this.toMonitor = toMonitor;
             this.finalOp = finalOp;
+            this.region = region;
         }
     }
 
@@ -86,6 +94,7 @@ public final class WindowErrandPlan
             return new Step( Kind.PRESS, WindowControl.Op.RESTORE, null, true, false, 0, null );
         }
 
+        if( g.region != null ) return toRegion( g.region, w, s );
         if( g.toMonitor == null ) return opOnly( g.finalOp, w, s );
 
         final boolean there = onTarget( w.bounds, g.toMonitor );
@@ -110,6 +119,25 @@ public final class WindowErrandPlan
         // on the right monitor and free
         if( g.finalOp == WindowControl.Op.MAXIMIZE && !w.maximized ) return press( WindowControl.Op.MAXIMIZE, w, s );
         return Step.of( Kind.DONE );
+    }
+
+    /** Snap / centre: grab the window, walk the held corner to the region's matching corner, throw it into place. */
+    private static Step toRegion( final Rectangle region, final WindowControl.Info w, final State s )
+    {
+        final boolean atRegion = !w.maximized && Math.abs( w.bounds.x - region.x ) <= 16 && Math.abs( w.bounds.y - region.y ) <= 16;
+        if( atRegion && !s.held ) return Step.of( Kind.DONE );
+        if( w.maximized && !s.held ) return press( WindowControl.Op.RESTORE, w, s );   // no free corner to grab on a maximized window
+        if( !s.held )
+        {
+            final boolean left = Math.abs( s.mascot.x + s.mascot.width / 2 - w.bounds.x )
+                               <= Math.abs( s.mascot.x + s.mascot.width / 2 - ( w.bounds.x + w.bounds.width ) );
+            final int cx = left ? w.bounds.x : w.bounds.x + w.bounds.width;
+            return new Step( Kind.GRAB, null, new Point( cx, w.bounds.y + w.bounds.height ), false, left, cx, region );
+        }
+        final int heldX = s.heldLeft ? w.bounds.x : w.bounds.x + w.bounds.width;
+        final int walkX = s.heldLeft ? region.x : region.x + region.width;
+        if( Math.abs( heldX - walkX ) <= 24 ) return Step.of( Kind.RELEASE );
+        return new Step( Kind.CARRY, null, null, false, s.heldLeft, walkX, region );
     }
 
     private static Step opOnly( final WindowControl.Op op, final WindowControl.Info w, final State s )

@@ -117,7 +117,27 @@ public final class WindowErrandStage implements WindowErrand.Stage
     {
         if( hold != null ) { hold.end(); hold = null; }
         final WindowControl.Info cur = windows.current( handle );
-        if( cur != null ) windows.place( cur, target );
+        if( cur == null ) return;
+        // thrown into place: a quick ease-out from where it hung at the mascot's feet to its final rectangle
+        final Rectangle a = cur.bounds;
+        if( Math.abs( a.x - target.x ) + Math.abs( a.y - target.y ) + Math.abs( a.width - target.width ) + Math.abs( a.height - target.height ) > 24 )
+        {
+            try
+            {
+                final int steps = 12;
+                for( int i = 1; i < steps; i++ )
+                {
+                    final double t = (double) i / steps, e = 1 - Math.pow( 1 - t, 3 );
+                    final Rectangle r = new Rectangle(
+                        a.x + (int) Math.round( ( target.x - a.x ) * e ), a.y + (int) Math.round( ( target.y - a.y ) * e ),
+                        a.width + (int) Math.round( ( target.width - a.width ) * e ), a.height + (int) Math.round( ( target.height - a.height ) * e ) );
+                    if( !windows.place( cur, r ) ) return;
+                    Thread.sleep( 18 );
+                }
+            }
+            catch( final InterruptedException ie ) { Thread.currentThread().interrupt(); }
+        }
+        windows.place( cur, target );
     }
 
     @Override public boolean taken() { return hold != null && hold.taken; }
@@ -158,10 +178,19 @@ public final class WindowErrandStage implements WindowErrand.Stage
             AgentCarry.markCarried( handle, true );
             final Thread t = new Thread( this, "window-hold" );
             t.setDaemon( true );
+            thread = t;
             t.start();
         }
 
-        void end() { stop = true; AgentCarry.markCarried( handle, false ); }
+        private Thread thread;
+
+        void end()
+        {
+            stop = true;
+            final Thread t = thread;
+            if( t != null && t != Thread.currentThread() ) try { t.join( 300 ); } catch( final InterruptedException e ) { Thread.currentThread().interrupt(); }
+            AgentCarry.markCarried( handle, false );
+        }
 
         @Override
         public void run()

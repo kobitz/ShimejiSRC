@@ -104,6 +104,27 @@ public class WindowErrandTest
         check( f.log.get( 0 ).equals( "press RESTORE" ) && f.log.get( f.log.size() - 1 ).equals( "press MAXIMIZE" ), "max move log " + f.log );
         check( f.log.contains( "grab L" ) || f.log.contains( "grab R" ), "grabbed a corner after windowing: " + f.log );
 
+        // snap left: grab a corner, carry it to the region's corner, throw into place
+        final Rectangle left = AgentLayout.target( M1, WindowControl.Op.LEFT );
+        f = new Fake( win( new Rectangle( 400, 200, 800, 600 ), false, false ) );
+        check( WindowErrand.run( f, new WindowErrandPlan.Goal( null, null, left ), MONS, 1.0 ) == WindowErrand.Outcome.DONE, "snap done" );
+        check( f.log.equals( Arrays.asList( "grab L", "carry", "release" ) ) && f.w.bounds.equals( left ), "snap log " + f.log + " " + f.w.bounds );
+
+        // snap right with the mascot nearer the right corner holds the right corner
+        final Rectangle right = AgentLayout.target( M1, WindowControl.Op.RIGHT );
+        f = new Fake( win( new Rectangle( 400, 200, 800, 600 ), false, false ) );
+        f.mascot = new Rectangle( 1150, 900, 64, 128 );
+        WindowErrand.run( f, new WindowErrandPlan.Goal( null, null, right ), MONS, 1.0 );
+        check( f.log.get( 0 ).equals( "grab R" ) && f.w.bounds.equals( right ), "snap right " + f.log );
+
+        // snapping a maximized window: window it first
+        f = new Fake( win( new Rectangle( M1.x - 8, M1.y - 8, M1.width + 16, M1.height + 16 ), false, true ) );
+        check( WindowErrand.run( f, new WindowErrandPlan.Goal( null, null, left ), MONS, 1.0 ) == WindowErrand.Outcome.DONE && f.log.get( 0 ).equals( "press RESTORE" ), "snap maximized " + f.log );
+
+        // already in place: nothing to do
+        f = new Fake( win( left, false, false ) );
+        check( WindowErrand.run( f, new WindowErrandPlan.Goal( null, null, left ), MONS, 1.0 ) == WindowErrand.Outcome.DONE && f.log.isEmpty(), "snap no-op" );
+
         // the user takes the window mid-carry
         f = new Fake( win( new Rectangle( 200, 300, 800, 600 ), false, false ) );
         f.userTakesOnCarry = true;
