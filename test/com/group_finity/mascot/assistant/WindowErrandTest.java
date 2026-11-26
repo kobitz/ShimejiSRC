@@ -86,10 +86,10 @@ public class WindowErrandTest
         WindowErrand.run( f, new WindowErrandPlan.Goal( null, WindowControl.Op.MAXIMIZE ), MONS, 1.0 );
         check( f.log.get( 0 ).equals( "press RESTORE direct" ), "minimized restored directly: " + f.log );
 
-        // move to monitor 2: grab nearest corner, carry, release
+        // move to monitor 2: grab nearest corner, then throw it (no walk across)
         f = new Fake( win( new Rectangle( 200, 300, 800, 600 ), false, false ) );
         check( WindowErrand.run( f, new WindowErrandPlan.Goal( M2, null ), MONS, 1.0 ) == WindowErrand.Outcome.DONE, "move done" );
-        check( f.log.equals( Arrays.asList( "grab L", "carry", "release" ) ), "move log " + f.log );
+        check( f.log.equals( Arrays.asList( "grab L", "release" ) ), "move log " + f.log );
         check( M2.contains( f.w.bounds.x + f.w.bounds.width / 2, f.w.bounds.y + f.w.bounds.height / 2 ), "ended on monitor 2" );
 
         // mascot nearer the right corner grabs the right corner
@@ -98,7 +98,7 @@ public class WindowErrandTest
         WindowErrand.run( f, new WindowErrandPlan.Goal( M2, null ), MONS, 1.0 );
         check( f.log.get( 0 ).equals( "grab R" ), "right corner chosen: " + f.log );
 
-        // maximized window going to monitor 2 and staying maximized: window button first, then carry, then maximize
+        // maximized window going to monitor 2 and staying maximized: window button first, then throw, then maximize
         f = new Fake( win( new Rectangle( M1.x - 8, M1.y - 8, M1.width + 16, M1.height + 16 ), false, true ) );
         check( WindowErrand.run( f, new WindowErrandPlan.Goal( M2, WindowControl.Op.MAXIMIZE ), MONS, 1.0 ) == WindowErrand.Outcome.DONE, "max move done" );
         check( f.log.get( 0 ).equals( "press RESTORE" ) && f.log.get( f.log.size() - 1 ).equals( "press MAXIMIZE" ), "max move log " + f.log );
@@ -128,7 +128,7 @@ public class WindowErrandTest
         // the user takes the window mid-carry
         f = new Fake( win( new Rectangle( 200, 300, 800, 600 ), false, false ) );
         f.userTakesOnCarry = true;
-        check( WindowErrand.run( f, new WindowErrandPlan.Goal( M2, null ), MONS, 1.0 ) == WindowErrand.Outcome.TAKEN && f.finished, "taken ends errand" );
+        check( WindowErrand.run( f, new WindowErrandPlan.Goal( null, null, left ), MONS, 1.0 ) == WindowErrand.Outcome.TAKEN && f.finished, "taken ends errand" );
 
         // window vanishes
         f = new Fake( null );

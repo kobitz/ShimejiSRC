@@ -112,8 +112,8 @@ public final class WindowErrandPlan
                 final int cx = left ? w.bounds.x : w.bounds.x + w.bounds.width;
                 return new Step( Kind.GRAB, null, new Point( cx, w.bounds.y + w.bounds.height ), false, left, cx, target );
             }
-            final int walkX = s.heldLeft ? target.x : target.x + target.width;
-            return new Step( Kind.CARRY, null, null, false, s.heldLeft, walkX, target );
+            // held: monitors are far apart and the floors differ, so the mascot does not walk across -- it throws the window
+            return Step.of( Kind.RELEASE );
         }
 
         // on the right monitor and free

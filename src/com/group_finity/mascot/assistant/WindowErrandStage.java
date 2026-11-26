@@ -124,12 +124,17 @@ public final class WindowErrandStage implements WindowErrand.Stage
         {
             try
             {
-                final int steps = 12;
+                final double dist = Math.hypot( target.x - a.x, target.y - a.y );
+                // a long flight (another monitor) is a real throw: more frames, an arc over the straight line, constant-ish speed
+                final boolean flight = dist > 400;
+                final int steps = flight ? 26 : 12;
+                final int arc = flight ? (int) Math.min( 260, dist / 4 ) : 0;
                 for( int i = 1; i < steps; i++ )
                 {
-                    final double t = (double) i / steps, e = 1 - Math.pow( 1 - t, 3 );
+                    final double t = (double) i / steps, e = flight ? t * ( 2 - t ) : 1 - Math.pow( 1 - t, 3 );
+                    final int lift = (int) Math.round( Math.sin( Math.PI * t ) * arc );
                     final Rectangle r = new Rectangle(
-                        a.x + (int) Math.round( ( target.x - a.x ) * e ), a.y + (int) Math.round( ( target.y - a.y ) * e ),
+                        a.x + (int) Math.round( ( target.x - a.x ) * e ), a.y + (int) Math.round( ( target.y - a.y ) * e ) - lift,
                         a.width + (int) Math.round( ( target.width - a.width ) * e ), a.height + (int) Math.round( ( target.height - a.height ) * e ) );
                     if( !windows.place( cur, r ) ) return;
                     Thread.sleep( 18 );
