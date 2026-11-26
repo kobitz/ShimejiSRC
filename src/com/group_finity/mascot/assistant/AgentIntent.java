@@ -33,8 +33,6 @@ public final class AgentIntent
         "^(?:clean|tidy|organi[sz]e|sort)(?:\\s+up)?\\s+(?:out\\s+)?(?:the\\s+|my\\s+)?([a-z0-9 _-]+?)(?:\\s+folder)?$" );
     private static final Pattern UNDO = Pattern.compile( "^undo(?:\\s+(?:that|it|the\\s+(?:tidy|cleanup|clean up|sort|organi[sz]ing)))?$" );
 
-    private static final Pattern CARRY = Pattern.compile(
-        "^(?:carry|take|haul|lug|pick up|pickup|hold|lift)\\s+(.+?)(?:\\s+(?:and\\s+carry\\s+(?:it\\s+)?)?(?:around|about|with you|for a walk|along))?$" );
     /** "for a minute", "for a while", "for 5 minutes", "for a couple of minutes"... */
     private static final Pattern DURATION = Pattern.compile(
         "\\s+for\\s+(?:(?:a|an|one)\\s+(minute|min|while|bit|little while|little|moment|second|sec)|(?:a\\s+)?(?:few|couple(?:\\s+of)?)\\s+minutes?|some\\s+time|(\\d+)\\s*(seconds?|secs?|minutes?|mins?))\\b" );
@@ -55,8 +53,6 @@ public final class AgentIntent
             default: return 180;                         // a while, a little while
         }
     }
-    private static final Pattern DROP = Pattern.compile(
-        "^(?:(?:ok(?:ay)?\\s+)?(?:drop|release|put down|set down|let go of|let go|stop carrying)(?:\\s+(?:it|that|them|the window|this window|my window|the app))?(?:\\s+down)?|put (?:it|that|the window|this window|my window) down|that'?s enough|you can put (?:it|that) down)$" );
 
     private static final Pattern FILLER = Pattern.compile( "^(?:(?:hey|ok|okay|please|can you|could you|would you|will you|go ahead and|just)[ ,]+)+", Pattern.CASE_INSENSITIVE );
 
@@ -174,17 +170,6 @@ public final class AgentIntent
             final List<String[]> sys = parseSystem( t );
             if( sys != null ) return sys;
         }
-        if( DROP.matcher( t ).matches() ) { out.add( new String[] { "drop" } ); return out; }
-        if( wantsCarry( t ) )
-        {
-            final long dur = durationSeconds( t );
-            final String bare = DURATION.matcher( t ).replaceAll( "" ).trim();
-            if( ( m = CARRY.matcher( bare ) ).matches() )
-            {
-                out.add( new String[] { "carry", clean( m.group( 1 ) ), Long.toString( Math.min( 600, dur < 0 ? 120 : dur ) ) } );
-                return out;
-            }
-        }
         if( ( m = UNDO.matcher( t ) ).matches() ) { out.add( new String[] { "undo" } ); return out; }
         if( ( m = ORGANIZE.matcher( t ) ).matches() ) { out.add( new String[] { "organize", m.group( 1 ).trim() } ); return out; }
         if( ( m = MONITOR_A.matcher( t ) ).matches() ) { out.add( new String[] { "monitor", m.group( 2 ), clean( m.group( 1 ) ) } ); return out; }
@@ -215,13 +200,6 @@ public final class AgentIntent
         if( dest.matches( "(?:the\\s+)?(?:left|right|top|bottom|center|centre)(?:\\s+.*)?" ) ) return false;
         if( dest.matches( ".*\\b(?:monitor|screen|display)\\b.*" ) ) return false;
         return HAS_EXT.matcher( src.trim() ).find() || src.matches( "(?:file\\s+.+|.+\\s+file|this|it|that)" ) && src.contains( "file" );
-    }
-
-    /** "take" and "hold" are everyday verbs; only treat them as carry when the user also says around/carry/walk. */
-    private static boolean wantsCarry( final String t )
-    {
-        return t.contains( "carry" ) || t.contains( "around" ) || t.contains( "with you" ) || t.contains( "for a walk" )
-            || t.startsWith( "pick up" ) || t.startsWith( "pickup" ) || t.startsWith( "lift" );
     }
 
     /** Drop filler so "my browser window" becomes "browser". */

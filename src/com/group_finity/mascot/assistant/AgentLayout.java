@@ -26,22 +26,6 @@ public final class AgentLayout
         }
     }
 
-    /**
-     * Where a carried window of {@code w x h} goes: centred over the mascot with its bottom edge a few
-     * pixels above the mascot's head, then clamped into {@code screen} (a window bigger than the screen
-     * is pinned to the top-left rather than dragged off it).
-     */
-    public static Rectangle carryTarget( final Rectangle mascot, final int w, final int h, final Rectangle screen )
-    {
-        int x = mascot.x + mascot.width / 2 - w / 2;
-        int y = mascot.y - h - 4;
-        x = Math.max( screen.x, Math.min( x, screen.x + screen.width - w ) );
-        y = Math.max( screen.y, Math.min( y, screen.y + screen.height - h ) );
-        if( w >= screen.width ) x = screen.x;
-        if( h >= screen.height ) y = screen.y;
-        return new Rectangle( x, y, w, h );
-    }
-
     /** Index of the monitor holding most of {@code r} (nearest centre if none overlaps); -1 for an empty list. */
     public static int monitorIndex( final java.util.List<Rectangle> mons, final Rectangle r )
     {

@@ -266,8 +266,6 @@ public final class AgentTools
             case "window":   doWindow( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
             case "organize": doOrganize( t.length > 1 ? t[ 1 ] : "" ); break;
             case "undo":     doUndo(); break;
-            case "carry":    doCarry( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
-            case "drop":     doDrop(); break;
             case "monitor":  doMonitor( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
             case "move":     doMove( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
             case "sys":        doSys( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
@@ -670,34 +668,6 @@ public final class AgentTools
         }
         final int n = FileOrganizer.execute( java.util.Collections.singletonList( p.move ), journal );
         reporter.say( n == 1 ? "Moved. Say \"undo\" to put it back." : "That didn't work; the file may be in use." );
-    }
-
-    // carry ---------------------------------------------------------------------
-
-    private void doCarry( final String query, final String secs )
-    {
-        if( windows == null || mascotBounds == null ) { reporter.say( "I can't carry windows on this system." ); return; }
-        final String q = effectiveQuery( query );
-        if( q.trim().isEmpty() ) { reporter.say( "Which window? Click me while it's in front, or name it." ); return; }
-        final Match m = matchWindow( windows.list(), q );
-        if( m.match == null )
-        {
-            reporter.say( m.ambiguous == null || m.ambiguous.isEmpty() ? "I can't find a window called \"" + q + "\"." : "Which one? Say its name." );
-            return;
-        }
-        long ms = AgentCarry.DEFAULT_MS;
-        try { ms = Long.parseLong( secs ) * 1000L; } catch( final NumberFormatException ignored ) { }
-        final WindowControl wc = windows;
-        AgentCarry.start( wc, m.match, mascotBounds, () -> AgentLayout.screenFor( wc.monitors(), mascotBounds.get(), AgentCarry.screenOf( mascotBounds.get() ) ), this::enabled, ms,
-            reason -> reporter.say( "closed".equals( reason ) ? "The window's gone, so I'm done."
-                : "taken".equals( reason ) ? "Okay, it's yours."
-                : "off".equals( reason ) ? "Okay, I stopped." : "Here you go." ) );
-        reporter.say( "Got it. Say \"drop it\" whenever." );
-    }
-
-    private void doDrop()
-    {
-        if( AgentCarry.dropAll() == 0 ) reporter.say( "I'm not carrying anything." );
     }
 
     private static String shorten( final String s ) { return s.length() <= 40 ? s : s.substring( 0, 37 ) + "..."; }
