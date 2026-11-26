@@ -856,7 +856,7 @@ public class Main
                             }
                         } );
                         
-                        final JButton btnShop = new JButton( getLanguageString( "MascotShop", "Mascot Shop..." ) );
+                        final JButton btnShop = new JButton( getLanguageString( "GetMascots", "Get Mascots..." ) );
                         btnShop.addActionListener( new ActionListener( )
                         {
                             public void actionPerformed( final ActionEvent event )
@@ -1345,7 +1345,7 @@ public class Main
                         width = Math.max( metrics.stringWidth( btnDismissAll.getText( ) ), width );
                         panel.setPreferredSize( new Dimension( width + 64, 
                                 (int)( 24 * scaling ) + // 12 padding on top and bottom
-                                (int)( 80 * scaling ) + // 14 insets of 5 height normally (incl. the Mascot Shop button)
+                                (int)( 80 * scaling ) + // 14 insets of 5 height normally (incl. the Get Mascots button)
                                 11 * metrics.getHeight( ) + // 11 button faces
                                 84 ) );
                         form.pack( );
@@ -1804,7 +1804,7 @@ public class Main
         Main.this.getManager( ).setExitOnLastRemoved( isExit );
     }
 
-    /** Adds one image set to the running set (used by the Mascot Shop after an install). Call on the EDT. */
+    /** Adds one image set to the running set (used by the Get Mascots after an install). Call on the EDT. */
     public void activateImageSet( final String imageSet )
     {
         if( imageSet == null || imageSets.contains( imageSet ) ) return;

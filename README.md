@@ -27,7 +27,7 @@ Mascots are animated sprites rendered as borderless, always-on-top windows, move
 - **Dismiss** — remove that one. Clicking anywhere else closes the menu.
 - …plus this fork's extras: a tooltip toggle, a per-character sound-effects volume slider, and the AI **assistant mode** toggle with its personal-behaviour checkboxes.
 
-**The system-tray icon** manages all active mascots: add mascots, choose which image sets are active, *Reduce to One*, *Restore Windows*, *Allowed Behaviours* (globally enable or disable individual behaviors), open the **Mascot Shop**, open *Settings*, and quit (the classic "Bye bye"). Sets that carry a `hidden.txt` marker (see *Making your own*) don't appear in the chooser or get picked by *Call Shimeji*.
+**The system-tray icon** manages all active mascots: add mascots, choose which image sets are active, *Reduce to One*, *Restore Windows*, *Allowed Behaviours* (globally enable or disable individual behaviors), open **Get Mascots**, open *Settings*, and quit (the classic "Bye bye"). Sets that carry a `hidden.txt` marker (see *Making your own*) don't appear in the chooser or get picked by *Call Shimeji*.
 
 **Settings** cover global scale, always-on-top, multi-monitor mode, which apps' windows are interactive, and all of the assistant options below.
 
@@ -83,9 +83,9 @@ Off by default. Set `AgentEnabled=true` in `conf/settings.properties` and restar
 
 Only your own words trigger these: text from the screen, other people's audio, or anything a mascot reads can never give it an order. See `CLAUDE.md` for the safety rules.
 
-## Mascot Shop
+## Get Mascots
 
-Tray menu → **Mascot Shop...** browses a catalog of community mascots. Entries either link to the creator's own page (you download, then use *Import .zip*) or install in place when the creator allows redistribution; installs are checksum-verified and never overwrite an existing mascot. The shop only touches the network while it's open (`ShopThumbnails=false` skips preview images).
+Tray menu → **Get Mascots...** browses a catalog of community mascots. Entries either link to the creator's own page (you download, then use *Import .zip*) or install in place when the creator allows redistribution; installs are checksum-verified and never overwrite an existing mascot. The shop only touches the network while it's open (`ShopThumbnails=false` skips preview images).
 
 ## Making your own
 

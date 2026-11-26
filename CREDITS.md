@@ -36,7 +36,7 @@ Every mascot's artwork belongs to its artist, and every character belongs to its
 
 **Sprite artists: TODO (Ko to fill in).** Name the artist of each bundled mascot (2B, Campfire, Holo, Hornet, Mosscreep, Mossfly, Paimon) here, with a link to where they published it, before the next release. Only mascots you are allowed to redistribute should ship (`installer/mascots.txt`).
 
-The **Mascot Shop** never re-hosts anything: mascots listed from Cachomon and other creators open the creator's own page. Each entry shows its creator; please support them there (many are on Patreon).
+**Get Mascots** never re-hosts anything: mascots listed from Cachomon and other creators open the creator's own page. Each entry shows its creator; please support them there (many are on Patreon).
 
 ## Licence
 

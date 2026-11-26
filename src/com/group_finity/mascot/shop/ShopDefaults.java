@@ -12,7 +12,7 @@ final class ShopDefaults
         """
 {
   "version": 1,
-  "_note": "Curated Mascot Shop list: every Safe-rated Cachomon mascot that can be downloaded, as of 2026-11. All entries are mode=link: the shop only opens the creator's page, you download there and use Import .zip. mode=install needs an https downloadUrl + sha256 and is only for mascots whose creator allows redistribution. Thumbnails are loaded from the creator's site and cached in cache/shop-previews.",
+  "_note": "Curated Get Mascots list: every Safe-rated Cachomon mascot that can be downloaded, as of 2026-11. All entries are mode=link: the shop only opens the creator's page, you download there and use Import .zip. mode=install needs an https downloadUrl + sha256 and is only for mascots whose creator allows redistribution. Thumbnails are loaded from the creator's site and cached in cache/shop-previews.",
   "mascots": [
     {"id": "cachomon-439", "name": "Isabelle from Animal Crossing", "creator": "Cachomon", "source": "cachomon.com", "mode": "link", "pageUrl": "https://cachomon.com/shimeji.php?g=1&m=0&a=0&t=0&id=439", "previewUrl": "https://cachomon.com/thumbnails/isabelleAC.png", "price": "Free", "description": "Beta release (may still change). Free from the creator's page, then use Import .zip.", "tags": ["animal crossing"]},
     {"id": "cachomon-438", "name": "Blitzo Buckzo from Helluva Boss", "creator": "VonKellcsiis", "source": "cachomon.com", "mode": "link", "pageUrl": "https://cachomon.com/shimeji.php?g=1&m=0&a=0&t=0&id=438", "previewUrl": "https://cachomon.com/thumbnails/blitzoHB.png", "price": "Free", "description": "Beta release (may still change). Free from the creator's page, then use Import .zip.", "tags": ["helluva boss"]},

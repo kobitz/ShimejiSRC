@@ -485,7 +485,7 @@ public class VoiceCommandListener
         final String toCheck  = ( stripped != null && !stripped.isBlank() )
             ? stripped : transcript;
 
-        final boolean nameSeen = checkForCommands( toCheck, sysHint );
+        final boolean nameSeen = checkForCommands( toCheck, sysHint, true );
         // No name anywhere in the utterance: this is the user talking to something
         // or someone else. Offer it as an overheard-speech reaction. Only the
         // echo-stripped text qualifies — if stripping blanked it, the mic heard
@@ -571,7 +571,7 @@ public class VoiceCommandListener
             ? stripped : transcript;
 
         log.fine( "[Voice] After strip: " + toCheck );
-        final boolean nameSeen = checkForCommands( toCheck, sysHint );
+        final boolean nameSeen = checkForCommands( toCheck, sysHint, false );
         if( !nameSeen && stripped != null && !stripped.isBlank() )
             fireSpeechReaction( stripped );
     }
@@ -582,8 +582,21 @@ public class VoiceCommandListener
      * transcript — even when suppressed by echo or cooldown — so callers don't
      * route name-trigger territory to the overheard-speech reaction.
      */
-    private boolean checkForCommands( final String transcript, final String sysHint )
+    private boolean checkForCommands( final String transcriptIn, final String sysHint, final boolean allowHold )
     {
+        String transcript = transcriptIn;
+        // A name-only call ("hey hornet") is waiting for the rest of the sentence: join them.
+        if( allowHold )
+        {
+            final PendingCall p;
+            synchronized( pendingLock ) { p = pending; pending = null; }
+            if( p != null )
+            {
+                p.timer.cancel( false );
+                transcript = p.text + " " + transcriptIn;
+                log.fine( "[Voice] Joined held call with continuation: " + transcript );
+            }
+        }
         final String lower    = transcript.toLowerCase();
         final String sysLower = ( sysHint != null ) ? sysHint.toLowerCase() : "";
         boolean nameSeen = false;
@@ -597,10 +610,47 @@ public class VoiceCommandListener
             // Name also appears in system audio — almost certainly echo, not a user call.
             if( !sysLower.isEmpty() && sysLower.contains( name ) ) continue;
 
+            // The periodic poll re-hears audio the endpoint path already holds: leave it to that path.
+            synchronized( pendingLock ) { if( pending != null && !allowHold ) continue; }
+
             // Cooldown check
             final long now = System.currentTimeMillis();
             final Long last = lastCommandTime.get( name );
             if( last != null && now - last < COOLDOWN_MS ) continue;
+
+            // "hey hornet" / "hey hornet, can you..." : the command has not been said yet. Give the
+            // user a few seconds to finish before the mascot answers.
+            final ScheduledExecutorService exec = pollExecutor;
+            final int holdMs = nameGraceMs();
+            if( allowHold && holdMs > 0 && exec != null && !exec.isShutdown()
+                    && needsContinuation( transcript, name ) )
+            {
+                final String heldText = transcript;
+                final java.util.function.Consumer<String> cb = entry.getValue();
+                final PendingCall pc = new PendingCall( heldText );
+                try
+                {
+                    synchronized( pendingLock )
+                    {
+                        pc.timer = exec.schedule( () ->
+                        {
+                            synchronized( pendingLock )
+                            {
+                                if( pending != pc ) return;
+                                pending = null;
+                            }
+                            lastCommandTime.put( name, System.currentTimeMillis() );
+                            log.warning( "[Voice] Name trigger: " + name + " (no continuation)" );
+                            cb.accept( heldText );
+                        }, holdMs, TimeUnit.MILLISECONDS );
+                        pending = pc;
+                    }
+                    log.fine( "[Voice] Holding call for up to " + holdMs + " ms: " + heldText );
+                    break;
+                }
+                catch( final RejectedExecutionException ignored ) { /* shutting down: fire now */ }
+            }
+
             lastCommandTime.put( name, now );
 
             log.warning( "[Voice] Name trigger: " + name );
@@ -609,6 +659,61 @@ public class VoiceCommandListener
             break;
         }
         return nameSeen;
+    }
+
+    // ── Name-then-command grace ──────────────────────────────────────────────
+
+    private static final class PendingCall
+    {
+        final String text;
+        volatile ScheduledFuture<?> timer;
+        PendingCall( final String t ) { text = t; }
+    }
+    private final Object pendingLock = new Object();
+    private PendingCall pending = null;
+
+    /** How long to wait for a command after the name alone or a dangling start ("hey hornet, can you").
+     *  {@code VoiceNameGraceMs} (0 = off, max 15000; default 4000). Read live. */
+    private static int nameGraceMs()
+    {
+        try
+        {
+            final String v = com.group_finity.mascot.Main.getInstance().getProperties()
+                .getProperty( "VoiceNameGraceMs", "4000" );
+            return Math.max( 0, Math.min( 15000, Integer.parseInt( v.trim() ) ) );
+        }
+        catch( final Throwable t ) { return 4000; }
+    }
+
+    private static final Set<String> GREETING_WORDS = new HashSet<>( Arrays.asList(
+        "hey", "hi", "hello", "yo", "ok", "okay", "oh", "um", "uh", "so", "well", "please", "now", "again" ) );
+    private static final Set<String> DANGLING_WORDS = new HashSet<>( Arrays.asList(
+        "can", "could", "would", "will", "should", "you", "to", "and", "the", "a", "an", "of", "for", "with",
+        "please", "that", "if", "my", "me", "i", "i'd", "i'm", "what", "how", "is", "are", "do", "does", "um", "uh" ) );
+
+    /**
+     * True when {@code transcript} calls {@code name} but the command part is missing or obviously unfinished:
+     * nothing but greeting words after the name ("hey hornet"), or it trails off on a word that cannot end a
+     * sentence ("hornet, can you"). One-word commands ("hornet sit") are complete and stay instant.
+     */
+    static boolean needsContinuation( final String transcript, final String name )
+    {
+        if( transcript == null || name == null ) return false;
+        final String lower = transcript.toLowerCase();
+        final int at = lower.lastIndexOf( name.toLowerCase() );
+        if( at < 0 ) return false;
+        final String after = lower.substring( at + name.length() );
+        final List<String> words = new ArrayList<>();
+        for( final String w : after.split( "[^a-z0-9']+" ) ) if( !w.isEmpty() ) words.add( w );
+        // Words said before the name ("can you sit hornet") are a finished command.
+        final String before = lower.substring( 0, at );
+        boolean beforeHasCommand = false;
+        for( final String w : before.split( "[^a-z0-9']+" ) )
+            if( !w.isEmpty() && !GREETING_WORDS.contains( w ) ) { beforeHasCommand = true; break; }
+        boolean allGreeting = true;
+        for( final String w : words ) if( !GREETING_WORDS.contains( w ) ) { allGreeting = false; break; }
+        if( allGreeting ) return !beforeHasCommand;
+        return DANGLING_WORDS.contains( words.get( words.size() - 1 ) );
     }
 
     /**

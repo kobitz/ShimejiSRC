@@ -37,7 +37,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import com.group_finity.mascot.Main;
 
 /**
- * "Mascot Shop": browse a curated catalog. Free, redistributable mascots install in one click
+ * "Get Mascots": browse a curated catalog. Free, redistributable mascots install in one click
  * (https + SHA-256 verified + safe unzip). Mascots hosted by their creators (Cachomon, DeviantArt,
  * Patreon, Ko-fi ...) open the creator's page; the user downloads there and brings the zip back
  * with "Import .zip". The shop never scrapes or re-hosts a creator's files.
@@ -78,7 +78,7 @@ public final class ShopWindow extends JDialog
 
     private ShopWindow( final JFrame owner )
     {
-        super( owner, "Mascot Shop", false );
+        super( owner, "Get Mascots", false );
         setDefaultCloseOperation( DISPOSE_ON_CLOSE );
         final java.awt.Image icon = owner != null ? owner.getIconImage() : null;
         if( icon != null ) setIconImage( icon );
@@ -439,7 +439,7 @@ public final class ShopWindow extends JDialog
             status.setText( verb + ": " + String.join( ", ", names ) );
             final int a = JOptionPane.showConfirmDialog( this,
                 verb + " " + String.join( ", ", names ) + ".\nCall " + ( names.size() > 1 ? "them" : "it" ) + " out now?",
-                "Mascot Shop", JOptionPane.YES_NO_OPTION );
+                "Get Mascots", JOptionPane.YES_NO_OPTION );
             if( a == JOptionPane.YES_OPTION )
                 for( final String n : names ) Main.getInstance().activateImageSet( n );
         }
@@ -447,7 +447,7 @@ public final class ShopWindow extends JDialog
         {
             Throwable t = ex.getCause() != null ? ex.getCause() : ex;
             status.setText( "Nothing was installed." );
-            JOptionPane.showMessageDialog( this, t.getMessage(), "Mascot Shop", JOptionPane.WARNING_MESSAGE );
+            JOptionPane.showMessageDialog( this, t.getMessage(), "Get Mascots", JOptionPane.WARNING_MESSAGE );
         }
     }
 }
