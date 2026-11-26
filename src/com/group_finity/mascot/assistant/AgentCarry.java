@@ -32,6 +32,12 @@ public final class AgentCarry
     /** True while this window handle is being carried (used by the window scan). */
     public static boolean isCarried( final long handle ) { return !CARRIED.isEmpty() && CARRIED.contains( handle ); }
 
+    /** Hide/unhide a window from the mascots' surface scan (used by the visible window errand's hold). */
+    static void markCarried( final long handle, final boolean on )
+    {
+        if( on ) CARRIED.add( handle ); else CARRIED.remove( handle );
+    }
+
     public static int activeCount() { return ACTIVE.size(); }
 
     /** Stop every carry; returns how many were active. */

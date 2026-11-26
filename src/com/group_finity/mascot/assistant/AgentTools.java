@@ -49,6 +49,7 @@ public final class AgentTools
     private java.util.function.Supplier<java.awt.Rectangle> mascotBounds = null;
     private java.util.function.Supplier<String> activeTitle = () -> "";
     private java.util.function.Supplier<AgentErrand.Stage> stage = null;
+    private java.util.function.LongFunction<WindowErrand.Stage> windowStage = null;
     private static volatile boolean recovered = false;
     private SystemControl system = null;
     private int keyPauseMs = 12;
@@ -72,6 +73,9 @@ public final class AgentTools
 
     /** Show file moves as a walk-through (null/off = instant). */
     public AgentTools withStage( final java.util.function.Supplier<AgentErrand.Stage> s ) { this.stage = s; return this; }
+
+    /** Visible window errands (mascot jumps at the title-bar button / carries the window). Null = apply instantly. */
+    public AgentTools withWindowStage( final java.util.function.LongFunction<WindowErrand.Stage> s ) { this.windowStage = s; return this; }
 
     /** Once per run: put back any file left parked by a visible move that was interrupted by a crash. */
     public static void startup( final Properties p )
@@ -108,6 +112,7 @@ public final class AgentTools
             Paths.get( "agent-journal.tsv" ), Paths.get( System.getProperty( "user.home" ) ) )
             .withHost( host::getBounds, host::lastActiveWindowTitle )
             .withStage( visualMoves( p, host ) )
+            .withWindowStage( windowMoves( p, host ) )
             .withSystem( p != null && AgentPolicy.enabled( p ) ? SystemControl.get() : null )
             .withScheduler( AgentScheduler.shared(), Paths.get( "agent-calendar" ),
                 ( endMs, label ) -> javax.swing.SwingUtilities.invokeLater( () ->
@@ -122,6 +127,24 @@ public final class AgentTools
     {
         if( !enabled() || scheduler == null ) return;
         scheduler.start( this::fire );
+    }
+
+    /** Window errands need the same things as file errands, plus the set's permission to handle windows ("Window Interaction"). */
+    private static java.util.function.LongFunction<WindowErrand.Stage> windowMoves( final Properties p, final AssistantHost host )
+    {
+        if( p == null || !AgentPolicy.enabled( p ) || java.awt.GraphicsEnvironment.isHeadless()
+            || "false".equalsIgnoreCase( p.getProperty( "AgentVisualMoves", "true" ).trim() ) ) return null;
+        final WindowControl wc = WindowControl.get();
+        if( wc == null ) return null;
+        return h -> windowInteractionAllowed( p, host.getImageSet() ) ? new WindowErrandStage( host, wc, h ) : null;
+    }
+
+    /** "Window Interaction" (settings key {@code Throwing}): per image set, falling back to the global switch, default on. */
+    static boolean windowInteractionAllowed( final Properties p, final String imageSet )
+    {
+        String v = p.getProperty( "Throwing.imageset." + imageSet );
+        if( v == null ) v = p.getProperty( "Throwing", "true" );
+        return Boolean.parseBoolean( v.trim() );
     }
 
     private static java.util.function.Supplier<AgentErrand.Stage> visualMoves( final Properties p, final AssistantHost host )
@@ -537,7 +560,29 @@ public final class AgentTools
             }
             return;
         }
+        if( ( op == WindowControl.Op.MAXIMIZE || op == WindowControl.Op.MINIMIZE || op == WindowControl.Op.RESTORE )
+            && runWindowErrand( m.match.handle, new WindowErrandPlan.Goal( null, op ) ) ) return;
         if( !windows.apply( m.match, op ) ) reporter.say( "Windows wouldn't let me do that." );
+    }
+
+    /**
+     * The physical way: the mascot jumps at the button / carries the window. Returns false when this mascot may
+     * not (or cannot) do it visibly, so the caller falls back to applying it directly.
+     */
+    private boolean runWindowErrand( final long handle, final WindowErrandPlan.Goal goal )
+    {
+        if( windowStage == null ) return false;
+        final WindowErrand.Stage st = windowStage.apply( handle );
+        if( st == null ) return false;
+        final WindowErrand.Outcome o = WindowErrand.run( st, goal, windows.monitors(), 1.0 );
+        switch( o )
+        {
+            case DONE:   reporter.say( "There you go." ); break;
+            case TAKEN:  reporter.say( "Fine, you take it." ); break;
+            case GONE:   reporter.say( "That window's gone." ); break;
+            default:     reporter.say( "I couldn't manage that one." ); break;
+        }
+        return true;
     }
 
     /** "this window" arrives as an empty name: use the window the user was on when they spoke to the mascot. */
@@ -566,6 +611,13 @@ public final class AgentTools
         WindowControl.Info w = windows.current( m.match.handle );
         if( w == null ) { reporter.say( "That window's gone." ); return; }
         final boolean wasMax = w.maximized;
+        {
+            final int cur0 = AgentLayout.monitorIndex( mons, w.bounds );
+            final int idx0 = AgentLayout.pickMonitor( mons, w.bounds, which );
+            if( idx0 < 0 ) { reporter.say( "There's no screen " + which + " of that one." ); return; }
+            if( idx0 == cur0 ) { reporter.say( "It's already on that screen." ); return; }
+            if( runWindowErrand( w.handle, new WindowErrandPlan.Goal( mons.get( idx0 ), wasMax ? WindowControl.Op.MAXIMIZE : null ) ) ) return;
+        }
         if( w.minimized || wasMax )
         {
             windows.apply( w, WindowControl.Op.RESTORE );
