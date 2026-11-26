@@ -351,7 +351,7 @@ public class SettingsWindow extends javax.swing.JDialog
         pnlTabs.setTitleAt( 2, language.getString( "Theme" ) );
         pnlTabs.setTitleAt( 3, language.getString( "WindowMode" ) );
         pnlTabs.setTitleAt( pnlTabs.indexOfTab( "About" ) >= 0 ? pnlTabs.indexOfTab( "About" ) : 4, language.getString( "About" ) );
-        lblShimejiEE.setText( language.getString( "ShimejiEE" ) );
+        lblShimejiEE.setText( "ShimejiSRC" );
         lblDevelopedBy.setText( language.getString( "DevelopedBy" ) );
         chkAlwaysShowShimejiChooser.setText( language.getString( "AlwaysShowShimejiChooser" ) );
         chkAlwaysShowInformationScreen.setText( language.getString( "AlwaysShowInformationScreen" ) );
@@ -387,9 +387,12 @@ public class SettingsWindow extends javax.swing.JDialog
         cmbBackgroundImageMode.addItem( language.getString( "BackgroundModeFit" ) );
         cmbBackgroundImageMode.addItem( language.getString( "BackgroundModeStretch" ) );
         btnBackgroundImageRemove.setText( language.getString( "Remove" ) );
-        lblShimejiEE.setText( language.getString( "ShimejiEE" ) );
+        // About tab: this fork's own identity (the localized strings still name upstream Shimeji-ee)
+        lblShimejiEE.setText( "ShimejiSRC" );
         lblDevelopedBy.setText( language.getString( "DevelopedBy" ) );
-        btnWebsite.setText( language.getString( "Website" ) );
+        btnWebsite.setText( "GitHub" );
+        btnDiscord.setText( "Shimeji-ee" );
+        btnPatreon.setVisible( false );
         btnDone.setText( language.getString( "Done" ) );
         btnCancel.setText( language.getString( "Cancel" ) );
         
@@ -751,9 +754,9 @@ public class SettingsWindow extends javax.swing.JDialog
         float menuScaling = Float.parseFloat( Main.getInstance( ).getProperties( ).getProperty( "MenuDPI", "96" ) ) / 96;
         
         // scale controls to fit
-        // 720 (was 640) so Done/Cancel are fully inside the window; never taller than the screen.
+        // 520 = just enough for the General tab (the tallest besides Chat Bubbles, which scrolls); never taller than the screen.
         final java.awt.Rectangle usable = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment( ).getMaximumWindowBounds( );
-        final int contentH = Math.max( 400, Math.min( (int)( 720 * menuScaling ), usable.height - (int)( 80 * menuScaling ) ) );
+        final int contentH = Math.max( 400, Math.min( (int)( 520 * menuScaling ), usable.height - (int)( 80 * menuScaling ) ) );
         getContentPane( ).setPreferredSize( new Dimension( (int)( 800 * menuScaling ), contentH ) );
         sldOpacity.setPreferredSize( new Dimension( (int)( sldOpacity.getPreferredSize( ).width * menuScaling ), (int)( sldOpacity.getPreferredSize( ).height * menuScaling ) ) );
         sldScaling.setPreferredSize( new Dimension( (int)( sldScaling.getPreferredSize( ).width * menuScaling ), (int)( sldScaling.getPreferredSize( ).height * menuScaling ) ) );
@@ -978,6 +981,7 @@ public class SettingsWindow extends javax.swing.JDialog
         rigid3 = new javax.swing.Box.Filler(new java.awt.Dimension(0, 15), new java.awt.Dimension(0, 15), new java.awt.Dimension(0, 15));
         lblDevelopedBy = new javax.swing.JLabel();
         lblKilkakon = new javax.swing.JLabel();
+        lblBasedOn = new javax.swing.JLabel();
         rigid4 = new javax.swing.Box.Filler(new java.awt.Dimension(0, 30), new java.awt.Dimension(0, 30), new java.awt.Dimension(0, 30));
         pnlAboutButtons = new javax.swing.JPanel();
         btnWebsite = new javax.swing.JButton();
@@ -2217,13 +2221,13 @@ public class SettingsWindow extends javax.swing.JDialog
                                                                         pnlAbout.add(rigid1);
 
                                                                         lblShimejiEE.setFont(lblShimejiEE.getFont().deriveFont(lblShimejiEE.getFont().getStyle() | java.awt.Font.BOLD, lblShimejiEE.getFont().getSize()+10));
-                                                                        lblShimejiEE.setText("Shimeji");
+                                                                        lblShimejiEE.setText("ShimejiSRC");
                                                                         lblShimejiEE.setAlignmentX(0.5F);
                                                                         pnlAbout.add(lblShimejiEE);
                                                                         pnlAbout.add(rigid2);
 
                                                                         lblVersion.setFont(lblVersion.getFont().deriveFont(lblVersion.getFont().getSize()+4f));
-                                                                        lblVersion.setText("1.0.22");
+                                                                        lblVersion.setText("2.0");
                                                                         lblVersion.setAlignmentX(0.5F);
                                                                         pnlAbout.add(lblVersion);
                                                                         pnlAbout.add(rigid3);
@@ -2232,9 +2236,12 @@ public class SettingsWindow extends javax.swing.JDialog
                                                                         lblDevelopedBy.setAlignmentX(0.5F);
                                                                         pnlAbout.add(lblDevelopedBy);
 
-                                                                        lblKilkakon.setText("Kilkakon");
+                                                                        lblKilkakon.setText("kobitz and Claude");
                                                                         lblKilkakon.setAlignmentX(0.5F);
                                                                         pnlAbout.add(lblKilkakon);
+                                                                        lblBasedOn.setText("based on Shimeji-ee 1.0.23 by Kilkakon");
+                                                                        lblBasedOn.setAlignmentX(0.5F);
+                                                                        pnlAbout.add(lblBasedOn);
                                                                         pnlAbout.add(rigid4);
 
                                                                         pnlAboutButtons.setMaximumSize(new java.awt.Dimension(32767, 36));
@@ -2569,12 +2576,12 @@ public class SettingsWindow extends javax.swing.JDialog
 
     private void btnWebsiteActionPerformed(java.awt.event.ActionEvent evt)//GEN-FIRST:event_btnWebsiteActionPerformed
     {//GEN-HEADEREND:event_btnWebsiteActionPerformed
-        browseToUrl( "http://kilkakon.com/" );
+        browseToUrl( "https://github.com/kobitz/ShimejiSRC" );
     }//GEN-LAST:event_btnWebsiteActionPerformed
 
     private void btnDiscordActionPerformed(java.awt.event.ActionEvent evt)//GEN-FIRST:event_btnDiscordActionPerformed
     {//GEN-HEADEREND:event_btnDiscordActionPerformed
-        browseToUrl( "https://discord.gg/NBq3zqfA2B" );
+        browseToUrl( "https://kilkakon.com/shimeji/" );
     }//GEN-LAST:event_btnDiscordActionPerformed
 
     private void btnPatreonActionPerformed(java.awt.event.ActionEvent evt)//GEN-FIRST:event_btnPatreonActionPerformed
@@ -3179,6 +3186,7 @@ public class SettingsWindow extends javax.swing.JDialog
     private javax.swing.JLabel lblFilter;
     private javax.swing.JLabel lblIcon;
     private javax.swing.JLabel lblKilkakon;
+    private javax.swing.JLabel lblBasedOn;
     private javax.swing.JLabel lblMenuOpacity;
     private javax.swing.JLabel lblOpacity;
     private javax.swing.JLabel lblPrimaryColour1;

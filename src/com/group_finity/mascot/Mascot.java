@@ -1131,7 +1131,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
             if( debugWindow != null && behavior != null )
             {
                 debugWindow.setBehaviour( behavior.toString( ).substring( 9, behavior.toString( ).length( ) - 1 ).replaceAll( "([a-z])(IE)?([A-Z])", "$1 $2 $3" ).replaceAll( "  ", " " ) );
-                debugWindow.setVariables( variables != null ? variables.getRawMap( ) : null );
+                debugWindow.setVariables( debugVariables( ) );
                 debugWindow.setShimejiX( anchor.x );
                 debugWindow.setShimejiY( anchor.y );
                 debugWindow.setDeltaX( lastDeltaX );
@@ -2448,6 +2448,24 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
             refreshCursor( false );
         else
             refreshCursor( point );
+    }
+
+    /** What the Variables tab of the debug window shows: script variables plus per-mascot userData (dashStamp, jump state...). */
+    private java.util.Map<String, Object> debugVariables( )
+    {
+        final java.util.Map<String, Object> out = new java.util.HashMap<>( );
+        if( variables != null )
+            out.putAll( variables.getRawMap( ) );
+        try
+        {
+            for( final java.util.Map.Entry<String, Object> e : userData.entrySet( ) )
+                out.put( "userData." + e.getKey( ), e.getValue( ) );
+        }
+        catch( final java.util.ConcurrentModificationException ex )
+        {
+            // userData changed mid-copy; show what we have, next tick refreshes
+        }
+        return out;
     }
 
     public VariableMap getVariables( )

@@ -4,6 +4,7 @@ Per-version release history for the Shimeji AI fork. The runnable app ships as a
 
 ## Next
 
+- **Settings/debug polish:** Settings window default height trimmed to fit the General tab (Chat Bubbles already scrolls); About tab now reads ShimejiSRC 2.0, developed by kobitz and Claude, based on Shimeji-ee 1.0.23 by Kilkakon (GitHub + Shimeji-ee links replace Kilkakon's Discord/Patreon buttons); Reveal Statistics window puts the Behaviours/Variables tabs to the right of the readouts, and the Variables tab now also lists per-mascot `userData` (e.g. `dashStamp`) so it is no longer always empty.
 - **Docs:** README/CLAUDE.md now state the design principle explicitly: once installed the app runs fully offline; weather, the Mascot Shop and the cloud AI provider are optional network extras.
 - **Optional cloud / OpenAI-compatible AI provider** (contributed by 26th-Official) - Settings -> Chat Bubbles -> *AI Provider* lets the assistant use any OpenAI-compatible API (OpenAI, OpenRouter, Groq, Together) or a local OpenAI-style server (LM Studio, llama.cpp, vLLM) instead of Ollama. Local Ollama stays the default. The key lives in `conf/api.properties` (gitignored) or `SHIMEJI_AI_API_KEY`. Turning API mode on shows a one-time notice of what gets sent. Semantic drive search stays off in API mode unless `DriveSemanticRemote=true`, cached embeddings are tagged by model so switching providers rebuilds them, and `max_completion_tokens` is used for api.openai.com.
 

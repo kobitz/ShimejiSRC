@@ -177,10 +177,6 @@ public class DebugWindow extends javax.swing.JFrame
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addContainerGap()
-                .addComponent(pnlTabs, 300, 330, Short.MAX_VALUE)
-                .addContainerGap())
-            .addGroup(layout.createSequentialGroup()
-                .addContainerGap()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(lblShimejiX)
                     .addComponent(lblShimejiY)
@@ -203,9 +199,9 @@ public class DebugWindow extends javax.swing.JFrame
                     .addComponent(lblPopulation)
                     .addComponent(lblDeltaX)
                     .addComponent(lblDeltaY))
-                .addGap(42, 42, 42)
+                .addGap(24, 24, 24)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(lblActionTimerValue, javax.swing.GroupLayout.DEFAULT_SIZE, 165, Short.MAX_VALUE)
+                    .addComponent(lblActionTimerValue, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addGroup(layout.createSequentialGroup()
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(lblShimejiYValue)
@@ -228,15 +224,15 @@ public class DebugWindow extends javax.swing.JFrame
                             .addComponent(lblPopulationValue)
                             .addComponent(lblDeltaXValue)
                             .addComponent(lblDeltaYValue))
-                        .addGap(0, 0, Short.MAX_VALUE)))
+                        .addGap(0, 0, 0)))
+                .addGap(16, 16, 16)
+                .addComponent(pnlTabs, 260, 360, Short.MAX_VALUE)
                 .addContainerGap())
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addContainerGap()
-                .addComponent(pnlTabs, 120, 160, 260)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(lblActionTimer)
                     .addComponent(lblActionTimerValue))
@@ -321,6 +317,10 @@ public class DebugWindow extends javax.swing.JFrame
                     .addComponent(lblEnvironmentHeight)
                     .addComponent(lblEnvironmentHeightValue))
                 .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+            .addGroup(layout.createSequentialGroup()
+                .addContainerGap()
+                .addComponent(pnlTabs, 200, 460, Short.MAX_VALUE)
+                .addContainerGap())
         );
 
         pack();
@@ -351,14 +351,14 @@ public class DebugWindow extends javax.swing.JFrame
     }
 
     /** Shows this mascot's variables. Safe from any thread; skips the repaint when nothing changed. */
-    void setVariables( final java.util.Map<String, com.group_finity.mascot.script.Variable> variables )
+    void setVariables( final java.util.Map<String, ?> variables )
     {
         final java.util.List<String> data = new java.util.ArrayList<String>( );
         if( variables != null )
         {
             try
             {
-                for( final java.util.Map.Entry<String, com.group_finity.mascot.script.Variable> e : variables.entrySet( ) )
+                for( final java.util.Map.Entry<String, ?> e : variables.entrySet( ) )
                     data.add( e.getKey( ) + ": " + e.getValue( ) );
             }
             catch( final java.util.ConcurrentModificationException ex )
