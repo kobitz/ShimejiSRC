@@ -32,6 +32,7 @@ import java.util.regex.Pattern;
 public final class AgentTools
 {
     private static final Logger log = Logger.getLogger( AgentTools.class.getName() );
+    private static boolean startupLogged = false;
     private static final Pattern TAG = Pattern.compile( "\\[DO:([a-zA-Z]+)((?:\\|[^\\]|]*)*)\\]", Pattern.CASE_INSENSITIVE );
     private static final int MAX_TAGS_PER_REPLY = 3;
 
@@ -102,6 +103,12 @@ public final class AgentTools
     {
         final com.group_finity.mascot.Main main = com.group_finity.mascot.Main.getInstance();
         final Properties p = main == null ? null : main.getProperties();
+        if( !startupLogged && p != null && AgentPolicy.enabled( p ) )
+        {
+            startupLogged = true;
+            log.info( "[Agent] enabled; visual window errands " + ( windowMoves( p, host ) != null ? "ON" : "OFF (AgentVisualMoves=false, headless, or no window backend)" )
+                + "; Window Interaction for " + host.getImageSet() + ": " + windowInteractionAllowed( p, host.getImageSet() ) );
+        }
         return new AgentTools( p, p != null && AgentPolicy.enabled( p ) ? WindowControl.get() : null,
             ( title, msg ) -> AgentConfirmBubble.ask( title, msg, host::getBounds, AgentConfirmBubble.DEFAULT_TIMEOUT_MS ),
             text -> javax.swing.SwingUtilities.invokeLater( () ->
