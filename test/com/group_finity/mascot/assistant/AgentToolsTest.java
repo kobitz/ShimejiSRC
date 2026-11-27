@@ -150,7 +150,7 @@ public class AgentToolsTest
         eq( "disabled prompt denies abilities", true, new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).promptBlock().contains( "cannot move" ) );
         said.clear();
         new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleUser( "minimize my browser", "[DO:window|minimize|chrome]" );
-        eq( "disabled tells user how to enable", true, said.size() == 1 && said.get( 0 ).contains( "AgentEnabled=true" ) );
+        eq( "disabled tells user how to enable", true, said.size() == 1 && said.get( 0 ).contains( "Agent Tools" ) );
         said.clear();
         new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleUser( "what is the weather", "" );
         eq( "disabled + chit-chat is silent", 0, said.size() );

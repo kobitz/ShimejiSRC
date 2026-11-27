@@ -788,6 +788,32 @@ public class Main
                                     }
                                 } );
 
+                                // "Agent Tools" menu item (off by default; takes effect immediately)
+                                final JCheckBoxMenuItem agentMenu = new JCheckBoxMenuItem( getLanguageString( "AgentTools", "Agent Tools" ), Boolean.parseBoolean( properties.getProperty( "AgentEnabled", "false" ) ) );
+                                agentMenu.addItemListener( new ItemListener( )
+                                {
+                                    public void itemStateChanged( final ItemEvent e )
+                                    {
+                                        final boolean on = toggleBooleanSetting( "AgentEnabled", false );
+                                        agentMenu.setState( on );
+                                        if( on ) com.group_finity.mascot.assistant.AgentPolicy.resume( );
+                                        updateConfigFile( );
+                                        btnAllowedBehaviours.setEnabled( true );
+                                    }
+                                } );
+
+                                // "Weather (online)" menu item (off by default: it is the one feature that contacts outside services)
+                                final JCheckBoxMenuItem weatherMenu = new JCheckBoxMenuItem( getLanguageString( "WeatherOnline", "Weather (online)" ), Boolean.parseBoolean( properties.getProperty( "WeatherEnabled", "false" ) ) );
+                                weatherMenu.addItemListener( new ItemListener( )
+                                {
+                                    public void itemStateChanged( final ItemEvent e )
+                                    {
+                                        weatherMenu.setState( toggleBooleanSetting( "WeatherEnabled", false ) );
+                                        updateConfigFile( );
+                                        btnAllowedBehaviours.setEnabled( true );
+                                    }
+                                } );
+
                                 JPopupMenu behaviourPopup = new JPopupMenu( );
                                 behaviourPopup.add( breedingMenu );
                                 behaviourPopup.add( transientMenu );
@@ -798,6 +824,9 @@ public class Main
                                 behaviourPopup.add( screenLoopMenu );
                                 behaviourPopup.add( floorCollisionMenu );
                                 behaviourPopup.add( collisionMenu );
+                                behaviourPopup.addSeparator( );
+                                behaviourPopup.add( agentMenu );
+                                behaviourPopup.add( weatherMenu );
                                 behaviourPopup.addPopupMenuListener( new PopupMenuListener( )
                                 {
                                     @Override

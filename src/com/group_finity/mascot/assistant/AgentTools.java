@@ -222,12 +222,14 @@ public final class AgentTools
         if( !enabled() )
         {
             if( !intent.isEmpty() )
-                reporter.say( AgentPolicy.isHalted() ? "My agent tools are paused." : "My agent tools are off. Set AgentEnabled=true in settings.properties and restart me." );
+                reporter.say( AgentPolicy.isHalted() ? "My agent tools are paused." : "My agent tools are off. Turn on Agent Tools in the tray menu under Allowed Behaviours (or set AgentEnabled=true in settings.properties)." );
             return;
         }
         final List<String[]> todo = !intent.isEmpty() ? intent : modelSafe( parse( raw ) );
         if( todo.isEmpty() ) return;
         log.info( "[Agent] running " + todo.size() + " action(s) from " + ( intent.isEmpty() ? "model tags" : "the user's words" ) );
+        startup( props );   // idempotent: turned on from the menu after launch, so do the once-per-run setup now
+        bindScheduler();
         final Thread th = new Thread( () -> runAll( todo ), "agent" );
         th.setDaemon( true );
         th.start();

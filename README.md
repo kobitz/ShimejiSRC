@@ -2,7 +2,7 @@
 
 A heavily modified fork of [Shimeji-ee](https://kilkakon.com/shimeji/) (an English edition of Group Finity's original Shimeji) — Java desktop mascots for Windows — with a local-first AI assistant layer added on top. You get the complete classic Shimeji experience *and* mascots that perceive your environment and react in character: what's on screen, what's playing through the speakers, what you say (to them or near them), system load, the weather, even the contents of local drives.
 
-**Your data stays local by default, and once installed it runs fully offline.** No subscriptions, no accounts, no telemetry — LLM inference runs through [Ollama](https://ollama.com) and speech-to-text through [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU, and nothing about your screen, voice, files, or chats leaves the machine. The one exception is the weather lookup: when you ask a mascot about the weather, it contacts `api.open-meteo.com` — and with the default `WeatherLocation=auto`, also `ip-api.com` (falling back to `ipapi.co`), which sees your public IP to guess your city. Set `WeatherLocation` to a city name to skip the IP lookup, or `WeatherEnabled=false` to turn weather off entirely.
+**Your data stays local by default, and once installed it runs fully offline.** No subscriptions, no accounts, no telemetry — LLM inference runs through [Ollama](https://ollama.com) and speech-to-text through [faster-whisper](https://github.com/SYSTRAN/faster-whisper) on CPU, and nothing about your screen, voice, files, or chats leaves the machine. The one exception is the weather lookup: when you ask a mascot about the weather, it contacts `api.open-meteo.com` — and with the default `WeatherLocation=auto`, also `ip-api.com` (falling back to `ipapi.co`), which sees your public IP to guess your city. Weather is **off by default**: turn on *Weather (online)* in the tray menu under Allowed Behaviours (`WeatherEnabled=true`) to opt in, and set `WeatherLocation` to a city name to skip the IP lookup.
 
 **Optional cloud mode.** You can instead point the assistant at an OpenAI-compatible API (see *Using a cloud / OpenAI-compatible API* below). In that mode your chats, screenshots, transcripts and window titles are sent to the provider you choose, so leave it off if that matters to you.
 
@@ -74,7 +74,7 @@ Everything stays on localhost; no page data leaves the machine. Load `shimeji-vi
 
 ## Agent tools (opt-in)
 
-Off by default. Set `AgentEnabled=true` in `conf/settings.properties` and restart, and a mascot can act on your computer when you ask it to in your own words (typed or spoken to it):
+Off by default. Tick *Agent Tools* in the tray menu under Allowed Behaviours (or set `AgentEnabled=true` in `conf/settings.properties`), no restart needed, and a mascot can act on your computer when you ask it to in your own words (typed or spoken to it):
 
 - **Windows** — focus, minimize, maximize, snap left/right/top/bottom, center, send to another monitor, or *carry* a window around on its head for a while.
 - **Files** — tidy your Downloads folder by type, or move a named file to a folder, with a preview and a confirmation bubble first. Moves are journalled so you can say "undo", and nothing is ever deleted or overwritten. The mascot can walk a file between Explorer windows (`AgentVisualMoves=false` turns that off).
