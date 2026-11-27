@@ -154,6 +154,9 @@ public class AgentToolsTest
         said.clear();
         new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleUser( "what is the weather", "" );
         eq( "disabled + chit-chat is silent", 0, said.size() );
+        said.clear();
+        eq( "command words are claimed (no chat reply)", true, new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleCommand( "minimize my browser" ) );
+        eq( "chit-chat is not claimed", false, new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleCommand( "what is the weather" ) );
 
         // intent from the user's own words
         eq( "minimize browser", "window|minimize|browser", String.join( "|", AgentIntent.parse( "Can you minimize my browser?" ).get( 0 ) ) );

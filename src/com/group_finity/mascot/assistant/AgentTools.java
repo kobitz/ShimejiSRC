@@ -233,6 +233,19 @@ public final class AgentTools
         th.start();
     }
 
+    /**
+     * A command is something the user's own words ask for ("minimize my browser", "snap X left", "undo"):
+     * it runs at once, with no model in the loop, exactly like a keyword action, so it works with Ollama off.
+     * Returns true when the words were a command (run, or answered with the agent-off notice), so the caller
+     * skips the chat reply.
+     */
+    public boolean handleCommand( final String userText )
+    {
+        if( AgentIntent.parse( userText ).isEmpty() ) return false;
+        handleUser( userText, "" );
+        return true;
+    }
+
     /** Scheduling/typing is only ever built from the user's own words, never from a model tag. */
     private static List<String[]> modelSafe( final List<String[]> in )
     {

@@ -111,6 +111,12 @@ public final class AssistantInput
             }
         });
 
+        // Agent commands run straight from the user's words (no model, works with Ollama off)
+        if( AgentTools.forHost( m ).handleCommand( userText ) )
+        {
+            com.group_finity.mascot.assistant.ChatLog.append( "User(voice)", userText );
+            return;
+        }
         final String keywordMatch = cfg != null ? new AssistantActions( m ).findActionByKeyword( userText, cfg ) : null;
         log.info( "Voice keyword match for \"" + userText + "\": " + keywordMatch );
         final String system       = new AssistantPrompts( m ).buildSystemPrompt( cfg, mascotName, userText );
@@ -234,6 +240,13 @@ public final class AssistantInput
             {
                 m.setActiveDialog( null );
 
+                // Agent commands run straight from the user's words (no model, works with Ollama off)
+                if( AgentTools.forHost( m ).handleCommand( userText ) )
+                {
+                    com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
+                    return;
+                }
+
                 // ── Step 1: keyword action fires immediately ───────────────────
                 final String keywordMatch = cfg != null ? new AssistantActions( m ).findActionByKeyword( userText, cfg ) : null;
                 if( keywordMatch != null && cfg != null )
@@ -305,6 +318,12 @@ public final class AssistantInput
             Main.getInstance().getConfiguration( m.getImageSet() );
         final String mascotName = ( cfg != null && cfg.getInformation( "Name" ) != null )
             ? cfg.getInformation( "Name" ) : "mascot";
+
+        if( AgentTools.forHost( m ).handleCommand( userText ) )
+        {
+            com.group_finity.mascot.assistant.ChatLog.append( "User", userText );
+            return;
+        }
 
         final String system = new AssistantPrompts( m ).buildSystemPrompt( cfg, mascotName, userText );
 
