@@ -108,8 +108,40 @@ public final class WindowErrandStage implements WindowErrand.Stage
     @Override
     public boolean carry( final WindowErrandPlan.Step step )
     {
-        final boolean ok = walkTo( step.walkX );
-        return ok && !taken();
+        // The window is glued to the mascot's feet by Hold, so if the user picks the mascot up (or it
+        // falls / is thrown) the window simply rides along. When the walk was interrupted, wait for the
+        // mascot to come to rest, land it, and resume the walk from wherever it ended up.
+        for( int attempt = 0; attempt < 4; attempt++ )
+        {
+            if( walkTo( step.walkX ) ) return !taken();
+            if( taken() || !settle() ) return false;
+        }
+        return false;
+    }
+
+    /** After an interrupted leg: true once the user let go and the mascot is standing again. False = nothing to wait out. */
+    private boolean settle()
+    {
+        try
+        {
+            Thread.sleep( 150 );                           // the interrupting drag registers just after the leg reports failure
+            if( !host.isDragging() ) return false;         // not a drag: the leg genuinely failed
+            final long end = System.currentTimeMillis() + 120_000;
+            while( host.isDragging() && System.currentTimeMillis() < end && !taken() ) Thread.sleep( 100 );
+            if( taken() ) return false;
+            Rectangle last = host.getBounds();             // let the throw play out until it stops moving
+            int still = 0;
+            for( int i = 0; i < 100 && still < 8; i++ )
+            {
+                Thread.sleep( 100 );
+                final Rectangle b = host.getBounds();
+                still = ( b != null && b.equals( last ) ) ? still + 1 : 0;
+                last = b;
+            }
+            leg( "Fall", new HashMap<>(), 8_000 );
+            return !taken();
+        }
+        catch( final InterruptedException e ) { Thread.currentThread().interrupt(); return false; }
     }
 
     @Override

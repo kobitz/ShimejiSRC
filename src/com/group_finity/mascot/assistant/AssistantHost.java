@@ -19,6 +19,9 @@ public interface AssistantHost
     /** Current screen bounds of the mascot window. */
     Rectangle getBounds( );
 
+    /** True while the user is holding the mascot with the mouse. */
+    default boolean isDragging( ) { return false; }
+
     /** Behavior configuration of this mascot's image set; may be null. */
     Configuration getConfiguration( );
 
