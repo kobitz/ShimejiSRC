@@ -100,7 +100,7 @@ public final class WindowErrandStage implements WindowErrand.Stage
         final Rectangle mb = host.getBounds();
         if( Math.abs( cy - floorY( mb ) ) <= 48 ) { if( !walkTo( cx ) ) return false; }
         else jumpTo( cx, cy );
-        hold = new Hold( windows, handle, step.left, host::getBounds );
+        hold = new Hold( windows, handle, host.getId(), step.left, host::getBounds );
         hold.start();
         return true;
     }
@@ -199,20 +199,21 @@ public final class WindowErrandStage implements WindowErrand.Stage
     {
         private final WindowControl wc;
         private final long handle;
+        private final int owner;
         private final boolean left;
         private final java.util.function.Supplier<Rectangle> mascot;
         private volatile boolean stop = false;
         volatile boolean taken = false;
         private Rectangle last = null;
 
-        Hold( final WindowControl wc, final long handle, final boolean left, final java.util.function.Supplier<Rectangle> mascot )
+        Hold( final WindowControl wc, final long handle, final int owner, final boolean left, final java.util.function.Supplier<Rectangle> mascot )
         {
-            this.wc = wc; this.handle = handle; this.left = left; this.mascot = mascot;
+            this.owner = owner; this.wc = wc; this.handle = handle; this.left = left; this.mascot = mascot;
         }
 
         void start()
         {
-            AgentCarry.markCarried( handle, true );
+            AgentCarry.markCarried( handle, owner, true );
             final Thread t = new Thread( this, "window-hold" );
             t.setDaemon( true );
             thread = t;
@@ -226,7 +227,7 @@ public final class WindowErrandStage implements WindowErrand.Stage
             stop = true;
             final Thread t = thread;
             if( t != null && t != Thread.currentThread() ) try { t.join( 300 ); } catch( final InterruptedException e ) { Thread.currentThread().interrupt(); }
-            AgentCarry.markCarried( handle, false );
+            AgentCarry.markCarried( handle, owner, false );
         }
 
         @Override
@@ -261,7 +262,7 @@ public final class WindowErrandStage implements WindowErrand.Stage
             }
             catch( final InterruptedException ignored ) { }
             catch( final Throwable ignored ) { }
-            finally { AgentCarry.markCarried( handle, false ); }
+            finally { AgentCarry.markCarried( handle, owner, false ); }
         }
     }
 }

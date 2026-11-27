@@ -22,6 +22,9 @@ public interface AssistantHost
     /** True while the user is holding the mascot with the mouse. */
     default boolean isDragging( ) { return false; }
 
+    /** Unique id of this mascot instance (matches the environment's owner id). */
+    default int getId( ) { return -1; }
+
     /** Behavior configuration of this mascot's image set; may be null. */
     Configuration getConfiguration( );
 

@@ -371,9 +371,6 @@ public class WindowsEnvironment extends Environment
 
     private static boolean isIE( final Pointer ie )
     {
-        // A window the agent is carrying is glued to a mascot: never a surface to stand on or climb.
-        if( com.group_finity.mascot.assistant.AgentCarry.isCarried( Pointer.nativeValue( ie ) ) )
-            return false;
         final Boolean cached = ieCache.get( ie );
         if( Boolean.TRUE.equals( cached ) )
             return true;
@@ -661,6 +658,27 @@ public class WindowsEnvironment extends Environment
         List<IEResult>  viability = snap.viability;
         List<Integer>   exStyles  = snap.exStyles;
 
+        // A window this mascot is carrying is glued to it: never a surface for the carrier itself
+        // (other mascots still see it and ride along as it moves, like a window the user drags).
+        if( com.group_finity.mascot.assistant.AgentCarry.anyCarried( ) )
+        {
+            List<Pointer> fh = null; List<Rectangle> fr = null; List<IEResult> fv = null; List<Integer> fe = null;
+            for( int i = 0; i < handles.size( ); i++ )
+            {
+                if( com.group_finity.mascot.assistant.AgentCarry.isCarriedBy( Pointer.nativeValue( handles.get( i ) ), ownerId ) )
+                {
+                    if( fh == null )
+                    {
+                        fh = new ArrayList<>( handles.subList( 0, i ) );  fr = new ArrayList<>( rects.subList( 0, i ) );
+                        fv = new ArrayList<>( viability.subList( 0, i ) ); fe = new ArrayList<>( exStyles.subList( 0, i ) );
+                    }
+                    continue;
+                }
+                if( fh != null ) { fh.add( handles.get( i ) ); fr.add( rects.get( i ) ); fv.add( viability.get( i ) ); fe.add( exStyles.get( i ) ); }
+            }
+            if( fh != null ) { handles = fh; rects = fr; viability = fv; exStyles = fe; }
+        }
+
         // Mascots with Collision enabled act as windows for everyone else. Appended AFTER the
         // real windows (so they never occlude anything) and read live from the registry,
         // not from the 40ms scanner, so a mascot standing on a moving block rides it smoothly.
@@ -798,6 +816,11 @@ public class WindowsEnvironment extends Environment
         return null;
     }
 
+    private boolean isCarriedByMe( final Pointer h )
+    {
+        return com.group_finity.mascot.assistant.AgentCarry.isCarriedBy( Pointer.nativeValue( h ), ownerId );
+    }
+
     @Override
     public void tickForMascot( final Point mascotAnchor )
     {
@@ -809,7 +832,7 @@ public class WindowsEnvironment extends Environment
             {
                 final com.sun.jna.Pointer SEN = com.sun.jna.Pointer.createConstant( -1L );
                 Rectangle r = isCollisionHandle( activeIEobject ) ? collisionRect( activeIEobject )
-                            : SEN.equals( activeIEobject ) ? null : rectFromSnapshot( activeIEobject );
+                            : SEN.equals( activeIEobject ) || isCarriedByMe( activeIEobject ) ? null : rectFromSnapshot( activeIEobject );
                 if( r != null )
                 {
                     activeIE.setVisible( r.intersects( getScreen( ).toRectangle( ) ) );
@@ -859,6 +882,10 @@ public class WindowsEnvironment extends Environment
                     double dist = Math.sqrt(dx*dx + dy*dy);
                     if( dist < bestDist ) { bestDist = dist; r = sr; }
                 }
+            }
+            else if( isCarriedByMe( activeIEobject ) )
+            {
+                r = null;   // the window I am carrying is never my own surface
             }
             else
             {

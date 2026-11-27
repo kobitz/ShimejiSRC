@@ -1,7 +1,6 @@
 package com.group_finity.mascot.assistant;
 
 import java.awt.Rectangle;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -16,17 +15,30 @@ public final class AgentCarry
     /** How far (px) the window may differ from where we last put it before we call it "moved by the user". */
     static final int MOVE_TOLERANCE = 8;
 
-    private static final Set<Long> CARRIED = ConcurrentHashMap.newKeySet();
+    /** Window handle -> id of the mascot carrying it. */
+    private static final java.util.Map<Long, Integer> CARRIED = new ConcurrentHashMap<>();
 
     private AgentCarry() { }
 
-    /** True while this window handle is being carried (used by the window scan). */
-    public static boolean isCarried( final long handle ) { return !CARRIED.isEmpty() && CARRIED.contains( handle ); }
+    /** True while any window is being carried (cheap guard for the per-mascot scan). */
+    public static boolean anyCarried() { return !CARRIED.isEmpty(); }
 
-    /** Hide/unhide a window from the mascots' surface scan (used by the visible window errand's hold). */
-    static void markCarried( final long handle, final boolean on )
+    /**
+     * True if this window is being carried by the mascot with this id. Only the carrier hides it from its
+     * own surface scan (it must not stand on or climb what it holds); every other mascot still sees the
+     * window and rides along as it moves, exactly as when the user drags it.
+     */
+    public static boolean isCarriedBy( final long handle, final int ownerId )
     {
-        if( on ) CARRIED.add( handle ); else CARRIED.remove( handle );
+        if( CARRIED.isEmpty() ) return false;
+        final Integer o = CARRIED.get( handle );
+        return o != null && o == ownerId;
+    }
+
+    /** Mark/unmark a window as held by a mascot (used by the visible window errand's hold). */
+    static void markCarried( final long handle, final int ownerId, final boolean on )
+    {
+        if( on ) CARRIED.put( handle, ownerId ); else CARRIED.remove( handle );
     }
 
     /** Bounds of the screen the mascot is on (whole screen, not just work area: a window may sit over the taskbar). */
