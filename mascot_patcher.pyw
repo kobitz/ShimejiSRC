@@ -753,6 +753,53 @@ def make_custom_patch(action_xml, behavior_xml):
 # ─────────────────────────────────────────────
 #  PATCH: Personal Space (helper used by Manual Movement)
 # ─────────────────────────────────────────────
+#  PATCH: Window Errand readiness
+# ─────────────────────────────────────────────
+
+# A mascot doing a window errand (maximize/snap/send-to-monitor, tidy-file runs) plays three of
+# its OWN actions: Walk (with TargetX), Jumping (with TargetX/TargetY) and Fall. If one is missing the
+# errand fails and the app falls back to moving the window instantly.
+_ERRAND_ACTIONS = ['Walk', 'Jumping', 'Fall']
+
+FALL_FALLBACK = '''
+		<Action Name="Fall" Type="Sequence" Loop="false">
+			<ActionReference Name="Falling"/>
+			<Action Type="Select">
+				<Action Type="Sequence" Condition="${mascot.environment.floor.isOn(mascot.anchor) ||
+					mascot.environment.activeIE.topBorder.isOn(mascot.anchor) }">
+					<ActionReference Name="Stand" Duration="${100+Math.random()*100}" />
+				</Action>
+				<ActionReference Name="GrabWall" Duration="100" />
+			</Action>
+		</Action>'''
+
+
+def patch_window_errands(actions_content, behaviors_content, mascot_name):
+    """
+    Make a mascot ready for physical window errands.
+    Adds the standard Fall sequence when the mascot has Falling, Stand and GrabWall but no Fall.
+    Walk and Jumping carry the mascot's own sprites, so they are never invented: a set that lacks
+    them is reported (its errands fall back to instant window moves; set
+    Throwing.imageset.<Name>=false to make that explicit).
+    """
+    log = []
+    if not _has_action_def(actions_content, 'Fall'):
+        if all(_has_action_def(actions_content, n) for n in ('Falling', 'Stand', 'GrabWall')):
+            actions_content = actions_content.replace('</ActionList>', FALL_FALLBACK + '\n\t</ActionList>', 1)
+            log.append(f"  \u2713 Added Fall action to {mascot_name}/actions.xml")
+        else:
+            log.append(f"  WARNING: {mascot_name} has no Fall and lacks Falling/Stand/GrabWall to build one")
+    missing = [n for n in ('Walk', 'Jumping') if not _has_action_def(actions_content, n)]
+    if missing:
+        log.append(f"  WARNING: {mascot_name} has no {' / '.join(missing)} action: window errands will fall back "
+                   f"to instant window moves (or set Throwing.imageset.{mascot_name}=false)")
+    elif not log:
+        log.append(f"  \u2013 {mascot_name} already has Walk, Jumping and Fall (errand-ready)")
+    return actions_content, behaviors_content, log
+
+
+
+# ─────────────────────────────────────────────
 
 PERSONAL_SPACE_FALLBACK_ANIMATION = '''\t\t\t<Animation>
 \t\t\t\t<Pose Image="/shime1.png" ImageAnchor="64,128" Velocity="-4,0" Duration="6" />
@@ -833,6 +880,17 @@ PATCHES = [
         ),
         "targets": "both",
         "fn": patch_fix_scale,
+    },
+    {
+        "id": "window_errands",
+        "label": "Window Errand Readiness",
+        "description": (
+            "Checks that each mascot has the Walk, Jumping and Fall actions its physical window errands "
+            "(maximize / snap / send to another monitor) play, adds the standard Fall sequence when only "
+            "that one is missing, and warns about sets that lack Walk or Jumping."
+        ),
+        "targets": "actions",
+        "fn": patch_window_errands,
     },
 ]
 
