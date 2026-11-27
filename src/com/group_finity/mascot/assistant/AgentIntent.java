@@ -189,7 +189,7 @@ public final class AgentIntent
                 : verb.startsWith( "maximi" ) || verb.equals( "fullscreen" ) ? "maximize"
                 : verb.equals( "restore" ) || verb.startsWith( "unminimi" ) ? "restore" : "focus";
             final String target = clean( m.group( 2 ) );
-            if( !target.isEmpty() && !target.startsWith( "on " ) && !target.startsWith( "me " ) ) out.add( new String[] { "window", op, target } );
+            if( !m.group( 2 ).trim().isEmpty() && !target.startsWith( "on " ) && !target.startsWith( "me " ) ) out.add( new String[] { "window", op, target } );
         }
         return out;
     }
@@ -205,6 +205,8 @@ public final class AgentIntent
     /** Drop filler so "my browser window" becomes "browser". */
     static String clean( final String s )
     {
+        // "this window" / "it" / "the current one" all mean the window the user was on: an empty name
+        if( s.trim().matches( "(?:the\\s+|my\\s+)?(?:this|that|current|active|front|foreground|it)(?:\\s+(?:window|one|app|application|program|thing))?" ) ) return "";
         return s.replaceAll( "\\b(?:the|my|this|that|window|app|application|program)\\b", " " ).replaceAll( "\\s+", " " ).trim();
     }
 }

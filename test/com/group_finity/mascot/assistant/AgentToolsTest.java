@@ -154,6 +154,11 @@ public class AgentToolsTest
         said.clear();
         new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleUser( "what is the weather", "" );
         eq( "disabled + chit-chat is silent", 0, said.size() );
+        for( final String w : new String[] { "minimize this window", "maximize this window", "restore this window", "minimize it", "hide that window", "minimize the current window" } )
+        {
+            final List<String[]> r = AgentIntent.parse( w );
+            eq( "deictic window command: " + w, true, r.size() == 1 && r.get( 0 )[ 0 ].equals( "window" ) && r.get( 0 )[ 2 ].isEmpty() );
+        }
         said.clear();
         eq( "command words are claimed (no chat reply)", true, new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleCommand( "minimize my browser" ) );
         eq( "chit-chat is not claimed", false, new AgentTools( off, fw, ( x, y ) -> true, said::add, journal, home ).handleCommand( "what is the weather" ) );
