@@ -209,12 +209,31 @@ public class CpuTempMonitor
         }
     }
 
+    /**
+     * nvidia-smi by absolute path, never the bare name: a bare name makes Windows search the working
+     * directory first, and Admin.bat runs this elevated (same rule as TempSensor.exe / python).
+     */
+    private static java.io.File findNvidiaSmi( )
+    {
+        final java.io.File onPath = ExecutableLocator.findOnPath(
+            new String[] { "nvidia-smi.exe", "nvidia-smi" }, System.getenv( "PATH" ), new java.io.File( System.getProperty( "user.dir", "." ) ) );
+        if( onPath != null ) return onPath;
+        final String sysRoot = System.getenv( "SystemRoot" ), pf = System.getenv( "ProgramFiles" );
+        final java.io.File[] known = {
+            sysRoot == null ? null : new java.io.File( sysRoot, "System32\\nvidia-smi.exe" ),
+            pf == null ? null : new java.io.File( pf, "NVIDIA Corporation\\NVSMI\\nvidia-smi.exe" ) };
+        for( final java.io.File f : known ) if( f != null && f.isFile( ) ) return f;
+        return null;
+    }
+
     // Spawns nvidia-smi in loop mode (-l 1) and reads one CSV line per second
     // until the process exits.
     private void runGpuStream( ) throws Exception
     {
+        final java.io.File smi = findNvidiaSmi( );
+        if( smi == null ) throw new java.io.IOException( "nvidia-smi not found" );
         ProcessBuilder pb = new ProcessBuilder(
-            "nvidia-smi",
+            smi.getAbsolutePath( ),
             "--query-gpu=temperature.gpu,utilization.gpu,memory.free,memory.total",
             "--format=csv,noheader,nounits",
             "-l", "1"

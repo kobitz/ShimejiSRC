@@ -50,7 +50,7 @@ function Copy-Tree($src, $dst, [string[]]$xf = @(), [string[]]$xd = @()) {
         throw "robocopy failed copying $src (exit code $code)"
     }
 }
-$scrubFiles = @("memory.json", "memory.json.bak", "*.bak", "*.log", "*.log.*", "chat.log", "relationship_journal.txt", "driveindex.txt", "driveembed.txt", "claude history.txt", "*- Copy*", "Thumbs.db", "desktop.ini")
+$scrubFiles = @("memory.json", "memory.json.bak", "*.bak", "*.log", "*.log.*", "chat.log", "relationship_journal.txt", "driveindex.txt", "driveembed.txt", "claude history.txt", "api.properties", "agent-*.tsv", "*- Copy*", "Thumbs.db", "desktop.ini")
 
 # --- allowlist: top-level files ------------------------------------------------------------------
 $required = @("Shimeji.exe", "Shimeji-ee.jar")
@@ -98,7 +98,7 @@ foreach ($w in $waves) {
 # Shipped as settings.default.properties; the installer puts it at {app}\conf\settings.properties only if none exists yet.
 $sp = Join-Path $repo "conf\settings.properties"
 if (-not (Test-Path $sp)) { throw "Default settings not found: $sp" }
-$lines = Get-Content $sp | Where-Object { $_ -notmatch '^\s*(PinnedMascot\.|[^#=]*\.mascot\d+\s*=)' }
+$lines = Get-Content $sp | Where-Object { $_ -notmatch '^\s*(PinnedMascot\.|AiApiKey\s*=|AiRemoteAcknowledged\s*=|[^#=]*\.mascot\d+\s*=)' }
 $lines = $lines | ForEach-Object { if ($_ -match '^\s*WeatherLocation\s*=') { 'WeatherLocation=auto' } else { $_ } }
 [IO.File]::WriteAllLines((Join-Path $out "settings.default.properties"), $lines, (New-Object Text.UTF8Encoding $false))
 $activeLine = $lines | Where-Object { $_ -match '^\s*ActiveShimeji\s*=' } | Select-Object -First 1
@@ -113,8 +113,8 @@ Write-Host "Default settings: $sp (ActiveShimeji: $(if ($activeLine) { $activeLi
 # --- scrub verification: refuse to build if any personal file slipped in ----------------------------
 $bad = Get-ChildItem $out -Recurse -File | Where-Object {
     $n = $_.Name
-    $n -in @("memory.json", "chat.log", "relationship_journal.txt", "driveindex.txt", "driveembed.txt", "claude history.txt") -or
-    $n -like "*.bak" -or $n -like "*.log" -or $n -like "*- Copy*" -or $n -like "ShimejieeLog*"
+    $n -in @("memory.json", "chat.log", "relationship_journal.txt", "driveindex.txt", "driveembed.txt", "claude history.txt", "api.properties") -or
+    $n -like "agent-*.tsv" -or $n -like "*.bak" -or $n -like "*.log" -or $n -like "*- Copy*" -or $n -like "ShimejieeLog*"
 }
 if ($bad) { $bad | ForEach-Object { Write-Host "  PERSONAL FILE: $($_.FullName)" }; throw "Scrub check failed: personal files in the bundle." }
 $mb = [math]::Round(((Get-ChildItem $out -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)

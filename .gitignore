@@ -13,6 +13,10 @@ relationship_journal.txt
 memory.json
 driveindex.txt
 driveembed.txt
+# Agent state (file paths, schedules, calendar exports) - personal, written beside the app
+agent-*.tsv
+agent-calendar/
+.shimeji-hold/
 dist/
 cache/
 tools/
