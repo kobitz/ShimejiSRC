@@ -355,6 +355,7 @@ public class WindowsEnvironment extends Environment
         {
             for( java.awt.Rectangle sr : vas.getSyntheticAreas() )
             {
+                if( onFullscreenMonitor( sr, newFs ) ) continue;   // the monitor's own edges serve
                 handles.add( com.sun.jna.Pointer.createConstant( -1L ) ); // synthetic sentinel
                 rects.add( sr );
                 viability.add( IEResult.IE );
@@ -365,6 +366,16 @@ public class WindowsEnvironment extends Environment
         // Publish atomically — one volatile write makes all four lists visible together,
         // so a reader on the manager thread can never see a torn/mismatched set.
         snapshot = new Snapshot( handles, rects, viability, exStyles );
+    }
+
+    /** True when a video-tracker strip sits on a fullscreen monitor: there the screen's own
+     *  floor/ceiling/walls are the workspace, so the video's edges must not add surfaces. */
+    private static boolean onFullscreenMonitor( final Rectangle r, final Set<Rectangle> fs )
+    {
+        if( fs.isEmpty( ) ) return false;
+        final int cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+        for( final Rectangle m : fs ) if( m.contains( cx, cy ) ) return true;
+        return false;
     }
 
     // ── isIE / viability ─────────────────────────────────────────────────────
@@ -782,6 +793,7 @@ public class WindowsEnvironment extends Environment
         {
             for( java.awt.Rectangle r : vas.getSyntheticAreas() )
             {
+                if( onFullscreenMonitor( r, fullscreenMonitors ) ) continue;
                 Area a = new Area();
                 a.set( r );
                 a.setVisible( true );
