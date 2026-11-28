@@ -88,9 +88,13 @@ public final class WindowErrandStage implements WindowErrand.Stage
             jumpTo( step.at.x, step.at.y );      // if the mascot can't get there the press still happens, just without the leap
         final WindowControl.Info cur = windows.current( handle );
         if( cur == null ) return false;
-        final boolean ok = windows.apply( cur, step.op );
-        leg( "Fall", new HashMap<>(), 8_000 );   // the button was up in the air: come back down
-        return ok;
+        return windows.apply( cur, step.op );    // the mascot comes back down in land() (errand goes on) or finish() (errand over)
+    }
+
+    @Override
+    public void land()
+    {
+        leg( "Fall", new HashMap<>(), 8_000 );   // the button was up in the air
     }
 
     @Override

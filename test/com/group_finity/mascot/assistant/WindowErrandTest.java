@@ -25,7 +25,7 @@ public class WindowErrandTest
     {
         WindowControl.Info w;
         Rectangle mascot = new Rectangle( 100, 900, 64, 128 );
-        boolean held, heldLeft, taken, finished, userTakesOnCarry;
+        boolean held, heldLeft, taken, finished, userTakesOnCarry, userUndoesPress;
         final List<String> log = new ArrayList<>();
         Fake( final WindowControl.Info w ) { this.w = w; }
         public WindowControl.Info window() { return w; }
@@ -45,8 +45,10 @@ public class WindowErrandTest
                 case MINIMIZE: w = win( b, true, false ); break;
                 default: break;
             }
+            if( userUndoesPress ) w = win( new Rectangle( 300, 200, 900, 600 ), false, false );   // the user restores it while the mascot is still in the air
             return true;
         }
+        public void land() { log.add( "land" ); }
         public boolean grab( final WindowErrandPlan.Step s ) { log.add( "grab " + ( s.left ? "L" : "R" ) ); held = true; heldLeft = s.left; return true; }
         public boolean carry( final WindowErrandPlan.Step s )
         {
@@ -77,6 +79,12 @@ public class WindowErrandTest
         check( WindowErrand.run( f, new WindowErrandPlan.Goal( null, WindowControl.Op.MAXIMIZE ), MONS, 1.0 ) == WindowErrand.Outcome.DONE, "maximize done" );
         check( f.log.equals( Arrays.asList( "press MAXIMIZE" ) ) && f.w.maximized && f.finished, "maximize log " + f.log );
 
+        // the user restores the window before the mascot lands: the errand is already done, no second press
+        f = new Fake( win( r, false, false ) );
+        f.userUndoesPress = true;
+        check( WindowErrand.run( f, new WindowErrandPlan.Goal( null, WindowControl.Op.MAXIMIZE ), MONS, 1.0 ) == WindowErrand.Outcome.DONE
+            && f.log.equals( Arrays.asList( "press MAXIMIZE" ) ), "final press ends the errand: " + f.log );
+
         // already maximized -> nothing to do
         f = new Fake( win( M1, false, true ) );
         check( WindowErrand.run( f, new WindowErrandPlan.Goal( null, WindowControl.Op.MAXIMIZE ), MONS, 1.0 ) == WindowErrand.Outcome.DONE && f.log.isEmpty(), "no-op maximize" );
@@ -103,6 +111,9 @@ public class WindowErrandTest
         check( WindowErrand.run( f, new WindowErrandPlan.Goal( M2, WindowControl.Op.MAXIMIZE ), MONS, 1.0 ) == WindowErrand.Outcome.DONE, "max move done" );
         check( f.log.get( 0 ).equals( "press RESTORE" ) && f.log.get( f.log.size() - 1 ).equals( "press MAXIMIZE" ), "max move log " + f.log );
         check( f.log.contains( "grab L" ) || f.log.contains( "grab R" ), "grabbed a corner after windowing: " + f.log );
+
+        // a restore made only to free a corner is not final: the mascot lands, then carries on
+        check( f.log.contains( "land" ) && !f.log.get( f.log.size() - 1 ).equals( "land" ), "landed after the intermediate restore: " + f.log );
 
         // snap left: grab a corner, carry it to the region's corner, throw into place
         final Rectangle left = AgentLayout.target( M1, WindowControl.Op.LEFT );
