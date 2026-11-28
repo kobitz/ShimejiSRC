@@ -4,6 +4,7 @@ Per-version release history for the Shimeji AI fork. The runnable app ships as a
 
 ## Next
 
+- "Full screen this video" now makes the browser window fullscreen (F11 style) and switches YouTube/Twitch to theater mode, because browsers refuse scripted video fullscreen. Reinstall `shimeji-video-tracker.xpi` (v2.0).
 - **Movie Mode** (tray -> Allowed Behaviours): every mascot is tinted toward the average colour of the screen it stands on, so dark scenes darken them and bright or coloured ones light them. Off by default; local screen sampling only (about 3x/s, idle when off). Mascots with their own tint keep it.
 - On a fullscreen monitor the video-tracker edges are ignored: the screen's own floor, ceiling and sides are the workspace.
 - Mascots on a browser video's edges follow scrolling smoothly: the extension reports per frame and Shimeji eases the video rect. Reinstall `shimeji-video-tracker.xpi` (v1.8).
