@@ -802,6 +802,20 @@ public class Main
                                     }
                                 } );
 
+                                // "Movie Mode": mascots are lit by the colour of the screen they stand on (off by default)
+                                final JCheckBoxMenuItem movieMenu = new JCheckBoxMenuItem( getLanguageString( "MovieMode", "Movie Mode" ), Boolean.parseBoolean( properties.getProperty( "MovieMode", "false" ) ) );
+                                movieMenu.addItemListener( new ItemListener( )
+                                {
+                                    public void itemStateChanged( final ItemEvent e )
+                                    {
+                                        movieMenu.setState( toggleBooleanSetting( "MovieMode", false ) );
+                                        // "Toggle for all": drop per-image-set overrides so every mascot follows this
+                                        properties.keySet( ).removeIf( k -> String.valueOf( k ).startsWith( "MovieMode.imageset." ) );
+                                        updateConfigFile( );
+                                        btnAllowedBehaviours.setEnabled( true );
+                                    }
+                                } );
+
                                 // "Weather (online)" menu item (off by default: it is the one feature that contacts outside services)
                                 final JCheckBoxMenuItem weatherMenu = new JCheckBoxMenuItem( getLanguageString( "WeatherOnline", "Weather (online)" ), Boolean.parseBoolean( properties.getProperty( "WeatherEnabled", "false" ) ) );
                                 weatherMenu.addItemListener( new ItemListener( )
@@ -825,6 +839,7 @@ public class Main
                                 behaviourPopup.add( floorCollisionMenu );
                                 behaviourPopup.add( collisionMenu );
                                 behaviourPopup.addSeparator( );
+                                behaviourPopup.add( movieMenu );
                                 behaviourPopup.add( agentMenu );
                                 behaviourPopup.add( weatherMenu );
                                 behaviourPopup.addPopupMenuListener( new PopupMenuListener( )
@@ -1670,6 +1685,15 @@ public class Main
         String v = properties.getProperty( key + ".mascot" + mascot.getId( ) );
         if( v == null ) v = properties.getProperty( key + ".imageset." + mascot.getImageSet( ) );
         if( v == null ) v = properties.getProperty( key, "true" );
+        return Boolean.parseBoolean( v );
+    }
+
+    /** Movie Mode (off by default): per-mascot > per-image-set > global, like the other universal toggles. */
+    public boolean getMovieModeFor( final Mascot mascot )
+    {
+        String v = properties.getProperty( "MovieMode.mascot" + mascot.getId( ) );
+        if( v == null ) v = properties.getProperty( "MovieMode.imageset." + mascot.getImageSet( ) );
+        if( v == null ) v = properties.getProperty( "MovieMode", "false" );
         return Boolean.parseBoolean( v );
     }
 

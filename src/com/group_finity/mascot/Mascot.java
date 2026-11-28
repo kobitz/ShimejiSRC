@@ -198,6 +198,11 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
     private com.group_finity.mascot.script.Variable  tintTargetVar = null;
     private com.group_finity.mascot.script.Variable  tintColorVar  = null;
     private com.group_finity.mascot.script.VariableMap tintVarMap  = null;
+    // Movie Mode (universal toggle): the tint is driven by the average colour of this mascot's
+    // monitor, unless the mascot has a tint of its own (Tint action), which always wins.
+    private boolean movieTintActive = false;
+    private int     lastTintRgb = 0;
+    private float   lastTintOpacity = 0f;
     // Lerped color channels for dynamic color expressions — current lerps toward target each tick.
     private float tintCurrentR = 255f; private float tintTargetR = 255f;
     private float tintCurrentG = 0f;   private float tintTargetG = 0f;
@@ -1109,6 +1114,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
                         tintColor = new java.awt.Color( (int) tintCurrentR, (int) tintCurrentG, (int) tintCurrentB );
                     }
                 }
+                tickMovieMode( );
                 // Lerp current opacity toward target
                 if( Math.abs( tintCurrentOpacity - tintTargetOpacity ) > 0.001f )
                     tintCurrentOpacity += ( tintTargetOpacity - tintCurrentOpacity ) * tintLerpFactor;
@@ -1593,7 +1599,10 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
                 // exactly this — re-running UpdateLayeredWindow/setBounds is pure waste. Skipping
                 // it for the many static mascots is what removes the per-tick render pile-up.
                 // (Tint is sensor-animated, so a tinted mascot must always re-composite.)
-                final boolean unchanged = !tintActive && visible
+                final int tintRgbNow = tintActive ? tintColor.getRGB( ) : 0;
+                final float tintOpNow = tintActive ? tintCurrentOpacity : 0f;
+                final boolean unchanged = visible
+                    && tintRgbNow == lastTintRgb && tintOpNow == lastTintOpacity
                     && displayImage == lastAppliedImage
                     && bounds.equals( lastAppliedBounds );
 
@@ -1650,7 +1659,9 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
                     // Remember what we composited. A tinted frame is never cached (it animates
                     // every tick), so the next tick always re-composites it.
-                    lastAppliedImage  = tintActive ? null : displayImage;
+                    lastAppliedImage  = displayImage;
+                    lastTintRgb       = tintRgbNow;
+                    lastTintOpacity   = tintOpNow;
                     lastAppliedBounds = bounds;
                 }
             }
@@ -2140,6 +2151,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
      *  Lerp toward target is handled in Mascot.tick(), not here. */
     public void setTintTarget( java.awt.Color color, float target, float lerpFactor )
     {
+        this.movieTintActive  = false;
         this.tintColor        = color;
         this.tintTargetOpacity = Math.max( 0f, Math.min( 1f, target ) );
         this.tintLerpFactor   = Math.max( 0.001f, Math.min( 1f, lerpFactor ) );
@@ -2152,6 +2164,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
                              com.group_finity.mascot.script.VariableMap varMap,
                              java.awt.Color initialColor, float lerpFactor )
     {
+        this.movieTintActive = false;
         this.tintTargetVar  = opacityVar;
         this.tintColorVar   = colorVar;
         this.tintVarMap     = varMap;
@@ -2165,6 +2178,7 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
 
     public void snapClearTint( )
     {
+        movieTintActive    = false;
         tintColor          = null;
         tintCurrentOpacity = 0f;
         tintTargetOpacity  = 0f;
@@ -2174,6 +2188,49 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
         tintCurrentR = 255f; tintTargetR = 255f;
         tintCurrentG = 0f;   tintTargetG = 0f;
         tintCurrentB = 0f;   tintTargetB = 0f;
+    }
+
+    /**
+     * Movie Mode: while on, tint toward the average colour of the monitor this mascot is on, so a
+     * dark scene darkens everyone and a bright/coloured one lights them. Never overrides a tint the
+     * mascot owns (Tint action / dynamic expression); fades out when switched off.
+     */
+    private void tickMovieMode( )
+    {
+        final Main main = Main.getInstance( );
+        if( main == null ) return;
+        final java.util.Properties pr = main.getProperties( );
+        final boolean on = main.getMovieModeFor( this );
+        final boolean ownTint = tintVarMap != null || ( !movieTintActive && tintTargetOpacity > 0.001f );
+        if( ownTint ) return;
+        if( on )
+        {
+            final java.awt.Rectangle bb = getBounds( );
+            if( bb == null ) return;
+            final int rgb = com.group_finity.mascot.environment.ScreenLight.rgbAt( bb.x + bb.width / 2, bb.y + bb.height / 2 );
+            if( rgb < 0 ) return;
+            float strength = 0.45f;
+            try { strength = Math.max( 0.05f, Math.min( 0.9f, Float.parseFloat( pr.getProperty( "MovieModeStrength", "0.45" ) ) ) ); }
+            catch( NumberFormatException e ) { /* default */ }
+            if( !movieTintActive )
+            {
+                movieTintActive = true;
+                if( tintColor == null ) tintColor = new java.awt.Color( rgb );
+                tintCurrentR = tintColor.getRed( ); tintCurrentG = tintColor.getGreen( ); tintCurrentB = tintColor.getBlue( );
+            }
+            tintLerpFactor = 0.06f;
+            tintCurrentR += ( ( ( rgb >> 16 ) & 255 ) - tintCurrentR ) * tintLerpFactor;
+            tintCurrentG += ( ( ( rgb >> 8 ) & 255 ) - tintCurrentG ) * tintLerpFactor;
+            tintCurrentB += ( ( rgb & 255 ) - tintCurrentB ) * tintLerpFactor;
+            tintColor = new java.awt.Color( (int) tintCurrentR, (int) tintCurrentG, (int) tintCurrentB );
+            tintTargetOpacity = strength;
+        }
+        else if( movieTintActive )
+        {
+            tintTargetOpacity = 0f;
+            tintLerpFactor = 0.1f;
+            if( tintCurrentOpacity <= 0.01f ) { tintCurrentOpacity = 0f; tintColor = null; movieTintActive = false; }
+        }
     }
 
     public float getTintCurrentOpacity( ) { return tintCurrentOpacity; }
