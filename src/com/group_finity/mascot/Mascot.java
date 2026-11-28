@@ -290,28 +290,38 @@ public class Mascot implements com.group_finity.mascot.assistant.AssistantHost
     private static final java.util.concurrent.ConcurrentHashMap<TintKey, com.group_finity.mascot.image.NativeImage> tintCache =
         new java.util.concurrent.ConcurrentHashMap<>( );
 
+    /**
+     * Tint composite. The pixels handed to the layered window are what getRGB() returns for the
+     * sprite (that is what an untinted mascot sends, and the window treats them as premultiplied),
+     * so the tint is applied to exactly those values per pixel: the tint colour is scaled by the
+     * pixel's alpha. Drawing the colour with Java2D instead added it at full strength to
+     * semi-transparent edge pixels (colour > alpha), which showed as white fringes, worst with
+     * bicubic at small scales.
+     */
     private static com.group_finity.mascot.image.NativeImage buildTintComposite(
         final java.awt.image.BufferedImage src, final java.awt.Color color, final float opacity )
     {
         final int w = src.getWidth( );
         final int h = src.getHeight( );
+        final int[] px = src.getRGB( 0, 0, w, h, null, 0, w );
+        final float o = Math.max( 0f, Math.min( 1f, opacity ) );
+        final float keep = 1f - o;
+        final float tr = color.getRed( ) * o, tg = color.getGreen( ) * o, tb = color.getBlue( ) * o;
+        for( int i = 0; i < px.length; i++ )
+        {
+            final int p = px[ i ];
+            final int a = p >>> 24;
+            if( a == 0 ) { px[ i ] = 0; continue; }
+            final float af = a / 255f;
+            final int r = Math.min( a, Math.round( ( ( p >> 16 ) & 255 ) * keep + tr * af ) );
+            final int g = Math.min( a, Math.round( ( ( p >> 8 ) & 255 ) * keep + tg * af ) );
+            final int b = Math.min( a, Math.round( ( p & 255 ) * keep + tb * af ) );
+            px[ i ] = ( a << 24 ) | ( r << 16 ) | ( g << 8 ) | b;
+        }
+        // Non-premultiplied ARGB holder so getRGB() returns these values unchanged.
         final java.awt.image.BufferedImage buf =
-            new java.awt.image.BufferedImage( w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB_PRE );
-        final java.awt.Graphics2D g = buf.createGraphics( );
-        try
-        {
-            g.setComposite( java.awt.AlphaComposite.Src );
-            g.drawImage( src, 0, 0, null );
-            g.setComposite( java.awt.AlphaComposite.SrcAtop );
-            g.setColor( new java.awt.Color(
-                color.getRed( ), color.getGreen( ), color.getBlue( ),
-                Math.max( 0, Math.min( 255, (int)( opacity * 255 ) ) ) ) );
-            g.fillRect( 0, 0, w, h );
-        }
-        finally
-        {
-            g.dispose( );
-        }
+            new java.awt.image.BufferedImage( w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB );
+        buf.setRGB( 0, 0, w, h, px, 0, w );
         final com.group_finity.mascot.image.NativeImage nativeImg = NativeFactory.getInstance( ).newNativeImage( buf );
         nativeImg.updatePixels( buf );
         return nativeImg;
