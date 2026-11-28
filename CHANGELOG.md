@@ -4,6 +4,7 @@ Per-version release history for the Shimeji AI fork. The runnable app ships as a
 
 ## Next
 
+- Mascots on a browser video's edges follow scrolling smoothly: the extension reports per frame and Shimeji eases the video rect. Reinstall `shimeji-video-tracker.xpi` (v1.8).
 - Video controls: "pause/play this video" (media key) and "full screen this video" (browser extension; YouTube, Twitch, Netflix); volume up/down/to N% unchanged. Reinstall the updated `shimeji-video-tracker.xpi` and add `netflix.com` to `VideoAreaAllowedHosts`.
 - **Window errands phase 2: snap / center.** "Snap this to the left" (also right, top, bottom, center) is now done with the mascot's body: it grabs the window's nearest bottom corner, walks it to the matching corner of the target area and throws it into place (quick ease-out tween). Maximized windows are windowed first; same Window Interaction permission and `AgentVisualMoves` switch as phase 1.
 - **The project is now called koaibo** (was the working title ShimejiSRC): About tab, installer (`installer\koaibo.iss`, `koaibo-Setup-<ver>.exe`, default folder `koaibo`), portable build folder `dist\koaibo`, README/CREDITS, the Get Mascots user-agent and default catalog URL (`github.com/kobitz/koaibo`), calendar-export IDs. The installer AppId is unchanged, so an existing install upgrades in place. `Shimeji.exe` / `Shimeji-ee.jar` keep their names for now. Credits (Shimeji-ee / Kilkakon and the rest) are unchanged.

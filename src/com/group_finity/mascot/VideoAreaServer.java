@@ -114,11 +114,27 @@ public class VideoAreaServer
             try
             {
                 String id = p.getOrDefault( "id", "video" );
-                if( !idOk( id, areas ) ) throw new IllegalArgumentException( "bad id" );
                 int x = Integer.parseInt( p.get( "x" ) );
                 int y = Integer.parseInt( p.get( "y" ) );
                 int w = Integer.parseInt( p.get( "w" ) );
                 int h = Integer.parseInt( p.get( "h" ) );
+                if( p.containsKey( "s" ) )
+                {
+                    // One request for the whole video rect (the extension sends this on every scroll
+                    // frame): the four edge strips are derived here, ids <site>_top/bottom/left/right.
+                    final int st = Math.max( 1, Math.min( 64, Integer.parseInt( p.get( "s" ) ) ) );
+                    final String[] sides = { "top", "bottom", "left", "right" };
+                    final Rectangle[] strips = {
+                        new Rectangle( x, y, w, st ), new Rectangle( x, y + h - st, w, st ),
+                        new Rectangle( x, y, st, h ), new Rectangle( x + w - st, y, st, h ) };
+                    for( String sd : sides ) if( !idOk( id + "_" + sd, areas ) ) throw new IllegalArgumentException( "bad id" );
+                    for( int i = 0; i < 4; i++ ) areas.put( id + "_" + sides[ i ], strips[ i ] );
+                    rebuildSnapshot();
+                    ex.sendResponseHeaders( 200, 0 );
+                    ex.getResponseBody().close();
+                    return;
+                }
+                if( !idOk( id, areas ) ) throw new IllegalArgumentException( "bad id" );
                 areas.put( id, new Rectangle( x, y, w, h ) );
                 rebuildSnapshot();
                 System.out.println( "[Shimeji] Video area registered: " + id + " " + x + "," + y + " " + w + "x" + h );
@@ -348,13 +364,48 @@ public class VideoAreaServer
     private void rebuildSnapshot()         { snapshot           = List.copyOf( areas.values() );           }
     private void rebuildFullscreenSnapshot(){ fullscreenSnapshot = List.copyOf( fullscreenAreas.values() ); }
 
-    public List<Rectangle> getSyntheticAreas()   { return snapshot;           }
+    /**
+     * The registered video areas, eased toward their latest reported position. The extension reports
+     * a scrolling video in steps; handing those steps straight to the mascots made anything standing
+     * on a video edge jump. Each rect now glides (exponential ease, SMOOTH_TAU_S) and snaps outright
+     * when it is new or has moved far (a different video / layout change). Time-based, so it does not
+     * matter how often or from which thread this is called.
+     */
+    private static final double SMOOTH_TAU_S = 0.05;
+    private static final double SNAP_PX      = 600;
+    private final Map<String,double[]> smoothCur = new HashMap<>();
+    private long smoothLastNs = 0;
+    private volatile Map<String,Rectangle> smoothedById = Collections.emptyMap();
+
+    public synchronized List<Rectangle> getSyntheticAreas()
+    {
+        final long now = System.nanoTime();
+        final double dt = smoothLastNs == 0 ? 0 : Math.min( 0.25, ( now - smoothLastNs ) / 1e9 );
+        smoothLastNs = now;
+        final double a = 1 - Math.exp( -dt / SMOOTH_TAU_S );
+        smoothCur.keySet().retainAll( areas.keySet() );
+        final List<Rectangle> out = new ArrayList<>( areas.size() );
+        final Map<String,Rectangle> byId = new HashMap<>();
+        for( Map.Entry<String,Rectangle> e : areas.entrySet() )
+        {
+            final Rectangle t = e.getValue();
+            final double[] tv = { t.x, t.y, t.width, t.height };
+            double[] c = smoothCur.get( e.getKey() );
+            if( c == null || Math.abs( tv[0] - c[0] ) + Math.abs( tv[1] - c[1] ) > SNAP_PX ) { c = tv.clone(); smoothCur.put( e.getKey(), c ); }
+            else for( int i = 0; i < 4; i++ ) c[i] += ( tv[i] - c[i] ) * a;
+            final Rectangle r = new Rectangle( (int) Math.round( c[0] ), (int) Math.round( c[1] ), (int) Math.round( c[2] ), (int) Math.round( c[3] ) );
+            out.add( r );
+            byId.put( e.getKey(), r );
+        }
+        smoothedById = byId;
+        return out;
+    }
     public List<Rectangle> getFullscreenAreas()  { return fullscreenSnapshot; }
 
     /** Returns the site id (e.g. "youtube") for the synthetic area matching rect r, or "". */
     public String getSiteIdForRect( Rectangle r )
     {
-        for( Map.Entry<String, Rectangle> e : areas.entrySet() )
+        for( Map.Entry<String, Rectangle> e : smoothedById.entrySet() )
             if( r.equals( e.getValue() ) )
                 return e.getKey().replaceFirst( "_(top|bottom|left|right)$", "" );
         return "";
