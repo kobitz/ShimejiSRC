@@ -490,12 +490,12 @@ public class AgentToolsTest
         keys.clear();
         yt.run( new String[] { "sys", "volume_up", "9999" } );
         eq( "press count capped", 25, keys.size() );
-        for( final String[] c : new String[][] { { "can you pause this video", "pause" }, { "play the video", "play" }, { "could you resume the video", "play" },
-            { "pause the stream on twitch", "pause" }, { "full screen this video", "fullscreen" }, { "can you fullscreen the video", "fullscreen" },
+        for( final String[] c : new String[][] { { "can you pause this video", "playpause" }, { "play the video", "playpause" }, { "could you resume the video", "playpause" },
+            { "pause the stream on twitch", "playpause" }, { "full screen this video", "fullscreen" }, { "can you fullscreen the video", "fullscreen" },
             { "make this video full screen", "fullscreen" }, { "exit fullscreen", "exit_fullscreen" }, { "make it windowed", "exit_fullscreen" } } )
         {
             final List<String[]> r = AgentIntent.parse( c[ 0 ] );
-            eq( "media: " + c[ 0 ], c[ 1 ], r.isEmpty() || !r.get( 0 )[ 0 ].equals( "media" ) ? "NONE" : r.get( 0 )[ 1 ] );
+            eq( "media: " + c[ 0 ], c[ 1 ], r.isEmpty() ? "NONE" : r.get( 0 )[ 1 ] );
         }
         eq( "set vol can you", "40", AgentIntent.parse( "can you turn the volume to 40%" ).get( 0 )[ 2 ] );
         eq( "bare pause stays media key", "sys", AgentIntent.parse( "pause the music" ).get( 0 )[ 0 ] );

@@ -146,7 +146,7 @@ public final class AgentIntent
         if( ( m = VIDEO_PP.matcher( vt ) ).matches() )
         {
             final String v = m.group( 1 ) != null ? m.group( 1 ) : m.group( 2 );
-            return one( "media", v.equals( "pause" ) || v.equals( "stop" ) ? "pause" : "play" );
+            return one( "sys", "playpause" );   // the media key toggles; it already works for any player
         }
         if( ( m = MEDIA.matcher( t ) ).matches() )
         {
