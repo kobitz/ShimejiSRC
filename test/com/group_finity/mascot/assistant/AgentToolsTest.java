@@ -490,6 +490,31 @@ public class AgentToolsTest
         keys.clear();
         yt.run( new String[] { "sys", "volume_up", "9999" } );
         eq( "press count capped", 25, keys.size() );
+        for( final String[] c : new String[][] { { "can you pause this video", "pause" }, { "play the video", "play" }, { "could you resume the video", "play" },
+            { "pause the stream on twitch", "pause" }, { "full screen this video", "fullscreen" }, { "can you fullscreen the video", "fullscreen" },
+            { "make this video full screen", "fullscreen" }, { "exit fullscreen", "exit_fullscreen" }, { "make it windowed", "exit_fullscreen" } } )
+        {
+            final List<String[]> r = AgentIntent.parse( c[ 0 ] );
+            eq( "media: " + c[ 0 ], c[ 1 ], r.isEmpty() || !r.get( 0 )[ 0 ].equals( "media" ) ? "NONE" : r.get( 0 )[ 1 ] );
+        }
+        eq( "set vol can you", "40", AgentIntent.parse( "can you turn the volume to 40%" ).get( 0 )[ 2 ] );
+        eq( "bare pause stays media key", "sys", AgentIntent.parse( "pause the music" ).get( 0 )[ 0 ] );
+        final List<String> sent = new ArrayList<>();
+        final boolean[] has = { true }, took = { true };
+        final AgentTools mediaT = new AgentTools( sp, tw, ( x, y ) -> true, ysaid::add, sh.resolve( "j.tsv" ), sh )
+            .withMedia( new MediaControl() { public boolean hasVideo() { return has[ 0 ]; } public boolean send( final String c ) { sent.add( c ); return took[ 0 ]; } } );
+        mediaT.run( new String[] { "media", "pause" } );
+        eq( "media sent", "pause", sent.get( 0 ) );
+        eq( "media said", "Paused.", ysaid.get( ysaid.size() - 1 ) );
+        took[ 0 ] = false;
+        mediaT.run( new String[] { "media", "fullscreen" } );
+        eq( "media not taken", "The video didn't respond.", ysaid.get( ysaid.size() - 1 ) );
+        has[ 0 ] = false; sent.clear();
+        mediaT.run( new String[] { "media", "play" } );
+        eq( "no video, nothing sent", 0, sent.size() );
+        has[ 0 ] = true;
+        mediaT.run( new String[] { "media", "close" } );
+        eq( "unknown media refused", "This action is not within my parameters.", ysaid.get( ysaid.size() - 1 ) );
         yt.run( new String[] { "refuse" } );
         eq( "exact refusal", "This action is not within my parameters.", ysaid.get( ysaid.size() - 1 ) );
         keys.clear();

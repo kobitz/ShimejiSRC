@@ -111,6 +111,9 @@ public final class AgentIntent
     private static final Pattern VOL_SET = Pattern.compile( "^(?:set|put|turn|change|make)\\s+" + VOL + "\\s+(?:to|at)\\s+(\\d{1,3})\\s*(?:%|percent)?$|^" + VOL + "\\s+(?:to|at)\\s+(\\d{1,3})\\s*(?:%|percent)?$" );
     private static final Pattern MUTE = Pattern.compile( "^(?:mute|unmute|toggle mute|silence)(?:\\s+" + VOL + "|\\s+(?:it|this|everything|my computer|the computer|my pc))?$|^(?:turn off|shut off)\\s+" + VOL + "$|^(?:turn|bring)\\s+" + VOL + "\\s+off$" );
     private static final Pattern MEDIA = Pattern.compile( "^(?:(pause|stop|resume|unpause|play|continue)(?:\\s+(?:the|my|this|that))?\\s+(?:music|song|songs|video|media|track|playback|audio|podcast|youtube|spotify)|(?:skip|next)(?:\\s+(?:to|the))?(?:\\s+(?:this|that|the next|next))?\\s*(?:song|track|video)?|(?:go\\s+)?(?:back|previous|last)(?:\\s+(?:to the|the))?(?:\\s+(?:previous|last))?\\s*(?:song|track)|(pause|resume)(?:\\s+it)?|(play|pause)\\s+(?:something)?)$" );
+    private static final String VID = "(?:the\\s+|this\\s+|that\\s+|my\\s+|current\\s+)*(?:video|stream|movie|show|clip|episode|youtube|twitch|netflix)";
+    private static final Pattern VIDEO_PP = Pattern.compile( "^(pause|stop|play|resume|unpause|continue)\\s+" + VID + "$|^(pause|stop|play|resume|unpause)\\s+(?:this|it)$" );
+    private static final Pattern VIDEO_FS = Pattern.compile( "^(?:(exit|leave|close|stop)\\s+)?full\\s?-?screen(?:\\s+(?:the\\s+)?(?:" + VID + "|this|it))?$|^(?:make|put|set)\\s+(?:" + VID + "|this|it)\\s+(?:in\\s+|to\\s+)?full\\s?-?screen$|^(?:make|put|set)\\s+(?:" + VID + "|this|it)\\s+(?:back\\s+)?(?:to\\s+)?(?:windowed|normal|small)$|^(?:exit|leave)\\s+(?:" + VID + "\\s+)?full\\s?-?screen$" );
     private static final String THING = ".*\\b(?:files?|folders?|computer|pc|laptop|system|drive|disk|process(?:es)?|programs?|apps?|applications?|windows?|tabs?|browser|chrome|firefox|edge|discord|steam|everything|downloads?|documents?|recycle|bin|registry|password|firewall|antivirus|defender)\\b.*";
     private static final Pattern REFUSE = Pattern.compile(
         "^(?:shut\\s*down|power\\s*off|power down|reboot|hibernate|log\\s*off|sign\\s*out|log me out)\\b.*$"
@@ -136,6 +139,14 @@ public final class AgentIntent
             final String amount = tail.contains( "lot" ) || tail.contains( "way" ) || t.contains( "crank" ) ? "15"
                 : tail.contains( "bit" ) || tail.contains( "little" ) || tail.contains( "notch" ) || t.contains( "a bit" ) || t.contains( "a little" ) || t.contains( "notch" ) ? "3" : "5";
             return one( "sys", down ? "volume_down" : "volume_up", amount );
+        }
+        final String vt = t.replaceAll( "^(.*?)\\s+(?:on|in)\\s+(?:youtube|twitch|netflix|the browser|my browser)$", "$1" );
+        if( ( m = VIDEO_FS.matcher( vt ) ).matches() && !vt.matches( "^full\\s?-?screen$" ) )
+            return one( "media", vt.matches( "^(?:exit|leave|close|stop)\\b.*|.*\\b(?:windowed|normal|small)$" ) ? "exit_fullscreen" : "fullscreen" );
+        if( ( m = VIDEO_PP.matcher( vt ) ).matches() )
+        {
+            final String v = m.group( 1 ) != null ? m.group( 1 ) : m.group( 2 );
+            return one( "media", v.equals( "pause" ) || v.equals( "stop" ) ? "pause" : "play" );
         }
         if( ( m = MEDIA.matcher( t ) ).matches() )
         {

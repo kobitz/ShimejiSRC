@@ -53,6 +53,7 @@ public final class AgentTools
     private java.util.function.LongFunction<WindowErrand.Stage> windowStage = null;
     private static volatile boolean recovered = false;
     private SystemControl system = null;
+    private MediaControl media = null;
     private int keyPauseMs = 12;
     private AgentScheduler scheduler = null;
     private Path calendarDir = null;
@@ -68,6 +69,7 @@ public final class AgentTools
     }
 
     /** Volume and media keys (null = not available on this platform). */
+    public AgentTools withMedia( final MediaControl mc ) { this.media = mc; return this; }
     public AgentTools withSystem( final SystemControl sc ) { this.system = sc; return this; }
 
     AgentTools withClock( final java.util.function.LongSupplier c ) { this.clock = c; return this; }
@@ -121,6 +123,7 @@ public final class AgentTools
             .withStage( visualMoves( p, host ) )
             .withWindowStage( windowMoves( p, host ) )
             .withSystem( p != null && AgentPolicy.enabled( p ) ? SystemControl.get() : null )
+            .withMedia( p != null && AgentPolicy.enabled( p ) ? MediaControl.get() : null )
             .withScheduler( AgentScheduler.shared(), Paths.get( "agent-calendar" ),
                 ( endMs, label ) -> javax.swing.SwingUtilities.invokeLater( () ->
                 {
@@ -283,6 +286,7 @@ public final class AgentTools
             case "undo":     doUndo(); break;
             case "monitor":  doMonitor( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
             case "move":     doMove( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
+            case "media":      doMedia( t.length > 1 ? t[ 1 ] : "" ); break;
             case "sys":        doSys( t.length > 1 ? t[ 1 ] : "", t.length > 2 ? t[ 2 ] : "" ); break;
             case "refuse":     reporter.say( REFUSAL ); break;
             case "schedule":   doSchedule( t ); break;
@@ -323,6 +327,27 @@ public final class AgentTools
             case "previous":  press( SystemControl.Key.PREVIOUS, 1 ); reporter.say( "Going back." ); break;
             default: reporter.say( REFUSAL );
         }
+    }
+
+    private void doMedia( final String action )
+    {
+        if( media == null ) { reporter.say( "I can't reach your video player here." ); return; }
+        if( !media.hasVideo() )
+        {
+            reporter.say( "I don't see a video playing in your browser. The Shimeji Video Tracker extension has to be installed." );
+            return;
+        }
+        final String say;
+        switch( action )
+        {
+            case "pause":           say = "Paused."; break;
+            case "play":            say = "Playing."; break;
+            case "fullscreen":      say = "Going fullscreen."; break;
+            case "exit_fullscreen": say = "Leaving fullscreen."; break;
+            default: reporter.say( REFUSAL ); return;
+        }
+        if( media.send( action ) ) reporter.say( say );
+        else reporter.say( action.equals( "pause" ) ? "Nothing there is playing." : action.equals( "play" ) ? "Nothing there is paused." : "The video didn't respond." );
     }
 
     private void press( final SystemControl.Key k, final int times ) throws InterruptedException

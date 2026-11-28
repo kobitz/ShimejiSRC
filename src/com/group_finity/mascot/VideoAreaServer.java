@@ -27,7 +27,7 @@ public class VideoAreaServer
      * always allowed. Override with the comma-separated {@code VideoAreaAllowedHosts} setting
      * (host suffixes, e.g. "youtube.com,twitch.tv,netflix.com"); read once at startup.
      */
-    private static final String DEFAULT_ALLOWED_HOSTS = "youtube.com,twitch.tv";
+    private static final String DEFAULT_ALLOWED_HOSTS = "youtube.com,twitch.tv,netflix.com";
 
     private static VideoAreaServer instance;
     public  static VideoAreaServer getInstance() { return instance; }
@@ -69,6 +69,7 @@ public class VideoAreaServer
             server = HttpServer.create( new InetSocketAddress( "127.0.0.1", PORT ), 0 );
             server.createContext( "/video",      this::handleVideo );
             server.createContext( "/fullscreen", this::handleFullscreen );
+            server.createContext( "/command",    this::handleCommand );
             server.setExecutor( Executors.newSingleThreadExecutor( r -> {
                 Thread t = new Thread( r, "VideoAreaServer" );
                 t.setDaemon( true );
@@ -209,6 +210,67 @@ public class VideoAreaServer
             ex.sendResponseHeaders( 405, 0 );
         }
 
+        ex.getResponseBody().close();
+    }
+
+    // ---- media commands (agent -> browser extension) -------------------------------------
+
+    /** The only commands the extension is ever told to run. */
+    static final Set<String> COMMANDS = Set.of( "pause", "play", "fullscreen", "exit_fullscreen" );
+    private static final long COMMAND_TTL_MS = 4000;
+    private volatile String pendingCommand;
+    private volatile long   pendingAtMs;
+
+    /** True while the extension is reporting at least one video on screen. */
+    public boolean hasVideo() { return !areas.isEmpty(); }
+
+    /**
+     * Queue one whitelisted command for the extension and wait up to {@code waitMs} for a tab to pick
+     * it up (it polls every ~0.5 s). Returns true if a tab took it. Only the agent calls this, from
+     * the user's own words.
+     */
+    public boolean sendCommand( final String cmd, final long waitMs )
+    {
+        if( cmd == null || !COMMANDS.contains( cmd ) ) return false;
+        pendingAtMs = System.currentTimeMillis();
+        pendingCommand = cmd;
+        final long end = System.currentTimeMillis() + waitMs;
+        while( pendingCommand != null && System.currentTimeMillis() < end )
+        {
+            try { Thread.sleep( 50 ); } catch( InterruptedException e ) { Thread.currentThread().interrupt(); break; }
+        }
+        if( pendingCommand == null ) return true;
+        pendingCommand = null;
+        return false;
+    }
+
+    /**
+     * GET /command?playing=1|0 -- a tab asks for work. pause is only handed to a tab whose video is
+     * playing and play to one whose video is paused, so with several tabs open the command lands on
+     * the right video. 200 + command name, or 204.
+     */
+    private void handleCommand( HttpExchange ex ) throws IOException
+    {
+        if( !checkOrigin( ex ) ) return;
+        addCors( ex );
+        final String method = ex.getRequestMethod();
+        if( "OPTIONS".equals( method ) ) { ex.sendResponseHeaders( 204, -1 ); return; }
+        if( !"GET".equals( method ) ) { ex.sendResponseHeaders( 405, -1 ); ex.getResponseBody().close(); return; }
+        final String q = ex.getRequestURI().getQuery();
+        final boolean playing = "1".equals( parseForm( q != null ? q : "" ).get( "playing" ) );
+        final String cmd = pendingCommand;
+        final boolean fresh = System.currentTimeMillis() - pendingAtMs < COMMAND_TTL_MS;
+        final boolean applies = cmd != null && fresh
+            && ( cmd.equals( "pause" ) ? playing : cmd.equals( "play" ) ? !playing : true );
+        boolean take = false;
+        synchronized( this ) { if( applies && pendingCommand == cmd ) { pendingCommand = null; take = true; } }
+        if( take )
+        {
+            final byte[] b = cmd.getBytes( StandardCharsets.UTF_8 );
+            ex.sendResponseHeaders( 200, b.length );
+            ex.getResponseBody().write( b );
+        }
+        else ex.sendResponseHeaders( 204, -1 );
         ex.getResponseBody().close();
     }
 
